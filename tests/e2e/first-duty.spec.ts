@@ -57,9 +57,29 @@ async function login(page: Page, email: string) {
     .fill(openSecret(message.encryptedSecret!));
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
+    page.getByRole("heading", {
+      name: person.role === "technical" ? "תמונת מצב" : "לוח התורנויות",
+      exact: true,
+    })
   ).toBeVisible();
 }
+test("technical account lands on its own overview after login", async ({
+  page,
+}) => {
+  await createInvitedAccount({
+    name: "טכני לבדיקה",
+    email: "technical-home@example.invalid",
+    role: "technical",
+  });
+  await login(page, "technical-home@example.invalid");
+  await expect(
+    page.getByRole("heading", { name: "תמונת מצב", exact: true })
+  ).toBeVisible();
+  await expect(page.getByText("המסך הזה אינו זמין לחשבון שלך")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "תמונת מצב", exact: true })
+  ).toHaveAttribute("aria-current", "page");
+});
 test("manager invites, assigns and publishes; soldier sees only published duties", async ({
   page,
   browser,
