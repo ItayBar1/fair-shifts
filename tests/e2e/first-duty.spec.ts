@@ -179,6 +179,76 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     animations: "disabled",
   });
   await expect(page.locator(".detail-grid")).toContainText("4 נקודות");
+  await page.goto("/manage/eligibility");
+  await page.getByRole("button", { name: "הגדרה חדשה", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("סוג ההגדרה")
+    .selectOption("qualification");
+  await page
+    .getByRole("dialog")
+    .getByLabel("שם", { exact: true })
+    .fill("כשירות לדוגמה");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "שמירה", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page
+    .getByLabel("חייל", { exact: true })
+    .selectOption({ label: "חייל סינתטי" });
+  await page.getByLabel("מה משייכים").selectOption("qualification");
+  await page
+    .getByLabel("סוג מהקטלוג", { exact: true })
+    .selectOption({ label: "כשירות לדוגמה" });
+  await page.getByLabel("תחילת תוקף", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("סיום תוקף (כולל)", { exact: true }).fill("2030-12-31");
+  await page.getByRole("button", { name: "שמירת שיוך", exact: true }).click();
+  const history = page
+    .locator(".subsection")
+    .filter({
+      has: page.getByRole("heading", { name: "חייל סינתטי", exact: true }),
+    });
+  await history
+    .getByRole("button", { name: "עריכת כשירות לדוגמה", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("סיום תוקף (כולל)")
+    .fill("2031-12-31");
+  await page
+    .getByRole("dialog")
+    .getByLabel("סיבת השינוי")
+    .fill("עדכון כשירות לבדיקה");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "בדיקת השפעת השינוי" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("שמירת בדיקה");
+  await page
+    .getByRole("dialog")
+    .screenshot({ path: "test-results/personnel-impact.png" });
+  await page.getByLabel("בדקתי את ההשפעה ומאשר את השינוי").check();
+  await page.getByRole("button", { name: "אישור שינוי התקופה" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await history
+    .getByRole("button", { name: "הסרת כשירות לדוגמה", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("סיבת השינוי")
+    .fill("הסרת שיוך סינתטי");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "בדיקת השפעת השינוי" })
+    .click();
+  await page.getByLabel("בדקתי את ההשפעה ומאשר את השינוי").check();
+  await page.getByRole("button", { name: "אישור הסרת התקופה" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "הסרת כשירות לדוגמה", exact: true })
+  ).toHaveCount(0);
+  await page.goto(`/duties/${state.duties[0].id}`);
   await page.screenshot({
     path: "test-results/manager-duty.png",
     fullPage: true,

@@ -2155,6 +2155,257 @@ describe("first duty vertical slice", () => {
       )
     ).rejects.toThrow("מחייב טיפול בביצוע");
   });
+  async function timelinePreview(
+    actor: Actor,
+    payload: Record<string, unknown>,
+    version: number
+  ) {
+    return (await executeAction(actor, {
+      type: "soldier.timeline.edit.preview",
+      payload,
+      expectedVersion: version,
+      idempotencyKey: randomUUID(),
+    })) as {
+      previewToken: string;
+      impact: { before: string; after: string; reasons: { code: string }[] }[];
+    };
+  }
+  it("previews a shortened qualification for the whole performance, retains the assignment and flags it after explicit confirmation", async () => {
+    const { row, actor } = await fixtureDuty();
+    const qualification = await command("eligibility.catalog.save", {
+      kind: "qualification",
+      name: "הכשרה לבדיקה",
+    });
+    await command(
+      "soldier.timeline",
+      {
+        soldierId: actor.soldierId,
+        kind: "qualification",
+        value: qualification.id,
+        startDate: "2026-01-01",
+        endDate: "2030-12-31",
+      },
+      1
+    );
+    await db
+      .update(duties)
+      .set({
+        data: {
+          ...row.data,
+          requirements: { qualificationIds: [qualification.id] },
+        },
+      })
+      .where(eq(duties.id, row.id));
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    const input = {
+      soldierId: actor.soldierId,
+      kind: "qualification",
+      operation: "replace",
+      index: 0,
+      value: qualification.id,
+      startDate: "2026-01-01",
+      endDate: row.data.start.slice(0, 10),
+      reason: "קיצור תוקף מאומת",
+    };
+    const preview = await timelinePreview(manager, input, 2);
+    expect(preview.impact[0]).toMatchObject({
+      before: "eligible",
+      after: "blocked",
+    });
+    expect(
+      preview.impact[0].reasons.some(
+        (reason) => reason.code === "qualification"
+      )
+    ).toBe(true);
+    expect(
+      (
+        await db
+          .select()
+          .from(soldiers)
+          .where(eq(soldiers.id, actor.soldierId!))
+      )[0].data.qualifications[0].end
+    ).toBe("2030-12-31");
+    await command(
+      "soldier.timeline.edit",
+      { ...input, confirmed: true, previewToken: preview.previewToken },
+      2
+    );
+    const [assigned] = await db.select().from(assignments);
+    expect(assigned.status).toBe("reserved");
+    expect(assigned.data.needsAttention).toContain("qualification");
+    expect(assigned.data.version).toBe(assigned.version);
+    expect(
+      (await readState(actor)).soldiers.every(
+        (person) => !("qualifications" in person)
+      )
+    ).toBe(true);
+    expect(await db.select().from(ledger)).toHaveLength(0);
+  });
+  it("rejects an obsolete personnel impact preview and removes a period only once when managers compete", async () => {
+    const { actor } = await fixtureDuty();
+    await command(
+      "soldier.timeline",
+      {
+        soldierId: actor.soldierId,
+        kind: "inactive",
+        startDate: "2029-01-01",
+        endDate: "2029-01-05",
+      },
+      1
+    );
+    const input = {
+      soldierId: actor.soldierId,
+      kind: "inactive",
+      operation: "remove",
+      index: 0,
+      reason: "סיום אי־פעילות",
+    };
+    const preview = await timelinePreview(manager, input, 2);
+    await fixtureDuty();
+    await expect(
+      command(
+        "soldier.timeline.edit",
+        { ...input, confirmed: true, previewToken: preview.previewToken },
+        2
+      )
+    ).rejects.toMatchObject({ code: "stale_preview" });
+    const current = await timelinePreview(manager, input, 2);
+    const outcomes = await Promise.allSettled([
+      command(
+        "soldier.timeline.edit",
+        { ...input, confirmed: true, previewToken: current.previewToken },
+        2
+      ),
+      command(
+        "soldier.timeline.edit",
+        { ...input, confirmed: true, previewToken: current.previewToken },
+        2
+      ),
+    ]);
+    expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(person.data.inactivePeriods).toHaveLength(0);
+    expect(person.version).toBe(3);
+    expect(
+      (
+        await db
+          .select()
+          .from(records)
+          .where(eq(records.kind, "personnel_change"))
+      ).filter((item) => item.data.operation === "remove")
+    ).toHaveLength(1);
+  });
+  it("removes an exemption without discarding approved constraints and restricts both preview and catalog edits to managers", async () => {
+    const { row, actor } = await fixtureDuty();
+    const exemption = await command("eligibility.catalog.save", {
+      kind: "exemption",
+      name: "פטור סינתטי",
+    });
+    await command(
+      "soldier.timeline",
+      {
+        soldierId: actor.soldierId,
+        kind: "exemption",
+        value: exemption.id,
+        startDate: "2026-01-01",
+        endDate: "2030-12-31",
+      },
+      1
+    );
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    await db
+      .insert(records)
+      .values({
+        id: randomUUID(),
+        kind: "constraint",
+        subjectId: actor.soldierId,
+        data: {
+          approved: {
+            start: row.data.start.slice(0, 10),
+            end: row.data.end.slice(0, 10),
+            version: 1,
+          },
+          status: "approved",
+        },
+      });
+    const input = {
+      soldierId: actor.soldierId,
+      kind: "exemption",
+      operation: "remove",
+      index: 0,
+      reason: "הסרה מאומתת",
+    };
+    await expect(timelinePreview(actor, input, 2)).rejects.toMatchObject({
+      code: "forbidden",
+      status: 403,
+    });
+    const preview = await timelinePreview(manager, input, 2);
+    expect(
+      preview.impact[0].reasons.some(
+        (reason) => reason.code === "approved_constraint"
+      )
+    ).toBe(true);
+    await command(
+      "soldier.timeline.edit",
+      { ...input, confirmed: true, previewToken: preview.previewToken },
+      2
+    );
+    expect(
+      (await db.select().from(assignments))[0].data.needsAttention
+    ).toContain("approved_constraint");
+    await command(
+      "eligibility.catalog.save",
+      { id: exemption.id, kind: "exemption", name: "שם פטור מעודכן" },
+      1
+    );
+    await expect(
+      command(
+        "eligibility.catalog.save",
+        { id: exemption.id, kind: "qualification", name: "אין שינוי סוג" },
+        2
+      )
+    ).rejects.toMatchObject({ code: "catalog_kind" });
+    await expect(
+      command(
+        "eligibility.catalog.save",
+        { id: exemption.id, kind: "exemption", name: "עריכה ישנה" },
+        1
+      )
+    ).rejects.toMatchObject({ code: "stale_version" });
+    await expect(
+      command(
+        "eligibility.catalog.save",
+        { id: exemption.id, kind: "exemption", name: "חייל לא עורך" },
+        2,
+        actor
+      )
+    ).rejects.toMatchObject({ code: "forbidden" });
+    expect(
+      (await db.select().from(records).where(eq(records.id, exemption.id)))[0]
+        .data.name
+    ).toBe("שם פטור מעודכן");
+  });
   it("keeps a published duty binding until an atomic versioned update replaces its reservations", async () => {
     const { row, actor } = await publishedFixture();
     const change = await command(

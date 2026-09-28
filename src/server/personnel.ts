@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { DateTime } from "luxon";
 import type { DbTransaction } from "./db";
@@ -10,6 +11,7 @@ import {
   findRecord,
   loadDomain,
   manager,
+  updateRecord,
   type Actor,
 } from "./repository";
 import { id, date, population, text } from "./validation";
@@ -55,7 +57,11 @@ export async function reassessAssignments(
       .update(assignments)
       .set({
         version: assignment.version + 1,
-        data: { ...assignment, needsAttention: reasons },
+        data: {
+          ...assignment,
+          version: assignment.version + 1,
+          needsAttention: reasons,
+        },
         updatedAt: new Date(),
       })
       .where(eq(assignments.id, assignment.id));
@@ -66,19 +72,212 @@ export async function reassessAssignments(
 export async function saveEligibilityCatalog(
   tx: DbTransaction,
   actor: Actor,
-  payload: unknown
+  payload: unknown,
+  expectedVersion?: number
 ) {
   manager(actor);
   const input = z
     .object({
+      id: id.optional(),
       kind: z.enum(["qualification", "exemption"]),
       name: text,
       description: z.string().max(2000).default(""),
     })
     .parse(payload);
+  if (input.id) {
+    const existing = await findRecord(tx, "eligibility_catalog", input.id);
+    currentVersion(existing.version, expectedVersion);
+    invariant(
+      existing.data.kind === input.kind,
+      "catalog_kind",
+      "אין לשנות את סוג ההגדרה הקיימת"
+    );
+    const updated = await updateRecord(tx, existing, {
+      ...existing.data,
+      name: input.name,
+      description: input.description,
+    });
+    await audit(tx, actor, "eligibility.catalog.update", existing.id);
+    return { id: updated.id, version: updated.version };
+  }
   const record = await createRecord(tx, "eligibility_catalog", input);
   await audit(tx, actor, "eligibility.catalog.create", record.id);
   return { id: record.id };
+}
+const timelineEditInput = z.object({
+  soldierId: id,
+  kind: z.enum(["qualification", "exemption", "inactive"]),
+  index: z.number().int().nonnegative().max(10000),
+  operation: z.enum(["replace", "remove"]),
+  startDate: date.optional(),
+  endDate: date.optional(),
+  value: id.optional(),
+  reason: text,
+});
+function replaceEntry<T>(entries: T[], index: number, replacement?: T) {
+  return entries.flatMap((entry, i) =>
+    i !== index ? [entry] : replacement ? [replacement] : []
+  );
+}
+async function inspectTimelineEdit(
+  tx: DbTransaction,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  const input = timelineEditInput.parse(payload);
+  const [person] = await tx
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.id, input.soldierId));
+  invariant(person && !person.deletedAt, "not_found", "חייל לא נמצא", 404);
+  currentVersion(person.version, expectedVersion);
+  const field = (
+    {
+      qualification: "qualifications",
+      exemption: "exemptions",
+      inactive: "inactivePeriods",
+    } as const
+  )[input.kind];
+  const original = person.data[field][input.index];
+  invariant(original, "not_found", "התקופה שנבחרה לא נמצאה", 404);
+  const removing = input.operation === "remove";
+  if (!removing) {
+    invariant(
+      input.startDate && input.endDate && input.startDate <= input.endDate,
+      "date_range",
+      "נדרש טווח תוקף תקין עם תאריך סיום"
+    );
+    if (input.kind !== "inactive") {
+      const catalog = await findRecord(
+        tx,
+        "eligibility_catalog",
+        id.parse(input.value)
+      );
+      invariant(
+        catalog.data.kind === input.kind,
+        "catalog_kind",
+        "סוג ההגדרה אינו מתאים לשיוך"
+      );
+    }
+  }
+  const range = { start: input.startDate!, end: input.endDate! };
+  const data: Soldier = { ...person.data, version: person.version + 1 };
+  if (input.kind === "qualification")
+    data.qualifications = replaceEntry(
+      data.qualifications,
+      input.index,
+      removing ? undefined : { ...range, qualificationId: input.value! }
+    );
+  else if (input.kind === "exemption")
+    data.exemptions = replaceEntry(
+      data.exemptions,
+      input.index,
+      removing ? undefined : { ...range, exemptionId: input.value! }
+    );
+  else
+    data.inactivePeriods = replaceEntry(
+      data.inactivePeriods,
+      input.index,
+      removing ? undefined : range
+    );
+  const state = await loadDomain(tx);
+  const existing = state.soldiers.find((item) => item.id === person.id)!;
+  const proposed = {
+    ...existing,
+    ...data,
+    currentScore: existing.currentScore,
+    constraints: existing.constraints,
+  };
+  const impact = state.assignments
+    .filter(
+      (item) => item.soldierId === person.id && item.status === "reserved"
+    )
+    .map((assignment) => {
+      const duty = state.duties.find((item) => item.id === assignment.dutyId)!;
+      const slot = duty.slots.find((item) => item.id === assignment.slotId)!;
+      const context = {
+        duties: state.duties,
+        assignments: state.assignments,
+        mode: "manual" as const,
+        ignoreAssignmentIds: [assignment.id],
+        approvals: assignment.approvals,
+        pendingReviewConfirmed: assignment.pendingReviewConfirmed,
+      };
+      const before = evaluateEligibility(existing, duty, slot, context);
+      const after = evaluateEligibility(proposed, duty, slot, context);
+      return {
+        assignmentId: assignment.id,
+        dutyId: duty.id,
+        dutyName: duty.name,
+        start: duty.start,
+        before: before.status,
+        after: after.status,
+        reasons: [...after.blockers, ...after.approvalsRequired],
+      };
+    });
+  const previewToken = createHash("sha256")
+    .update(JSON.stringify({ input, state }))
+    .digest("hex");
+  return { input, person, data, original, previewToken, impact };
+}
+export async function previewTimelineEdit(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const checked = await inspectTimelineEdit(tx, payload, expectedVersion);
+  return { previewToken: checked.previewToken, impact: checked.impact };
+}
+export async function editTimeline(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const confirmation = z
+    .object({ previewToken: z.string().length(64), confirmed: z.literal(true) })
+    .parse(payload);
+  const { input, person, data, original, previewToken } =
+    await inspectTimelineEdit(tx, payload, expectedVersion);
+  invariant(
+    confirmation.previewToken === previewToken,
+    "stale_preview",
+    "נתוני התקופה או השיבוצים השתנו. יש לבדוק שוב את השפעת השינוי",
+    409
+  );
+  await tx
+    .update(soldiers)
+    .set({ data, version: data.version, updatedAt: new Date() })
+    .where(eq(soldiers.id, person.id));
+  await createRecord(
+    tx,
+    "personnel_change",
+    {
+      kind: input.kind,
+      operation: input.operation,
+      before: original,
+      reason: input.reason,
+      actorId: actor.id,
+    },
+    person.id
+  );
+  await audit(
+    tx,
+    actor,
+    "soldier.timeline.edit",
+    person.id,
+    { kind: input.kind, operation: input.operation },
+    person.id
+  );
+  await refreshRankReminders(tx);
+  return {
+    id: person.id,
+    version: data.version,
+    flagged: await reassessAssignments(tx, person.id),
+  };
 }
 export async function updateTimeline(
   tx: DbTransaction,

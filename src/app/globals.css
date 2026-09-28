@@ -511,6 +511,18 @@ small {
 .slot-row:last-child {
   border-bottom: 0;
 }
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.history-row > span:first-child {
+  flex: 1 1 180px;
+  min-width: 0;
+}
 .task-item > span:nth-child(2) {
   flex: 1;
 }

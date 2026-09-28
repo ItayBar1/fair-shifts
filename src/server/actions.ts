@@ -28,7 +28,12 @@ import {
 import { previewScore, applyScore } from "./scoring";
 import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
 import { user } from "./auth-schema";
-import { saveEligibilityCatalog, updateTimeline } from "./personnel";
+import {
+  saveEligibilityCatalog,
+  updateTimeline,
+  previewTimelineEdit,
+  editTimeline,
+} from "./personnel";
 import {
   createRound,
   closeRound,
@@ -106,7 +111,18 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await updateTimeline(tx, actor, payload, expectedVersion);
         break;
       case "eligibility.catalog.save":
-        result = await saveEligibilityCatalog(tx, actor, payload);
+        result = await saveEligibilityCatalog(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "soldier.timeline.edit.preview":
+        result = await previewTimelineEdit(tx, actor, payload, expectedVersion);
+        break;
+      case "soldier.timeline.edit":
+        result = await editTimeline(tx, actor, payload, expectedVersion);
         break;
       case "rank.catalog.save":
         result = await saveRankCatalog(tx, actor, payload, expectedVersion);

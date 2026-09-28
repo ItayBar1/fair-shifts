@@ -36,6 +36,7 @@ import {
 import { DutyList, dutyStatus } from "./views";
 import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
+import { PersonnelHistory } from "./personnel-history";
 import type { RankClause, Requirements } from "@/domain/types";
 const soldierFields = (s?: Row): Field[] => [
   { name: "name", label: "שם מלא", required: true, value: str(s?.name) },
@@ -133,7 +134,11 @@ export function SoldiersView({
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState(state.actor.population || "");
-  const [selected, setSelected] = useState<Row | null>(null);
+  const [selectedRecord, setSelected] = useState<Row | null>(null);
+  const selected = selectedRecord
+    ? (state.soldiers.find((person) => person.id === selectedRecord.id) ??
+      selectedRecord)
+    : null;
   const filtered = state.soldiers.filter(
     (s) =>
       !s.deletedAt &&
@@ -266,13 +271,12 @@ export function SoldiersView({
           <details className="disclosure">
             <summary>מועדי שירות, כשירות והיסטוריה</summary>
             <div className="stack">
-              {[
-                "serviceHistory",
-                "ranks",
-                "inactivity",
-                "qualifications",
-                "exemptions",
-              ].map((key) =>
+              <PersonnelHistory
+                state={state}
+                action={action}
+                person={selected}
+              />
+              {["populationHistory", "rankHistory"].map((key) =>
                 rows(selected[key]).map((entry, i) => (
                   <div className="history-row" key={`${key}-${i}`}>
                     <strong>
@@ -280,14 +284,13 @@ export function SoldiersView({
                         entry.name ??
                           entry.value ??
                           entry.population ??
-                          entry.rank,
+                          rows(state.rankCatalog).find(
+                            (item) => item.id === entry.rankId
+                          )?.name,
                         "תקופת שירות"
                       )}
                     </strong>
-                    <span>
-                      {displayDate(entry.startDate ?? entry.from)} —{" "}
-                      {displayDate(entry.endDate ?? entry.to)}
-                    </span>
+                    <span>בתוקף מ־{displayDate(entry.effectiveFrom)}</span>
                   </div>
                 ))
               )}
@@ -413,6 +416,13 @@ export function EligibilityView({
   action: Action;
 }) {
   const catalogs = rows(state.eligibilityCatalog);
+  const peopleWithPeriods = state.soldiers.filter(
+    (person) =>
+      !person.deletedAt &&
+      [person.qualifications, person.exemptions, person.inactivePeriods].some(
+        (value) => rows(value).length
+      )
+  );
   return (
     <>
       <Notice>
@@ -460,6 +470,28 @@ export function EligibilityView({
                   <small>{str(c.description)}</small>
                 </span>
                 <Badge>{c.kind === "exemption" ? "פטור" : "כשירות"}</Badge>
+                <ActionDialog
+                  title={`עריכת ${str(c.name)}`}
+                  action={action}
+                  type="eligibility.catalog.save"
+                  payload={{ id: c.id, kind: c.kind }}
+                  version={c.version}
+                  fields={[
+                    {
+                      name: "name",
+                      label: "שם ההגדרה",
+                      required: true,
+                      value: str(c.name),
+                    },
+                    {
+                      name: "description",
+                      label: "הסבר לשימוש",
+                      type: "textarea",
+                      full: true,
+                      value: str(c.description),
+                    },
+                  ]}
+                />
               </div>
             ))
           ) : (
@@ -507,7 +539,12 @@ export function EligibilityView({
                 type: "date",
                 required: true,
               },
-              { name: "endDate", label: "סיום תוקף (כולל)", type: "date" },
+              {
+                name: "endDate",
+                label: "סיום תוקף (כולל)",
+                type: "date",
+                required: true,
+              },
               {
                 name: "reason",
                 label: "הערת אחראי",
@@ -526,6 +563,20 @@ export function EligibilityView({
           />
         </Panel>
       </div>
+      <Panel title="תקופות קיימות ועריכה">
+        {!peopleWithPeriods.length && (
+          <Empty
+            title="אין תקופות קיימות"
+            text="לאחר שיוך לחייל אפשר לשנות תוקף או להסיר תקופה, עם בדיקת ההשפעה על השיבוצים."
+          />
+        )}
+        {peopleWithPeriods.map((person) => (
+          <div className="subsection" key={person.id}>
+            <h3>{str(person.name)}</h3>
+            <PersonnelHistory state={state} action={action} person={person} />
+          </div>
+        ))}
+      </Panel>
     </>
   );
 }
