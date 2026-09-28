@@ -984,6 +984,32 @@ tbody tr:last-child td {
   border-color: #5a85c6;
   color: #3e65a1;
 }
+.calendar-event.start {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.calendar-event.middle,
+.calendar-event.end {
+  border-inline-start-style: dashed;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.calendar-event.middle {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.calendar-event.cancelled {
+  background: #f1f2f3;
+  border-color: #9aa3a8;
+  color: #6b7479;
+}
+.calendar-event.cancelled span {
+  text-decoration: line-through;
+}
+.calendar-event:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
 .calendar-event span,
 .calendar-event small {
   display: block;
@@ -1015,6 +1041,12 @@ tbody tr:last-child td {
 }
 .legend-dot.blue {
   background: #5a85c6;
+}
+.mobile-only {
+  display: none;
+}
+.legend-dot.muted {
+  background: #9aa3a8;
 }
 .duty-row {
   display: flex;
@@ -1381,6 +1413,9 @@ tbody tr:last-child td {
   }
   .hide-mobile {
     display: none;
+  }
+  .mobile-only {
+    display: block;
   }
   .slot-row,
   .task-item {
