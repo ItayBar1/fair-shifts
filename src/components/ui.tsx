@@ -33,6 +33,9 @@ const statusLabels: Record<string, string> = {
   needs_review: "דורש טיפול",
   transferred: "הועבר",
   waiting_manager: "ממתינה לאחראי",
+  preview: "תצוגה מקדימה",
+  applied: "נשמרה",
+  restored: "שוחזרה",
 };
 export function Status({ value }: { value: unknown }) {
   const status = str(value, "pending");

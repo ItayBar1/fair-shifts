@@ -2334,21 +2334,19 @@ describe("first duty vertical slice", () => {
       },
       1
     );
-    await db
-      .insert(records)
-      .values({
-        id: randomUUID(),
-        kind: "constraint",
-        subjectId: actor.soldierId,
-        data: {
-          approved: {
-            start: row.data.start.slice(0, 10),
-            end: row.data.end.slice(0, 10),
-            version: 1,
-          },
-          status: "approved",
+    await db.insert(records).values({
+      id: randomUUID(),
+      kind: "constraint",
+      subjectId: actor.soldierId,
+      data: {
+        approved: {
+          start: row.data.start.slice(0, 10),
+          end: row.data.end.slice(0, 10),
+          version: 1,
         },
-      });
+        status: "approved",
+      },
+    });
     const input = {
       soldierId: actor.soldierId,
       kind: "exemption",
@@ -2651,5 +2649,318 @@ describe("first duty vertical slice", () => {
         (item) => item.status === "reserved"
       )[0].points
     ).toBe(9);
+  });
+  it("imports a whole reviewed batch, preserving reservations and blank fields with documented balances", async () => {
+    const { row, actor } = await fixtureDuty();
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    await db
+      .update(soldierContacts)
+      .set({ phone: "0500000000", address: "כתובת סינתטית" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    const rank = await command("rank.catalog.save", {
+      name: "דרגת בדיקה",
+      track: "מסלול בדיקה",
+      order: 1,
+      source: "סינתטי",
+    });
+    const preview = await command("import.preview", {
+      filename: "synthetic.xlsx",
+      rows: [
+        {
+          rowNumber: 2,
+          values: {
+            personalNumber: "00001",
+            name: "שם מעודכן",
+            currentScore: 51,
+          },
+        },
+        {
+          rowNumber: 3,
+          values: {
+            personalNumber: "000009",
+            name: "חייל מייבוא",
+            email: "import@example.invalid",
+            phone: "0500000009",
+            currentScore: 12,
+            rankName: "דרגת בדיקה",
+            rankTrack: "מסלול בדיקה",
+            rankEffectiveDate: "2026-01-01",
+          },
+        },
+      ],
+    });
+    expect(await db.select().from(soldiers)).toHaveLength(2);
+    await expect(
+      command(
+        "import.apply",
+        { id: preview.id, confirmed: true, reason: "קליטת בדיקה" },
+        1
+      )
+    ).rejects.toThrow("דריסת");
+    const applied = await command(
+      "import.apply",
+      {
+        id: preview.id,
+        confirmed: true,
+        overwriteConfirmed: true,
+        reason: "קליטת בדיקה",
+      },
+      1
+    );
+    expect(applied).toMatchObject({
+      status: "applied",
+      created: 1,
+      updated: 1,
+    });
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(person.name).toBe("שם מעודכן");
+    const [contact] = await db
+      .select()
+      .from(soldierContacts)
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    expect(contact).toMatchObject({
+      phone: "0500000000",
+      address: "כתובת סינתטית",
+    });
+    expect(
+      (
+        await db
+          .select()
+          .from(balances)
+          .where(eq(balances.soldierId, actor.soldierId!))
+      )[0].current
+    ).toBe(51);
+    const [newPerson] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.personalNumber, "000009"));
+    expect(newPerson.data.service.graceEligible).toBe(false);
+    expect(newPerson.data.rankHistory[0].rankId).toBe(rank.id);
+    const active = (await db.select().from(assignments)).filter(
+      (item) => item.status === "reserved"
+    );
+    expect(active).toHaveLength(1);
+    expect(active[0].points).toBe(4);
+    expect(
+      (await db.select().from(ledger)).map((item) => item.kind).sort()
+    ).toEqual(["import_set", "opening"]);
+    expect(
+      (await db.select().from(user)).find(
+        (item) => item.email === "import@example.invalid"
+      )?.soldierId
+    ).toBe(newPerson.id);
+  });
+  it("rejects all rows on duplicate, conflicting identities, incomplete ranks or deleted people", async () => {
+    const { actor } = await fixtureDuty();
+    const rows = [
+      {
+        rowNumber: 2,
+        values: {
+          personalNumber: "00001",
+          name: "אסור לשמור",
+          email: "changed@example.invalid",
+        },
+      },
+      {
+        rowNumber: 3,
+        values: {
+          personalNumber: "000009",
+          name: "חדש",
+          email: memberEmail,
+          rankName: "חלקי",
+        },
+      },
+      {
+        rowNumber: 4,
+        values: {
+          personalNumber: "000009",
+          name: "כפול",
+          email: "new@example.invalid",
+        },
+      },
+    ];
+    await expect(
+      command("import.preview", { filename: "invalid.xlsx", rows })
+    ).rejects.toMatchObject({
+      code: "import_errors",
+      details: {
+        problems: expect.arrayContaining([
+          expect.objectContaining({ row: 2, field: "מייל" }),
+          expect.objectContaining({ row: 3, field: "דרגה" }),
+          expect.objectContaining({ row: 4, field: "מספר אישי" }),
+        ]),
+      },
+    });
+    expect(
+      (
+        await db
+          .select()
+          .from(soldiers)
+          .where(eq(soldiers.id, actor.soldierId!))
+      )[0].name
+    ).toBe("חייל לבדיקה");
+    expect(
+      await db.select().from(records).where(eq(records.kind, "import"))
+    ).toHaveLength(0);
+    await db
+      .update(soldiers)
+      .set({ deletedAt: new Date() })
+      .where(eq(soldiers.id, actor.soldierId!));
+    await expect(
+      command("import.preview", {
+        filename: "deleted.xlsx",
+        rows: [
+          {
+            rowNumber: 2,
+            values: { personalNumber: "00001", name: "אסור להחיות" },
+          },
+        ],
+      })
+    ).rejects.toThrow("שגיאות");
+  });
+  it("tracks per-field ABA changes and rejects a stale import without changing any row", async () => {
+    const { actor } = await fixtureDuty();
+    const original = (
+      await db.select().from(soldiers).where(eq(soldiers.id, actor.soldierId!))
+    )[0];
+    const preview = await command("import.preview", {
+      filename: "stale.xlsx",
+      rows: [
+        {
+          rowNumber: 2,
+          values: { personalNumber: "00001", name: "ייבוא מיושן" },
+        },
+      ],
+    });
+    await db
+      .update(soldiers)
+      .set({ name: "שם זמני", data: { ...original.data, name: "שם זמני" } })
+      .where(eq(soldiers.id, actor.soldierId!));
+    await db
+      .update(soldiers)
+      .set({ name: original.name, data: original.data })
+      .where(eq(soldiers.id, actor.soldierId!));
+    const person = (
+      await db.select().from(soldiers).where(eq(soldiers.id, actor.soldierId!))
+    )[0];
+    expect(person.fieldVersions.name).toBe(2);
+    expect(person.fieldVersions["service.arrivalDate"]).toBeUndefined();
+    await db
+      .update(soldierContacts)
+      .set({ phone: "0500000000" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    await db
+      .update(soldierContacts)
+      .set({ phone: "0500000001" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    await db
+      .update(soldierContacts)
+      .set({ phone: "0500000000" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    expect(
+      (
+        await db
+          .select()
+          .from(soldierContacts)
+          .where(eq(soldierContacts.soldierId, actor.soldierId!))
+      )[0].fieldVersions
+    ).toEqual({ phone: 3 });
+    await expect(
+      command(
+        "import.apply",
+        {
+          id: preview.id,
+          confirmed: true,
+          overwriteConfirmed: true,
+          reason: "אסור לדרוס",
+        },
+        1
+      )
+    ).rejects.toThrow("השתנו");
+    expect(
+      (
+        await db
+          .select()
+          .from(soldiers)
+          .where(eq(soldiers.id, actor.soldierId!))
+      )[0].name
+    ).toBe(original.name);
+  });
+  it("serializes competing import approvals and returns idempotent results without duplicate ledger entries", async () => {
+    const preview = await command("import.preview", {
+      filename: "retry.xlsx",
+      rows: [
+        { rowNumber: 2, values: { personalNumber: "00001", currentScore: 10 } },
+      ],
+    });
+    const payload = {
+      id: preview.id,
+      confirmed: true,
+      overwriteConfirmed: true,
+      reason: "אישור מקביל",
+    };
+    const results = await Promise.allSettled([
+      command("import.apply", payload, 1),
+      command("import.apply", payload, 1),
+    ]);
+    expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    expect(await db.select().from(ledger)).toHaveLength(1);
+    const preview2 = await command("import.preview", {
+      filename: "retry2.xlsx",
+      rows: [
+        { rowNumber: 2, values: { personalNumber: "00001", currentScore: 20 } },
+      ],
+    });
+    const key = randomUUID();
+    const result = await command(
+      "import.apply",
+      { ...payload, id: preview2.id },
+      1,
+      manager,
+      key
+    );
+    expect(
+      await command(
+        "import.apply",
+        { ...payload, id: preview2.id },
+        1,
+        manager,
+        key
+      )
+    ).toEqual(result);
+    expect(await db.select().from(ledger)).toHaveLength(2);
+  });
+  it("restricts import previews and history to managers", async () => {
+    const { actor } = await fixtureDuty();
+    const payload = {
+      filename: "permissions.xlsx",
+      rows: [
+        { rowNumber: 2, values: { personalNumber: "00001", name: "חדש" } },
+      ],
+    };
+    await expect(
+      command("import.preview", payload, undefined, actor)
+    ).rejects.toThrow("אחראי");
+    await expect(
+      command("import.preview", payload, undefined, technical)
+    ).rejects.toThrow("אחראי");
+    const preview = await command("import.preview", payload);
+    await expect(
+      command("import.get", { id: preview.id }, undefined, actor)
+    ).rejects.toThrow("אחראי");
+    expect((await readState(actor)).imports).toEqual([]);
   });
 });

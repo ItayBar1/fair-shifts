@@ -250,19 +250,7 @@ export function ScoresView({ state, action }: Props) {
     </>
   );
 }
-export function ImportsView({
-  state,
-}: Props & { reload: () => Promise<void> }) {
-  return (
-    <>
-      {building}
-      <p className="muted">{state.imports.length} אצוות במערכת</p>
-      <Panel title="ייבוא Excel">
-        <Empty title="תבנית וייבוא מבוקר יושלמו בשלב 8" />
-      </Panel>
-    </>
-  );
-}
+export { ImportsView } from "./imports";
 export function AuditView({ state }: { state: AppState }) {
   return (
     <Panel title="יומן פעולות">

@@ -31,6 +31,10 @@ export const soldiers = pgTable("soldiers", {
   personalNumber: text("personal_number").notNull().unique(),
   data: jsonb("data").$type<Soldier>().notNull(),
   version: integer("version").notNull().default(1),
+  fieldVersions: jsonb("field_versions")
+    .$type<Record<string, number>>()
+    .notNull()
+    .default({}),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   ...dates(),
 });

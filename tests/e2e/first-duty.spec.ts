@@ -7,6 +7,8 @@ import { soldiers, balances } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import ExcelJS from "exceljs";
+import { createImportTemplate } from "../../src/server/import-workbook";
 
 test.beforeAll(async () => {
   if (
@@ -204,11 +206,9 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page.getByLabel("תחילת תוקף", { exact: true }).fill("2026-01-01");
   await page.getByLabel("סיום תוקף (כולל)", { exact: true }).fill("2030-12-31");
   await page.getByRole("button", { name: "שמירת שיוך", exact: true }).click();
-  const history = page
-    .locator(".subsection")
-    .filter({
-      has: page.getByRole("heading", { name: "חייל סינתטי", exact: true }),
-    });
+  const history = page.locator(".subsection").filter({
+    has: page.getByRole("heading", { name: "חייל סינתטי", exact: true }),
+  });
   await history
     .getByRole("button", { name: "עריכת כשירות לדוגמה", exact: true })
     .click();
@@ -606,5 +606,74 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   ).toHaveLength(0);
   await memberPage.goto(`/duties/${cancelled.id}`);
   await expect(memberPage.getByText("בוטלה", { exact: true })).toBeVisible();
+  await page.goto("/manage/imports");
+  const download = await page.request.get("/api/v1/imports/template");
+  expect(download.status()).toBe(200);
+  expect(download.headers()["content-type"]).toContain("spreadsheetml");
+  expect(
+    (await memberPage.request.get("/api/v1/imports/template")).status()
+  ).toBe(403);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(new Uint8Array(await createImportTemplate()).buffer);
+  const sheet = workbook.getWorksheet("חיילים")!;
+  sheet.addRow(["000007", "חייל לאחר ייבוא", null, "0500000007", null, 17]);
+  sheet.addRow([
+    "000019",
+    "חייל קליטה מייבוא",
+    "xlsx@example.invalid",
+    "0500000019",
+    null,
+    5,
+  ]);
+  await page
+    .getByLabel("קובץ XLSX")
+    .setInputFiles({
+      name: "synthetic.xlsx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: Buffer.from(new Uint8Array(await workbook.xlsx.writeBuffer())),
+    });
+  await page
+    .getByRole("button", { name: "הצגת תצוגה מקדימה", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "תצוגה מקדימה — טרם נשמרו חיילים" })
+  ).toBeVisible();
+  const beforeImport = await (await page.request.get("/api/v1/state")).json();
+  expect(
+    beforeImport.soldiers.some(
+      (person: { personalNumber: string }) => person.personalNumber === "000019"
+    )
+  ).toBe(false);
+  await page.getByLabel("סיבת הייבוא").fill("קליטה סינתטית בדפדפן");
+  await page
+    .getByLabel("אני מאשר/ת דריסת השדות והיתרות הקיימים המוצגים")
+    .check();
+  await page
+    .getByLabel("בדקתי את כל השורות ואת ברירות המחדל לקליטה חדשה")
+    .check();
+  await page.screenshot({
+    path: "test-results/import-preview.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "אישור ושמירת הייבוא", exact: true })
+    .click();
+  await expect(page.getByText(/הייבוא נשמר בשלמותו/)).toBeVisible();
+  const afterImport = await (await page.request.get("/api/v1/state")).json();
+  expect(
+    afterImport.soldiers.find(
+      (person: { personalNumber: string }) => person.personalNumber === "000007"
+    )
+  ).toMatchObject({
+    name: "חייל לאחר ייבוא",
+    currentScore: 17,
+    phone: "0500000007",
+  });
+  expect(
+    afterImport.soldiers.find(
+      (person: { personalNumber: string }) => person.personalNumber === "000019"
+    )
+  ).toMatchObject({ currentScore: 5, graceEligible: false });
   await soldierContext.close();
 });

@@ -60,6 +60,7 @@ import {
   discardDutyChange,
   previewCatalogImpact,
 } from "./duty-changes";
+import { previewImport, applyImport, getImport } from "./imports";
 
 export async function executeAction(actor: Actor, value: unknown) {
   const command = commandSchema.parse(value);
@@ -95,6 +96,15 @@ export async function executeAction(actor: Actor, value: unknown) {
     const { payload, expectedVersion } = command;
     let result: unknown;
     switch (command.type) {
+      case "import.preview":
+        result = await previewImport(tx, actor, payload);
+        break;
+      case "import.get":
+        result = await getImport(tx, actor, payload);
+        break;
+      case "import.apply":
+        result = await applyImport(tx, actor, payload, expectedVersion);
+        break;
       case "soldier.create":
         invariant(
           !payload.id,
