@@ -10,6 +10,7 @@ import {
   displayDate,
   personName,
 } from "@/client/types";
+import { constraintDisplay, roundPhase } from "@/client/constraints";
 import {
   Panel,
   Empty,
@@ -63,6 +64,7 @@ function ConstraintForm({
 }) {
   const [count, setCount] = useState(1);
   const [none, setNone] = useState(false);
+  const active = existing.filter((row) => constraintDisplay(row).cancellable);
   const fields = none
     ? []
     : Array.from({ length: count }, (_, i) =>
@@ -70,6 +72,11 @@ function ConstraintForm({
       ).flat();
   return (
     <>
+      {existing.length > 0 && (
+        <p className="muted">
+          ההגשה שלך לסבב זה נרשמה. אפשר לעדכן אותה כל עוד החלון פתוח.
+        </p>
+      )}
       <label className="field check-field">
         <input
           type="checkbox"
@@ -128,12 +135,17 @@ function ConstraintForm({
             )}
           </div>
         )}
-        {none && existing.length > 0 && (
-          <Notice>
-            ההצהרה תבקש לבטל את האילוצים הקיימים בסבב. אילוץ מאושר נשאר בתוקף עד
-            שהאחראי מאשר את ביטולו.
-          </Notice>
-        )}
+        {none &&
+          (active.length > 0 ? (
+            <Notice>
+              ההצהרה תבקש לבטל את האילוצים הקיימים בסבב. אילוץ מאושר נשאר בתוקף
+              עד שהאחראי מאשר את ביטולו.
+            </Notice>
+          ) : (
+            <Notice>
+              ההצהרה נרשמת מיד כהשלמת ההגשה לסבב, בלי צורך באישור אחראי.
+            </Notice>
+          ))}
       </Form>
     </>
   );
@@ -214,6 +226,8 @@ export function ConstraintsView({
   action,
 }: Props & { manage: boolean }) {
   const [roundId, setRoundId] = useState("");
+  // Fixed per visit; the server remains the authority on the window.
+  const [now] = useState(() => Date.now());
   const own = state.constraints.filter(
     (row) =>
       row.roundId === roundId &&
@@ -261,48 +275,78 @@ export function ConstraintsView({
         }
       >
         {state.rounds.length ? (
-          state.rounds.map((round) => (
-            <div className="task-item" key={round.id}>
-              <div className="grow">
-                <h3>{str(round.name)}</h3>
-                <p>
-                  תקופת יעד: {displayDate(round.targetStart)} —{" "}
-                  {displayDate(round.targetEnd)}
-                </p>
-                <small>הגשה עד {displayDate(round.closesAt, true)}</small>
-              </div>
-              <Status value={round.status} />
-              {manage && (
-                <>
-                  {round.status !== "closed" && (
-                    <QuickAction
+          state.rounds.map((round) => {
+            const phase = roundPhase(round, now);
+            const submitted = state.constraints.filter(
+              (row) => row.roundId === round.id
+            );
+            const submitters = new Set(submitted.map((row) => row.subjectId));
+            const declared = submitted.filter(
+              (row) => row.status === "declared"
+            ).length;
+            return (
+              <div className="task-item" key={round.id}>
+                <div className="grow">
+                  <h3>{str(round.name)}</h3>
+                  <p>
+                    תקופת יעד: {displayDate(round.targetStart)} —{" "}
+                    {displayDate(round.targetEnd)}
+                  </p>
+                  <small>
+                    {phase === "upcoming"
+                      ? `ההגשה נפתחת ב־${displayDate(round.opensAt, true)} ונסגרת ב־${displayDate(round.closesAt, true)}`
+                      : round.status === "closed"
+                        ? `ההגשה נסגרה ב־${displayDate(round.closedAt, true)}${manage && round.closedByName ? ` בידי ${str(round.closedByName)}` : ""}`
+                        : `הגשה עד ${displayDate(round.closesAt, true)}`}
+                  </small>
+                  {round.reopenedAt ? (
+                    <p>
+                      נפתח מחדש ב־{displayDate(round.reopenedAt, true)}
+                      {manage && round.reopenedByName
+                        ? ` בידי ${str(round.reopenedByName)}`
+                        : ""}
+                    </p>
+                  ) : null}
+                  {manage && (
+                    <p>
+                      הגישו: {submitters.size}
+                      {declared ? ` · מתוכם ״אין לי אילוצים״: ${declared}` : ""}
+                    </p>
+                  )}
+                </div>
+                <Status value={phase} />
+                {manage && (
+                  <>
+                    {round.status !== "closed" && (
+                      <QuickAction
+                        action={action}
+                        type="round.close"
+                        payload={{ id: round.id }}
+                        version={round.version}
+                      >
+                        סגירת הגשות
+                      </QuickAction>
+                    )}
+                    <ActionDialog
+                      title={phase === "closed" ? "פתיחה מחדש" : "הארכת ההגשה"}
                       action={action}
-                      type="round.close"
+                      type="round.reopen"
                       payload={{ id: round.id }}
                       version={round.version}
-                    >
-                      סגירת הגשות
-                    </QuickAction>
-                  )}
-                  <ActionDialog
-                    title="פתיחה מחדש או הארכה"
-                    action={action}
-                    type="round.reopen"
-                    payload={{ id: round.id }}
-                    version={round.version}
-                    fields={[
-                      {
-                        name: "closesAt",
-                        label: "מועד סגירה חדש",
-                        type: "datetime-local",
-                        required: true,
-                      },
-                    ]}
-                  />
-                </>
-              )}
-            </div>
-          ))
+                      fields={[
+                        {
+                          name: "closesAt",
+                          label: "מועד סגירה חדש",
+                          type: "datetime-local",
+                          required: true,
+                        },
+                      ]}
+                    />
+                  </>
+                )}
+              </div>
+            );
+          })
         ) : (
           <Empty title="אין סבבים" />
         )}
@@ -316,7 +360,7 @@ export function ConstraintsView({
           >
             <option value="">בחירה…</option>
             {state.rounds
-              .filter((round) => round.status !== "closed")
+              .filter((round) => roundPhase(round, now) === "open")
               .map((round) => (
                 <option value={round.id} key={round.id}>
                   {str(round.name)}
@@ -343,7 +387,11 @@ export function ConstraintsView({
             const approved = obj(row.approved);
             const pending = obj(row.pending);
             const value = row.pending ? pending : approved;
-            const mine = !manage || row.subjectId === state.actor.soldierId;
+            const display = constraintDisplay(row);
+            const round = state.rounds.find((item) => item.id === row.roundId);
+            const mine =
+              (!manage || row.subjectId === state.actor.soldierId) &&
+              Boolean(round && roundPhase(round, now) === "open");
             return (
               <article className="task-item" key={row.id}>
                 <div className="grow">
@@ -355,13 +403,21 @@ export function ConstraintsView({
                             ?.name
                         )}
                   </h3>
-                  <Status value={row.status} />
+                  <Status value={display.status} />
+                  {display.declared && (
+                    <p>הוגש: אין לי אילוצים. נרשם ללא צורך באישור אחראי.</p>
+                  )}
                   {row.approved ? (
                     <p>
                       מאושר:{" "}
                       {approved.none
                         ? "אין אילוצים"
                         : `${displayDate(approved.start)} — ${displayDate(approved.end)} · ${str(approved.reason)}`}
+                    </p>
+                  ) : null}
+                  {row.pending && display.approvedInEffect ? (
+                    <p>
+                      שינוי ממתין לאישור. עד ההחלטה הגרסה המאושרת נשארת בתוקף.
                     </p>
                   ) : null}
                   {row.pending ? (
@@ -372,9 +428,26 @@ export function ConstraintsView({
                         : `${displayDate(pending.start)} — ${displayDate(pending.end)} · ${str(pending.reason)}`}
                     </p>
                   ) : null}
+                  {display.changeRejected && (
+                    <p>השינוי האחרון נדחה. הגרסה המאושרת נשארת בתוקף.</p>
+                  )}
+                  {row.status === "rejected" && row.rejected ? (
+                    <p>
+                      נדחה:{" "}
+                      {obj(row.rejected).none
+                        ? "ביטול הפריט"
+                        : `${displayDate(obj(row.rejected).start)} — ${displayDate(obj(row.rejected).end)} · ${str(obj(row.rejected).reason)}`}
+                    </p>
+                  ) : null}
                   {row.status === "rejected" && (
                     <p>סיבת הדחייה: {str(row.decisionReason)}</p>
                   )}
+                  {manage && row.decidedAt ? (
+                    <small>
+                      הוחלט בידי {str(row.decidedByName, "אחראי")} ·{" "}
+                      {displayDate(row.decidedAt, true)}
+                    </small>
+                  ) : null}
                 </div>
                 {manage && row.pending ? (
                   <>
@@ -405,7 +478,7 @@ export function ConstraintsView({
                       payload={{ id: row.id, roundId: row.roundId }}
                       version={row.version}
                     />
-                    {!value.none && (
+                    {display.cancellable && !value.none && (
                       <ActionDialog
                         title="בקשת ביטול האילוץ"
                         description="אילוץ מאושר נשאר בתוקף עד לאישור ביטולו."
