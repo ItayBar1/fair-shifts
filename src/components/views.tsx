@@ -3,6 +3,10 @@ import { DutyChanges } from "./duty-changes";
 import Link from "next/link";
 import { useState } from "react";
 import { ManualAssignment } from "./manual-assignment";
+import {
+  PerformanceCorrections,
+  performanceOf,
+} from "./performance-corrections";
 import { LotteryButton, LotteryHistory } from "./planning";
 import {
   CalendarDays,
@@ -762,6 +766,9 @@ export function DutyDetail({
                     {assignment
                       ? ` · ${num(assignment.points ?? assignment.reservedPoints ?? assignment.score)} נקודות`
                       : ""}
+                    {assignment?.performance
+                      ? ` · בוצע בפועל: ${personName(state, performanceOf(assignment, duty).performerId)}, ${performanceOf(assignment, duty).points} נקודות`
+                      : ""}
                   </small>
                 </span>
                 {assignment ? (
@@ -846,6 +853,9 @@ export function DutyDetail({
         ["published", "draft"].includes(str(dutyStatus(duty))) && (
           <DutyChanges state={state} action={action} duty={duty} />
         )}
+      {manager && dutyStatus(duty) === "published" && !future && (
+        <PerformanceCorrections state={state} action={action} duty={duty} />
+      )}
       {manager && <LotteryHistory state={state} action={action} dutyId={id} />}
     </>
   );

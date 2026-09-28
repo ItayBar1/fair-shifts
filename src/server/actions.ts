@@ -27,6 +27,10 @@ import {
   publishDuty,
 } from "./duty-service";
 import { previewScore, applyScore } from "./scoring";
+import {
+  previewPerformanceCorrection,
+  applyPerformanceCorrection,
+} from "./performance-corrections";
 import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
 import { user } from "./auth-schema";
 import {
@@ -250,6 +254,22 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "score.apply":
         result = await applyScore(tx, actor, payload);
+        break;
+      case "performance.correction.preview":
+        result = await previewPerformanceCorrection(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "performance.correction.apply":
+        result = await applyPerformanceCorrection(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
         break;
       case "account.role": {
         const input = z
