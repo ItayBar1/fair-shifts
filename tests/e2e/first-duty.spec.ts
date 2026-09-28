@@ -231,7 +231,21 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     .selectOption({ label: "כשירות לדוגמה" });
   await page.getByLabel("תחילת תוקף", { exact: true }).fill("2026-01-01");
   await page.getByLabel("סיום תוקף (כולל)", { exact: true }).fill("2030-12-31");
-  await page.getByRole("button", { name: "שמירת שיוך", exact: true }).click();
+  await page
+    .getByRole("button", { name: "בדיקת השפעת השיוך", exact: true })
+    .click();
+  const addition = page.getByRole("region", { name: "השפעת התקופה החדשה" });
+  await expect(addition).toContainText(
+    "התקופה אינה משנה את ההתאמה של שיבוצים קיימים."
+  );
+  await expect(addition).toContainText(
+    "שיבוצים נוספים שנבדקו ואינם מושפעים: 1"
+  );
+  await addition.getByLabel("בדקתי את ההשפעה ומאשר את הוספת התקופה").check();
+  await addition
+    .getByRole("button", { name: "אישור הוספת התקופה", exact: true })
+    .click();
+  await expect(addition).toHaveCount(0);
   const history = page.locator(".subsection").filter({
     has: page.getByRole("heading", { name: "חייל סינתטי", exact: true }),
   });
@@ -279,6 +293,67 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     path: "test-results/manager-duty.png",
     fullPage: true,
   });
+  const attention = page.locator(".badge", { hasText: "דורשת טיפול" });
+  await expect(attention).toHaveCount(0);
+  await page.goto("/manage/soldiers");
+  await page
+    .getByRole("row")
+    .filter({ hasText: "חייל סינתטי" })
+    .getByRole("button", { name: "פרופיל ועריכה" })
+    .click();
+  const profile = page.getByRole("dialog");
+  await profile.getByText("מועדי שירות, כשירות והיסטוריה").click();
+  await profile.getByLabel("אי־פעילות מתאריך", { exact: true }).fill(date);
+  await profile
+    .getByLabel("אי־פעילות עד תאריך (כולל)", { exact: true })
+    .fill(date);
+  await profile.getByLabel("סיבת אי־הפעילות").fill("קורס סינתטי");
+  await profile.getByRole("button", { name: "בדיקת השפעת אי־הפעילות" }).click();
+  const inactivity = profile.getByRole("region", {
+    name: "השפעת התקופה החדשה",
+  });
+  await expect(inactivity).toContainText("שמירת בדיקה");
+  await expect(inactivity).toContainText("דורש טיפול");
+  await expect(inactivity).toContainText("התורנות חופפת לתקופת אי־פעילות");
+  const [previewed] = await db
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.name, "חייל סינתטי"));
+  expect(previewed.data.inactivePeriods).toHaveLength(0);
+  await inactivity.screenshot({ path: "test-results/add-period-impact.png" });
+  await inactivity.getByLabel("בדקתי את ההשפעה ומאשר את הוספת התקופה").check();
+  await inactivity
+    .getByRole("button", { name: "אישור הוספת התקופה", exact: true })
+    .click();
+  await expect(inactivity).toHaveCount(0);
+  const [inactive] = await db
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.name, "חייל סינתטי"));
+  expect(inactive.data.inactivePeriods).toEqual([{ start: date, end: date }]);
+  await page.goto(`/duties/${state.duties[0].id}`);
+  await expect(attention).toBeVisible();
+  await page.goto("/manage/eligibility");
+  await page
+    .locator(".subsection")
+    .filter({
+      has: page.getByRole("heading", { name: "חייל סינתטי", exact: true }),
+    })
+    .getByRole("button", { name: "הסרת אי־פעילות", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("סיבת השינוי")
+    .fill("סיום קורס סינתטי");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "בדיקת השפעת השינוי" })
+    .click();
+  await page.getByLabel("בדקתי את ההשפעה ומאשר את השינוי").check();
+  await page.getByRole("button", { name: "אישור הסרת התקופה" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.goto(`/duties/${state.duties[0].id}`);
+  await expect(attention).toHaveCount(0);
   await page.goto("/manage/constraints");
   await page.getByRole("button", { name: "פתיחת סבב" }).click();
   await page.getByLabel("שם הסבב").fill("סבב אילוצים לדוגמה");
@@ -481,14 +556,24 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   const freshMember = freshState.soldiers.find(
     (person: { id: string }) => person.id === member.id
   );
+  const specialtyPeriod = {
+    soldierId: member.id,
+    kind: "qualification",
+    startDate: lateDate,
+    endDate: lateDate,
+    value: specialty.id,
+  };
+  const specialtyPreview = await api(
+    "soldier.timeline.preview",
+    specialtyPeriod,
+    freshMember.version
+  );
   await api(
     "soldier.timeline",
     {
-      soldierId: member.id,
-      kind: "qualification",
-      startDate: lateDate,
-      endDate: lateDate,
-      value: specialty.id,
+      ...specialtyPeriod,
+      confirmed: true,
+      previewToken: specialtyPreview.previewToken,
     },
     freshMember.version
   );
