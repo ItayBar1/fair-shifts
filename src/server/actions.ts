@@ -61,6 +61,7 @@ import {
   previewCatalogImpact,
 } from "./duty-changes";
 import { previewImport, applyImport, getImport } from "./imports";
+import { previewImportRestore, applyImportRestore } from "./import-restores";
 
 export async function executeAction(actor: Actor, value: unknown) {
   const command = commandSchema.parse(value);
@@ -96,6 +97,17 @@ export async function executeAction(actor: Actor, value: unknown) {
     const { payload, expectedVersion } = command;
     let result: unknown;
     switch (command.type) {
+      case "import.restore.preview":
+        result = await previewImportRestore(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "import.restore":
+        result = await applyImportRestore(tx, actor, payload, expectedVersion);
+        break;
       case "import.preview":
         result = await previewImport(tx, actor, payload);
         break;
