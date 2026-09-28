@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Notification preferences (decision 159). Site notifications are always created;
+ * Notification preferences (decision 160). Site notifications are always created;
  * the per-type switches decide only whether an email is sent. Reminder hours apply
  * to duty reminders on both channels.
  */

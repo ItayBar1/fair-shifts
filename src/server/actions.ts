@@ -27,6 +27,7 @@ import { user } from "./auth-schema";
 import {
   saveEligibilityCatalog,
   updateTimeline,
+  previewTimelineAdd,
   previewTimelineEdit,
   editTimeline,
 } from "./personnel";
@@ -130,6 +131,9 @@ export async function executeAction(actor: Actor, value: unknown) {
       case "soldier.update":
         id.parse(payload.id);
         result = await saveSoldier(tx, actor, payload, expectedVersion);
+        break;
+      case "soldier.timeline.preview":
+        result = await previewTimelineAdd(tx, actor, payload, expectedVersion);
         break;
       case "soldier.timeline":
         result = await updateTimeline(tx, actor, payload, expectedVersion);
