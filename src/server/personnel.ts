@@ -539,7 +539,7 @@ function conditionsOf(data: Soldier) {
 }
 /**
  * Gender, capabilities and personal hours limits are replaced as one set, and
- * only against the impact the manager reviewed (decision 160).
+ * only against the impact the manager reviewed (decision 163).
  */
 async function inspectConditions(
   tx: DbTransaction,

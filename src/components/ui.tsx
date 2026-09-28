@@ -23,6 +23,7 @@ const statusLabels: Record<string, string> = {
   awaiting_manager: "ממתינה לאחראי",
   accepted: "התקבלה",
   reserved: "שמור",
+  credited: "הושלם",
   active: "פעיל",
   inactive: "לא פעיל",
   locked: "נעול",
@@ -37,6 +38,10 @@ const statusLabels: Record<string, string> = {
   applied: "נשמרה",
   restored: "שוחזרה",
   partially_restored: "שוחזרה חלקית",
+  declared: "הוגש: אין אילוצים",
+  upcoming: "טרם נפתח",
+  open: "פתוח להגשה",
+  closed: "נסגר",
 };
 export function Status({ value }: { value: unknown }) {
   const status = str(value, "pending");
@@ -47,9 +52,12 @@ export function Status({ value }: { value: unknown }) {
           "published",
           "approved",
           "completed",
+          "credited",
           "success",
           "sent",
           "active",
+          "declared",
+          "open",
         ].includes(status)
           ? "success"
           : ["failed", "cancelled", "locked"].includes(status)

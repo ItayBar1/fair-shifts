@@ -15,6 +15,11 @@ import {
   user,
 } from "../auth-schema";
 import { invariant } from "../errors";
+import { effectivePreferences } from "../notifications";
+import {
+  emailAllowed,
+  type EmailKind,
+} from "../../domain/notification-preferences";
 
 function encryptionKey() {
   const value = process.env.MAIL_ENCRYPTION_KEY ?? "";
@@ -50,7 +55,8 @@ export function openSecret(value: string): string {
 type EnqueueInput = {
   recipientAccountId: string;
   eventKey: string;
-  kind: string;
+  kind: EmailKind;
+  reminderHours?: number;
   title: string;
   body: string;
   href?: string;
@@ -167,17 +173,27 @@ export async function deliverNextEmail(
         !recipient.lockedAt
       );
     }
-    if (!relevant) {
+    // Preferences are read again at delivery time, never frozen when the message was queued.
+    const allowed =
+      !relevant ||
+      emailAllowed(
+        (await effectivePreferences(tx, message.recipientAccountId))
+          .preferences,
+        message.kind as EmailKind,
+        message.reminderHours
+      );
+    if (!relevant || !allowed) {
       await tx
         .update(emailOutbox)
         .set({
-          status: message.attempts >= 5 ? "failed" : "cancelled",
+          status: relevant || message.attempts < 5 ? "cancelled" : "failed",
+          error: relevant ? "preference_disabled" : message.error,
           encryptedSecret: null,
           destination: null,
           updatedAt: now,
         })
         .where(eq(emailOutbox.id, message.id));
-      return null;
+      return "skipped" as const;
     }
     await tx
       .update(emailQuota)
@@ -201,6 +217,7 @@ export async function deliverNextEmail(
     };
   });
   if (!claimed) return { status: "idle" };
+  if (claimed === "skipped") return { status: "skipped" };
   try {
     const text = claimed.encryptedSecret
       ? claimed.body.replace("{{CODE}}", openSecret(claimed.encryptedSecret))

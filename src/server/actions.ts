@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { unitTransaction } from "./db";
-import { commandResults, records } from "./schema";
+import { commandResults } from "./schema";
 import { commandSchema, id } from "./validation";
 import {
   assertActorCurrent,
@@ -11,12 +11,7 @@ import {
   unlockAccount,
   type Actor,
 } from "./auth/accounts";
-import {
-  createRecord,
-  currentVersion,
-  findRecord,
-  updateRecord,
-} from "./repository";
+import { currentVersion } from "./repository";
 import { invariant, AppError } from "./errors";
 import { saveSoldier } from "./people";
 import {
@@ -27,6 +22,10 @@ import {
   publishDuty,
 } from "./duty-service";
 import { previewScore, applyScore } from "./scoring";
+import {
+  previewPerformanceCorrection,
+  applyPerformanceCorrection,
+} from "./performance-corrections";
 import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
 import { user } from "./auth-schema";
 import {
@@ -66,6 +65,12 @@ import {
 } from "./duty-changes";
 import { previewImport, applyImport, getImport } from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
+import {
+  markNotification,
+  resetPreferences,
+  saveDefaults,
+  savePreferences,
+} from "./notifications";
 
 export async function executeAction(actor: Actor, value: unknown) {
   const command = commandSchema.parse(value);
@@ -269,6 +274,22 @@ export async function executeAction(actor: Actor, value: unknown) {
       case "score.apply":
         result = await applyScore(tx, actor, payload);
         break;
+      case "performance.correction.preview":
+        result = await previewPerformanceCorrection(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "performance.correction.apply":
+        result = await applyPerformanceCorrection(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
       case "account.role": {
         const input = z
           .object({ id: z.string(), role: z.enum(["soldier", "manager"]) })
@@ -321,53 +342,20 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await confirmEmailChange(tx, actor, payload, expectedVersion);
         break;
       case "notification.read":
-      case "notification.hide": {
-        const row = await findRecord(tx, "notification", id.parse(payload.id));
-        currentVersion(row.version, expectedVersion);
-        invariant(
-          row.data.accountId === actor.id ||
-            (actor.soldierId && row.subjectId === actor.soldierId),
-          "forbidden",
-          "אין הרשאה להודעה",
-          403
-        );
-        result = await updateRecord(tx, row, {
-          ...row.data,
-          [command.type.endsWith("read") ? "readAt" : "hiddenAt"]:
-            new Date().toISOString(),
-        });
+        result = await markNotification(tx, actor, payload, "readAt");
         break;
-      }
-      case "settings.save": {
-        const input = z
-          .object({
-            emailEnabled: z.boolean(),
-            reminderHours: z.array(z.number().positive().max(168)),
-            roundOpening: z.boolean(),
-            roundClosing: z.boolean(),
-            publishedChanges: z.boolean(),
-          })
-          .parse(payload);
-        const rows = await tx
-          .select()
-          .from(records)
-          .where(eq(records.kind, "settings"));
-        const existing = rows.find((row) => row.data.accountId === actor.id);
-        if (existing) {
-          currentVersion(existing.version, expectedVersion);
-          result = await updateRecord(tx, existing, {
-            ...input,
-            accountId: actor.id,
-          });
-        } else
-          result = await createRecord(
-            tx,
-            "settings",
-            { ...input, accountId: actor.id },
-            actor.soldierId
-          );
+      case "notification.hide":
+        result = await markNotification(tx, actor, payload, "hiddenAt");
         break;
-      }
+      case "settings.save":
+        result = await savePreferences(tx, actor, payload, expectedVersion);
+        break;
+      case "settings.reset":
+        result = await resetPreferences(tx, actor, expectedVersion);
+        break;
+      case "notification.defaults.save":
+        result = await saveDefaults(tx, actor, payload, expectedVersion);
+        break;
       default:
         throw new AppError(
           "not_implemented",

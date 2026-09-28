@@ -190,20 +190,12 @@ export interface ScoreOperation {
   kind: "add" | "set" | "reduce_percent";
   value: number;
 }
-export interface ScoreEvent {
-  id: string;
-  soldierId: string;
-  effectiveAt: Instant;
-  recordedAt: Instant;
-  kind:
-    | "credit"
-    | "add"
-    | "set"
-    | "reduce_percent"
-    | "normalization"
-    | "correction";
-  before: number;
-  after: number;
-  clamped: boolean;
-  referenceId?: string;
+/** The performance recorded for a credited assignment and the part of it each balance reflects. */
+export interface Performance {
+  performerId: string;
+  start: Instant;
+  end: Instant;
+  points: number;
+  reflected: Record<string, number>;
+  corrections: number;
 }
