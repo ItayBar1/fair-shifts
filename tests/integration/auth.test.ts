@@ -233,7 +233,8 @@ describe("durable email queue", () => {
       enqueueEmail(tx, {
         recipientAccountId: memberId,
         eventKey: "reminder",
-        kind: "reminder",
+        kind: "duty-reminder",
+        reminderHours: 24,
         title: "תזכורת",
         body: "בדיקה",
         priority: 2,
@@ -264,7 +265,8 @@ describe("durable email queue", () => {
         await enqueueEmail(tx, {
           recipientAccountId: memberId,
           eventKey,
-          kind: "reminder",
+          kind: "duty-reminder",
+          reminderHours: 24,
           title: "תזכורת",
           body: "בדיקה",
           expiresAt: new Date(now.getTime() + 3600_000),
