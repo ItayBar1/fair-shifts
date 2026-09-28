@@ -132,7 +132,7 @@ export default function LoginPage() {
                   email,
                   code,
                 });
-                if (result) router.push("/calendar");
+                if (result) router.push("/");
               } else {
                 const result = await post("/api/auth/request-code", { email });
                 if (result) {
@@ -231,7 +231,7 @@ export default function LoginPage() {
                   onClick={async () => {
                     const result = await post("/api/auth/sign-in/social", {
                       provider: "google",
-                      callbackURL: "/calendar",
+                      callbackURL: "/",
                     });
                     if (result?.url) window.location.assign(result.url);
                   }}
