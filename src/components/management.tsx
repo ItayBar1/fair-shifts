@@ -138,7 +138,7 @@ export function SoldiersView({
   action: Action;
 }) {
   const [search, setSearch] = useState("");
-  const defaults = defaultPopulations(state.actor.population);
+  const defaults = defaultPopulations(state.actor.responsibility);
   const [shown, setShown] = useState<string[]>(defaults);
   const [rank, setRank] = useState("");
   const tracks = rankTracks(rows(state.rankCatalog));

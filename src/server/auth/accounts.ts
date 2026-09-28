@@ -24,7 +24,6 @@ export type Actor = {
   name: string;
   role: Role;
   soldierId?: string;
-  population?: string;
   securityEpoch: number;
 };
 export type InvitedAccount = {
@@ -33,7 +32,6 @@ export type InvitedAccount = {
   email: string;
   soldierId?: string;
   role?: Role;
-  population?: string;
 };
 export async function accountAvailable(
   row: typeof user.$inferSelect,
@@ -105,7 +103,6 @@ export async function createInvitedAccount(
         email: normalizeEmail(input.email),
         role,
         soldierId: input.soldierId,
-        population: input.population,
       })
       .returning();
     return created;
@@ -181,19 +178,22 @@ export async function setRole(
   return tx ? work(tx) : db.transaction(work);
 }
 // Default screen filter for a manager; never a permission boundary and never
-// the manager's own scheduling population.
+// the manager's own scheduling population. Set by the technical account or by
+// the manager for themselves; null means not set (all populations).
 export async function setResponsibility(
   actor: Actor,
   targetId: string,
-  population: "mandatory" | "career" | null,
+  responsibility: "mandatory" | "career" | null,
+  expectedVersion: number | undefined,
   tx?: DbTransaction
 ) {
   const work = async (cx: DbTransaction) => {
     await assertActorCurrent(actor, cx);
     invariant(
-      actor.role === "technical",
+      actor.role === "technical" ||
+        (actor.role === "manager" && actor.id === targetId),
       "FORBIDDEN",
-      "רק מנהל טכני מגדיר את תחום האחריות של אחראי",
+      "תחום אחריות קובעים המנהל הטכני או האחראי עצמו",
       403
     );
     const [target] = await cx
@@ -206,15 +206,26 @@ export async function setResponsibility(
       "ACCOUNT_TYPE",
       "תחום אחריות מוגדר רק לאחראי פעיל"
     );
+    invariant(
+      expectedVersion !== undefined &&
+        target.responsibilityVersion === expectedVersion,
+      "stale_version",
+      "תחום האחריות השתנה. יש לרענן ולבדוק לפני שמירה",
+      409
+    );
     await cx
       .update(user)
-      .set({ population, updatedAt: new Date() })
+      .set({
+        responsibility,
+        responsibilityVersion: target.responsibilityVersion + 1,
+        updatedAt: new Date(),
+      })
       .where(eq(user.id, targetId));
     await audit(
       cx,
       actor.id,
       targetId,
-      `responsibility:${population ?? "all"}`
+      `responsibility:${responsibility ?? "unset"}`
     );
   };
   return tx ? work(tx) : db.transaction(work);

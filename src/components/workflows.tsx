@@ -3,7 +3,6 @@ import { useState } from "react";
 import {
   type AppState,
   type Action,
-  type Row,
   str,
   num,
   rows,
@@ -90,57 +89,77 @@ export function NotificationsView({ state, action }: Props) {
 export function SettingsView({ state, action }: Props) {
   const settings = state.settings;
   return (
-    <Panel title="העדפות הודעות">
-      <Notice>ההעדפות נשמרות; מנגנון התזכורות המלא יושלם בשלב 18.</Notice>
-      <Form
-        fields={[
-          {
-            name: "emailEnabled",
-            label: "קבלת הודעות במייל",
-            type: "checkbox",
-            value: settings.emailEnabled !== false,
-          },
-          {
-            name: "reminderHours",
-            label: "שעות לפני תורנות, מופרדות בפסיק",
-            value: Array.isArray(settings.reminderHours)
-              ? settings.reminderHours.join(", ")
-              : "24, 2",
-          },
-          {
-            name: "roundOpening",
-            label: "הודעה על פתיחת סבב",
-            type: "checkbox",
-            value: settings.roundOpening !== false,
-          },
-          {
-            name: "roundClosing",
-            label: "תזכורת לפני סגירת סבב",
-            type: "checkbox",
-            value: settings.roundClosing !== false,
-          },
-          {
-            name: "publishedChanges",
-            label: "עדכוני תורנות שפורסמה",
-            type: "checkbox",
-            value: settings.publishedChanges !== false,
-          },
-        ]}
-        onSubmit={(values) =>
-          action(
-            "settings.save",
+    <>
+      {state.actor.role === "manager" && (
+        <Panel title="תחום האחריות שלי">
+          <p className="muted">
+            קובע אילו אוכלוסיות יוצגו כברירת מחדל ברשימת החיילים. זהו סינון
+            תצוגה בלבד: תמיד אפשר להציג את כולם, ושני האחראים מנהלים את כל
+            החיילים. גם המנהל הטכני יכול לשנות את התחום.
+          </p>
+          <ResponsibilitySelect
+            id={state.actor.id}
+            label="תחום האחריות שלי"
+            value={state.actor.responsibility}
+            version={state.actor.responsibilityVersion}
+            action={action}
+          />
+        </Panel>
+      )}
+      <Panel title="העדפות הודעות">
+        <Notice>ההעדפות נשמרות; מנגנון התזכורות המלא יושלם בשלב 18.</Notice>
+        <Form
+          fields={[
             {
-              ...values,
-              reminderHours: str(values.reminderHours)
-                .split(",")
-                .map((value) => Number(value.trim()))
-                .filter((value) => value > 0),
+              name: "emailEnabled",
+              label: "קבלת הודעות במייל",
+              type: "checkbox",
+              value: settings.emailEnabled !== false,
             },
-            typeof settings.version === "number" ? settings.version : undefined
-          )
-        }
-      />
-    </Panel>
+            {
+              name: "reminderHours",
+              label: "שעות לפני תורנות, מופרדות בפסיק",
+              value: Array.isArray(settings.reminderHours)
+                ? settings.reminderHours.join(", ")
+                : "24, 2",
+            },
+            {
+              name: "roundOpening",
+              label: "הודעה על פתיחת סבב",
+              type: "checkbox",
+              value: settings.roundOpening !== false,
+            },
+            {
+              name: "roundClosing",
+              label: "תזכורת לפני סגירת סבב",
+              type: "checkbox",
+              value: settings.roundClosing !== false,
+            },
+            {
+              name: "publishedChanges",
+              label: "עדכוני תורנות שפורסמה",
+              type: "checkbox",
+              value: settings.publishedChanges !== false,
+            },
+          ]}
+          onSubmit={(values) =>
+            action(
+              "settings.save",
+              {
+                ...values,
+                reminderHours: str(values.reminderHours)
+                  .split(",")
+                  .map((value) => Number(value.trim()))
+                  .filter((value) => value > 0),
+              },
+              typeof settings.version === "number"
+                ? settings.version
+                : undefined
+            )
+          }
+        />
+      </Panel>
+    </>
   );
 }
 export function ScoresView({ state, action }: Props) {
@@ -356,7 +375,13 @@ export function TechnicalView({
             </QuickAction>
           )}
           {row.role === "manager" && (
-            <ResponsibilitySelect row={row} action={action} />
+            <ResponsibilitySelect
+              id={row.id}
+              label={`תחום אחריות · ${str(row.name)}`}
+              value={row.responsibility}
+              version={row.responsibilityVersion}
+              action={action}
+            />
           )}
           {row.lockedAt && row.role === "manager" ? (
             <QuickAction
@@ -374,24 +399,32 @@ export function TechnicalView({
   );
 }
 
-function ResponsibilitySelect({ row, action }: { row: Row; action: Action }) {
+function ResponsibilitySelect({
+  id,
+  label,
+  value,
+  version,
+  action,
+}: {
+  id: string;
+  label: string;
+  value: unknown;
+  version: unknown;
+  action: Action;
+}) {
   const [pending, setPending] = useState(false);
   return (
     <select
-      aria-label={`תחום אחריות · ${str(row.name)}`}
-      value={
-        row.population === "mandatory" || row.population === "career"
-          ? row.population
-          : ""
-      }
+      aria-label={label}
+      value={value === "mandatory" || value === "career" ? value : ""}
       disabled={pending}
       onChange={async (e) => {
         setPending(true);
         try {
           await action(
             "account.responsibility",
-            { id: row.id, population: e.target.value || null },
-            row.version
+            { id, responsibility: e.target.value || null },
+            num(version)
           );
         } catch {
           /* workspace displays API error */
@@ -400,9 +433,9 @@ function ResponsibilitySelect({ row, action }: { row: Row; action: Action }) {
         }
       }}
     >
-      <option value="">תחום אחריות: כל האוכלוסיות</option>
-      <option value="mandatory">תחום אחריות: חובה</option>
-      <option value="career">תחום אחריות: קבע / קצינים</option>
+      <option value="">לא נקבע (כל האוכלוסיות)</option>
+      <option value="mandatory">חובה וקמ״א</option>
+      <option value="career">קבע / קצינים וקמ״א</option>
     </select>
   );
 }

@@ -15,6 +15,20 @@
       "when": 1790580284294,
       "tag": "0001_fine_maverick",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790635259351,
+      "tag": "0002_amused_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790635268136,
+      "tag": "0003_medical_lilith",
+      "breakpoints": true
     }
   ]
 }

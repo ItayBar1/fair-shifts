@@ -29,7 +29,11 @@ export const user = pgTable(
     image: text("image"),
     role: text("role").notNull().default("soldier"),
     soldierId: uuid("soldier_id").unique(),
-    population: text("population"),
+    // Default screen filter only; null = not set (all populations).
+    responsibility: text("responsibility"),
+    responsibilityVersion: integer("responsibility_version")
+      .notNull()
+      .default(1),
     securityEpoch: integer("security_epoch").notNull().default(1),
     failedAttempts: integer("failed_attempts").notNull().default(0),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
@@ -41,6 +45,10 @@ export const user = pgTable(
   },
   (t) => [
     check("auth_role", sql`${t.role} in ('soldier','manager','technical')`),
+    check(
+      "auth_responsibility",
+      sql`${t.responsibility} is null or ${t.responsibility} in ('mandatory','career')`
+    ),
     check(
       "auth_technical_separate",
       sql`(${t.role} = 'technical' and ${t.soldierId} is null) or (${t.role} != 'technical' and ${t.soldierId} is not null)`

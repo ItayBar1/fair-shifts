@@ -145,7 +145,6 @@ export async function saveSoldier(
         name: data.name,
         email: input.email!,
         soldierId: id,
-        population: input.population,
       },
       tx
     );

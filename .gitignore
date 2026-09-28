@@ -12,3 +12,6 @@ test-results/
 *.tsbuildinfo
 .DS_Store
 backups/
+
+# Local agent worktrees
+.claude/worktrees/

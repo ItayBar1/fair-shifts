@@ -4,7 +4,8 @@ export type Actor = {
   name: string;
   role: "soldier" | "manager" | "technical";
   soldierId?: string;
-  population?: string;
+  responsibility?: string;
+  responsibilityVersion?: number;
 };
 export type AppState = {
   actor: Actor;

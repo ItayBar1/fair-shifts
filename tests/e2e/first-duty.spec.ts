@@ -850,14 +850,9 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
     "תחום אחריות · מסנן אחראי קבע",
     { exact: true }
   );
+  await expect(careerSelect).toHaveValue("");
   await careerSelect.selectOption("career");
   await expect(careerSelect).toHaveValue("career");
-  const mandatorySelect = technicalPage.getByLabel(
-    "תחום אחריות · מסנן אחראי חובה",
-    { exact: true }
-  );
-  await mandatorySelect.selectOption("mandatory");
-  await expect(mandatorySelect).toHaveValue("mandatory");
   await technicalContext.close();
 
   const rowsNamed = (target: Page) =>
@@ -866,6 +861,14 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
     (await rowsNamed(target).locator("strong").allTextContents()).sort();
 
   await login(page, "mandatory-manager@example.invalid");
+  await page.goto("/manage/soldiers");
+  for (const label of ["חובה", "קבע / קצינים", "קמ״א"])
+    await expect(page.getByLabel(label, { exact: true })).toBeChecked();
+  await page.goto("/settings");
+  const ownScope = page.getByLabel("תחום האחריות שלי", { exact: true });
+  await expect(ownScope).toHaveValue("");
+  await ownScope.selectOption("mandatory");
+  await expect(ownScope).toHaveValue("mandatory");
   await page.goto("/manage/soldiers");
   await page.getByLabel("חיפוש חייל לפי שם או מספר אישי").fill("מסנן");
   await expect(page.getByLabel("חובה", { exact: true })).toBeChecked();
@@ -954,8 +957,8 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
   const managerState = await (await page.request.get("/api/v1/state")).json();
   const ids = (state: { soldiers: { id: string }[] }) =>
     state.soldiers.map((row) => row.id).sort();
-  expect(careerState.actor.population).toBe("career");
-  expect(managerState.actor.population).toBe("mandatory");
+  expect(careerState.actor.responsibility).toBe("career");
+  expect(managerState.actor.responsibility).toBe("mandatory");
   expect(ids(careerState)).toEqual(ids(managerState));
   await careerContext.close();
 
@@ -975,7 +978,7 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
     headers: { origin: "http://127.0.0.1:3000" },
     data: {
       type: "account.responsibility",
-      payload: { id: memberState.actor.id, population: "career" },
+      payload: { id: memberState.actor.id, responsibility: "career" },
       expectedVersion: 1,
       idempotencyKey: randomUUID(),
     },
@@ -985,6 +988,6 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
     .select()
     .from(user)
     .where(eq(user.email, "filter-soldier@example.invalid"));
-  expect(unchanged.population).toBeNull();
+  expect(unchanged.responsibility).toBeNull();
   await memberContext.close();
 });

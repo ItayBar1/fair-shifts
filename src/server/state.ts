@@ -14,12 +14,17 @@ export async function readState(actor: Actor) {
       name: string;
       role: Actor["role"];
       soldierId?: string;
-      population?: string;
+      responsibility?: string;
+      responsibilityVersion?: number;
     } = {
       id: actor.id,
       name: actor.name,
       role: actor.role,
       soldierId: actor.soldierId,
+      ...(actor.role === "manager" && {
+        responsibility: current.responsibility ?? undefined,
+        responsibilityVersion: current.responsibilityVersion,
+      }),
     };
     const base = {
       actor: publicActor,
@@ -48,7 +53,8 @@ export async function readState(actor: Actor) {
           id: user.id,
           name: user.name,
           role: user.role,
-          population: user.population,
+          responsibility: user.responsibility,
+          responsibilityVersion: user.responsibilityVersion,
           lockedAt: user.lockedAt,
           version: user.securityEpoch,
         })
@@ -74,13 +80,6 @@ export async function readState(actor: Actor) {
       };
     }
     const state = await loadDomain(tx);
-    // Explicit responsibility from the technical account; otherwise the
-    // manager's own current population. Only a default screen filter.
-    const self = state.soldiers.find((row) => row.id === actor.soldierId);
-    publicActor.population =
-      current.population === "mandatory" || current.population === "career"
-        ? current.population
-        : self && populationAt(self, base.serverNow);
     const contacts = await tx.select().from(soldierContacts);
     const catalog = await tx.select().from(dutyTypes);
     const workflows = await tx.select().from(records);

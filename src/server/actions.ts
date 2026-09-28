@@ -266,17 +266,16 @@ export async function executeAction(actor: Actor, value: unknown) {
         const input = z
           .object({
             id: z.string(),
-            population: z.enum(["mandatory", "career"]).nullable(),
+            responsibility: z.enum(["mandatory", "career"]).nullable(),
           })
           .parse(payload);
-        const [target] = await tx
-          .select()
-          .from(user)
-          .where(eq(user.id, input.id))
-          .for("update");
-        invariant(target, "not_found", "חשבון לא נמצא", 404);
-        currentVersion(target.securityEpoch, expectedVersion);
-        await setResponsibility(actor, input.id, input.population, tx);
+        await setResponsibility(
+          actor,
+          input.id,
+          input.responsibility,
+          expectedVersion,
+          tx
+        );
         result = { success: true };
         break;
       }
