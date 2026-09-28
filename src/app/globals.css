@@ -519,6 +519,9 @@ small {
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
+.import-restore {
+  margin-top: 24px;
+}
 .history-row > span:first-child {
   flex: 1 1 180px;
   min-width: 0;
@@ -664,6 +667,10 @@ select {
   grid-template-columns: 1fr 1fr;
   gap: 18px;
 }
+.form-grid > .full {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
 .check-field {
   display: flex;
   flex-direction: row;
@@ -713,6 +720,7 @@ select {
 }
 .table-scroll {
   overflow-x: auto;
+  position: relative;
 }
 table {
   border-collapse: collapse;
@@ -1243,12 +1251,11 @@ tbody tr:last-child td {
 }
 @media (max-width: 760px) {
   .sidebar {
-    transform: translateX(100%);
+    display: none;
     width: 265px;
-    transition: transform 0.2s;
   }
   .sidebar.open {
-    transform: translateX(0);
+    display: flex;
   }
   .main-shell {
     margin-inline-start: 0;

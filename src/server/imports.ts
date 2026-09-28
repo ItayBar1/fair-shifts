@@ -422,10 +422,24 @@ export async function getImport(
 ) {
   manager(actor);
   const input = z.object({ id }).parse(payload);
-  return present(
-    await findRecord(tx, "import", input.id),
-    await batchRows(tx, input.id)
-  );
+  const people = await tx.select().from(soldiers);
+  const details = (await batchRows(tx, input.id)).map((row) => {
+    const person = people.find((item) => item.id === row.subjectId);
+    return person?.deletedAt
+      ? {
+          ...row,
+          data: {
+            batchId: input.id,
+            rowNumber: row.data.rowNumber,
+            mode: row.data.mode,
+            name: person.name,
+            erased: true,
+            changes: [],
+          },
+        }
+      : row;
+  });
+  return present(await findRecord(tx, "import", input.id), details);
 }
 export async function previewImport(
   tx: DbTransaction,

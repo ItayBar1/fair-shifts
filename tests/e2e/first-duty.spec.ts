@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, pool } from "../../src/server/db";
 import { user, emailOutbox } from "../../src/server/auth-schema";
-import { soldiers, balances } from "../../src/server/schema";
+import { soldiers, balances, soldierContacts } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
@@ -625,14 +625,12 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     null,
     5,
   ]);
-  await page
-    .getByLabel("קובץ XLSX")
-    .setInputFiles({
-      name: "synthetic.xlsx",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      buffer: Buffer.from(new Uint8Array(await workbook.xlsx.writeBuffer())),
-    });
+  await page.getByLabel("קובץ XLSX").setInputFiles({
+    name: "synthetic.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(new Uint8Array(await workbook.xlsx.writeBuffer())),
+  });
   await page
     .getByRole("button", { name: "הצגת תצוגה מקדימה", exact: true })
     .click();
@@ -675,5 +673,73 @@ test("manager invites, assigns and publishes; soldier sees only published duties
       (person: { personalNumber: string }) => person.personalNumber === "000019"
     )
   ).toMatchObject({ currentScore: 5, graceEligible: false });
+  const importedPerson = afterImport.soldiers.find(
+    (person: { personalNumber: string }) => person.personalNumber === "000007"
+  );
+  await db
+    .update(soldierContacts)
+    .set({ phone: "0500000008", address: "כתובת שנערכה לאחר הייבוא" })
+    .where(eq(soldierContacts.soldierId, importedPerson.id));
+  await db
+    .update(soldierContacts)
+    .set({ phone: "0500000007" })
+    .where(eq(soldierContacts.soldierId, importedPerson.id));
+  await page
+    .getByRole("button", { name: "בדיקת שחזור עדכונים", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "בדיקת שחזור — לפי השינויים מאז הייבוא" })
+  ).toBeVisible();
+  await expect(page.getByText("השתנה מאז", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("החלטה עבור חייל לאחר ייבוא — טלפון", { exact: true })
+    .selectOption("keep");
+  await page
+    .getByLabel("סיבת השחזור וההכרעות")
+    .fill("ביטול שינויי הייבוא ושמירת העריכה המאוחרת");
+  await page.getByLabel("בדקתי את השדות ואת ההחלטות ומאשר/ת את השחזור").check();
+  await page
+    .locator(".import-restore")
+    .screenshot({ path: "test-results/import-restore.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "פתיחת תפריט", exact: true }).click();
+  await expect(page.locator(".sidebar")).toBeVisible();
+  await page
+    .getByRole("button", { name: "סגירת תפריט", exact: true })
+    .last()
+    .click();
+  await expect(page.locator(".sidebar")).not.toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/import-restore-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page
+    .getByRole("button", { name: "אישור שחזור העדכונים", exact: true })
+    .click();
+  await expect(
+    page.getByText(/עדכוני החיילים הקיימים שוחזרו או הוכרעו/)
+  ).toBeVisible();
+  const restoredState = await (await page.request.get("/api/v1/state")).json();
+  expect(
+    restoredState.soldiers.find(
+      (person: { personalNumber: string }) => person.personalNumber === "000007"
+    )
+  ).toMatchObject({
+    name: "חייל סינתטי",
+    currentScore: 0,
+    phone: "0500000007",
+    address: "כתובת שנערכה לאחר הייבוא",
+  });
+  expect(
+    restoredState.soldiers.find(
+      (person: { personalNumber: string }) => person.personalNumber === "000019"
+    )
+  ).toMatchObject({ currentScore: 5 });
   await soldierContext.close();
 });

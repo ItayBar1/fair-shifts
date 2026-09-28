@@ -36,6 +36,7 @@ const statusLabels: Record<string, string> = {
   preview: "תצוגה מקדימה",
   applied: "נשמרה",
   restored: "שוחזרה",
+  partially_restored: "שוחזרה חלקית",
 };
 export function Status({ value }: { value: unknown }) {
   const status = str(value, "pending");

@@ -39,6 +39,7 @@ import { settleDue } from "../../src/server/scoring";
 import { loadDomain } from "../../src/server/repository";
 import { populationAt, rankAt } from "../../src/domain/eligibility";
 import { refreshRankReminders } from "../../src/server/ranks";
+import type { previewImportRestore } from "../../src/server/import-restores";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -2962,5 +2963,374 @@ describe("first duty vertical slice", () => {
       command("import.get", { id: preview.id }, undefined, actor)
     ).rejects.toThrow("אחראי");
     expect((await readState(actor)).imports).toEqual([]);
+  });
+  async function importUpdate(values: Record<string, unknown>) {
+    const preview = await command("import.preview", {
+      filename: "restore.xlsx",
+      rows: [{ rowNumber: 2, values: { personalNumber: "00001", ...values } }],
+    });
+    return command(
+      "import.apply",
+      {
+        id: preview.id,
+        confirmed: true,
+        overwriteConfirmed: true,
+        reason: "ייבוא לבדיקה",
+      },
+      1
+    );
+  }
+  async function restoration(batchId: string, version = 2) {
+    return (await executeAction(manager, {
+      type: "import.restore.preview",
+      payload: { id: batchId },
+      expectedVersion: version,
+      idempotencyKey: randomUUID(),
+    })) as Awaited<ReturnType<typeof previewImportRestore>>;
+  }
+  it("restores unchanged imported fields while preserving later edits and reservations", async () => {
+    const { row, actor } = await fixtureDuty();
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    const batch = await importUpdate({
+      name: "שם מהייבוא",
+      phone: "0500000007",
+      currentScore: 20,
+    });
+    await db
+      .update(soldierContacts)
+      .set({ address: "כתובת שנערכה אחר כך" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    const preview = await restoration(batch.id);
+    expect(
+      preview.rows[0].fields.every((field) => field.status === "automatic")
+    ).toBe(true);
+    const result = await command(
+      "import.restore",
+      {
+        id: batch.id,
+        token: preview.token,
+        confirmed: true,
+        reason: "ביטול ייבוא שגוי",
+      },
+      2
+    );
+    expect(result).toMatchObject({ status: "restored", version: 3 });
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(person.name).toBe("חייל לבדיקה");
+    expect(
+      (
+        await db
+          .select()
+          .from(soldierContacts)
+          .where(eq(soldierContacts.soldierId, person.id))
+      )[0]
+    ).toMatchObject({ phone: null, address: "כתובת שנערכה אחר כך" });
+    expect(
+      (
+        await db
+          .select()
+          .from(balances)
+          .where(eq(balances.soldierId, person.id))
+      )[0].current
+    ).toBe(0);
+    expect(
+      (await db.select().from(assignments)).filter(
+        (item) => item.status === "reserved"
+      )[0].points
+    ).toBe(4);
+    expect((await db.select().from(ledger)).map((item) => item.kind)).toEqual([
+      "import_set",
+      "import_restore",
+    ]);
+  });
+  it("requires a decision after a field changes and returns to the imported value", async () => {
+    const { actor } = await fixtureDuty();
+    const batch = await importUpdate({ phone: "0500000007", name: "שם מיובא" });
+    await db
+      .update(soldierContacts)
+      .set({ phone: "0500000008" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    await db
+      .update(soldierContacts)
+      .set({ phone: "0500000007" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    const preview = await restoration(batch.id);
+    const field = preview.rows[0].fields.find(
+      (field) => field.key === "phone"
+    )!;
+    expect(field.status).toBe("conflict");
+    await expect(
+      command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: preview.token,
+          confirmed: true,
+          reason: "ללא הכרעה",
+        },
+        2
+      )
+    ).rejects.toThrow("להכריע");
+    await command(
+      "import.restore",
+      {
+        id: batch.id,
+        token: preview.token,
+        confirmed: true,
+        reason: "להשאיר טלפון עדכני",
+        decisions: [
+          { rowId: preview.rows[0].id, key: "phone", action: "keep" },
+        ],
+      },
+      2
+    );
+    expect(
+      (
+        await db
+          .select()
+          .from(soldierContacts)
+          .where(eq(soldierContacts.soldierId, actor.soldierId!))
+      )[0].phone
+    ).toBe("0500000007");
+    expect(
+      (
+        await db
+          .select()
+          .from(soldiers)
+          .where(eq(soldiers.id, actor.soldierId!))
+      )[0].name
+    ).toBe("חייל לבדיקה");
+  });
+  it("requires explicit balance resolution after performance, preserves its ledger and applies once in a race", async () => {
+    const { row, actor } = await fixtureDuty();
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    await command("duty.publish", { id: row.id, confirmed: true }, 2);
+    const batch = await importUpdate({ currentScore: 20 });
+    await db
+      .update(duties)
+      .set({
+        data: {
+          ...row.data,
+          status: "published",
+          start: new Date(Date.now() - 2 * 86400000).toISOString(),
+          end: new Date(Date.now() - 86400000).toISOString(),
+        },
+      })
+      .where(eq(duties.id, row.id));
+    const preview = await restoration(batch.id);
+    expect(preview.rows[0].fields[0]).toMatchObject({
+      status: "conflict",
+      current: 24,
+    });
+    await expect(
+      command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: preview.token,
+          confirmed: true,
+          reason: "אין קביעה",
+          decisions: [
+            {
+              rowId: preview.rows[0].id,
+              key: "currentScore",
+              action: "restore",
+            },
+          ],
+        },
+        2
+      )
+    ).rejects.toThrow("מפורשת");
+    const payload = {
+      id: batch.id,
+      token: preview.token,
+      confirmed: true,
+      reason: "שומרים ביצוע חדש",
+      decisions: [
+        {
+          rowId: preview.rows[0].id,
+          key: "currentScore",
+          action: "set_score",
+          value: 4,
+        },
+      ],
+    };
+    const key = randomUUID();
+    const competing = await Promise.allSettled([
+      command("import.restore", payload, 2, manager, key),
+      command("import.restore", payload, 2),
+    ]);
+    expect(
+      competing.filter((item) => item.status === "fulfilled")
+    ).toHaveLength(1);
+    if (competing[0].status === "fulfilled")
+      expect(await command("import.restore", payload, 2, manager, key)).toEqual(
+        competing[0].value
+      );
+    expect(
+      (
+        await db
+          .select()
+          .from(balances)
+          .where(eq(balances.soldierId, actor.soldierId!))
+      )[0].current
+    ).toBe(4);
+    const entries = await db.select().from(ledger);
+    expect(entries.find((entry) => entry.kind === "performance")?.amount).toBe(
+      4
+    );
+    expect(
+      entries.filter((entry) => entry.kind === "import_restore")
+    ).toHaveLength(1);
+    expect((await db.select().from(assignments))[0].status).toBe("credited");
+  });
+  it("restores the imported rank change without removing a later rank-history entry", async () => {
+    const { actor } = await fixtureDuty();
+    const first = await command("rank.catalog.save", {
+      name: "ראשונה",
+      track: "מסלול",
+      order: 1,
+      source: "סינתטי",
+    });
+    const second = await command("rank.catalog.save", {
+      name: "שנייה",
+      track: "מסלול",
+      order: 2,
+      source: "סינתטי",
+    });
+    const third = await command("rank.catalog.save", {
+      name: "שלישית",
+      track: "מסלול",
+      order: 3,
+      source: "סינתטי",
+    });
+    await command(
+      "rank.set",
+      {
+        soldierId: actor.soldierId,
+        rankId: first.id,
+        effectiveDate: "2026-01-01",
+        reason: "מקור",
+      },
+      1
+    );
+    const batch = await importUpdate({
+      rankName: "שנייה",
+      rankTrack: "מסלול",
+      rankEffectiveDate: "2026-01-01",
+    });
+    await command(
+      "rank.set",
+      {
+        soldierId: actor.soldierId,
+        rankId: third.id,
+        effectiveDate: "2026-06-01",
+        reason: "עבודה מאוחרת",
+      },
+      3
+    );
+    const preview = await restoration(batch.id);
+    expect(preview.rows[0].fields[0].status).toBe("conflict");
+    await command(
+      "import.restore",
+      {
+        id: batch.id,
+        token: preview.token,
+        confirmed: true,
+        reason: "תיקון הייבוא בלבד",
+        decisions: [
+          { rowId: preview.rows[0].id, key: "rankHistory", action: "restore" },
+        ],
+      },
+      2
+    );
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(person.data.rankHistory.map((rank) => rank.rankId)).toEqual([
+      first.id,
+      third.id,
+    ]);
+    expect(
+      person.data.rankHistory.some((rank) => rank.rankId === second.id)
+    ).toBe(false);
+  });
+  it("rejects a stale restore and never reintroduces erased contact data", async () => {
+    const { actor } = await fixtureDuty();
+    const batch = await importUpdate({
+      phone: "0500000007",
+      name: "שם מהייבוא",
+    });
+    const preview = await restoration(batch.id);
+    await db
+      .update(soldierContacts)
+      .set({ address: "שינוי מקביל" })
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    await expect(
+      command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: preview.token,
+          confirmed: true,
+          reason: "תמונה ישנה",
+        },
+        2
+      )
+    ).rejects.toThrow("השתנו");
+    await db
+      .update(soldiers)
+      .set({ deletedAt: new Date() })
+      .where(eq(soldiers.id, actor.soldierId!));
+    await db
+      .delete(soldierContacts)
+      .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    const erasedPreview = await restoration(batch.id);
+    expect(
+      erasedPreview.rows[0].fields.every(
+        (field) =>
+          field.status === "erased" &&
+          field.before === null &&
+          field.after === null
+      )
+    ).toBe(true);
+    await command(
+      "import.restore",
+      {
+        id: batch.id,
+        token: erasedPreview.token,
+        confirmed: true,
+        reason: "לא משחזרים מידע שנמחק",
+      },
+      2
+    );
+    expect(
+      await db
+        .select()
+        .from(soldierContacts)
+        .where(eq(soldierContacts.soldierId, actor.soldierId!))
+    ).toHaveLength(0);
+    const viewed = await command("import.get", { id: batch.id });
+    expect(JSON.stringify(viewed)).not.toContain("0500000007");
   });
 });

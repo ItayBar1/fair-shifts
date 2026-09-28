@@ -9,30 +9,10 @@ import {
   str,
   num,
   displayDate,
-  population,
 } from "@/client/types";
 import { Empty, Notice, Panel, Status } from "./ui";
-
-function valueText(value: unknown, key: string) {
-  if (value === undefined || value === null || value === "") return "—";
-  if (typeof value === "boolean") return value ? "כן" : "לא";
-  if (key === "population" || key === "service.basePopulation")
-    return population(value);
-  if (key === "serviceType" || key === "service.type")
-    return value === "career" ? "קבע" : "חובה";
-  if (Array.isArray(value))
-    return (
-      value
-        .map((item) => {
-          const row = obj(item);
-          return row.population
-            ? `${population(row.population)} מ־${displayDate(row.effectiveFrom)}`
-            : `${str(row.rankId).slice(0, 8)} מ־${displayDate(row.effectiveFrom)}`;
-        })
-        .join("; ") || "—"
-    );
-  return str(value);
-}
+import { importValue } from "@/client/import-values";
+import { ImportRestore } from "./import-restores";
 export function ImportsView({
   state,
   action,
@@ -215,8 +195,20 @@ export function ImportsView({
                         {rows(row.changes).map((change) => (
                           <tr key={str(change.key)}>
                             <td>{str(change.label)}</td>
-                            <td>{valueText(change.before, str(change.key))}</td>
-                            <td>{valueText(change.after, str(change.key))}</td>
+                            <td>
+                              {importValue(
+                                change.before,
+                                str(change.key),
+                                state
+                              )}
+                            </td>
+                            <td>
+                              {importValue(
+                                change.after,
+                                str(change.key),
+                                state
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -271,10 +263,20 @@ export function ImportsView({
             </form>
           ) : (
             <Notice tone="success">
-              הייבוא נשמר בשלמותו. שינויי היתרה מתועדים ביומן; השיבוצים והניקוד
-              השמור נשמרו.
+              {batch.status === "restored"
+                ? "שחזור העדכונים הושלם."
+                : batch.status === "partially_restored"
+                  ? "עדכוני החיילים הקיימים שוחזרו או הוכרעו; הקליטות החדשות נשארו במערכת."
+                  : "הייבוא נשמר בשלמותו. שינויי היתרה מתועדים ביומן; השיבוצים והניקוד השמור נשמרו."}
             </Notice>
           )}
+          <ImportRestore
+            key={`${str(batch.id)}:${num(batch.version)}`}
+            batch={batch}
+            state={state}
+            action={action}
+            onChange={setBatch}
+          />
         </Panel>
       )}
       <Panel title="אצוות ייבוא">
