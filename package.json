@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "worker": "tsx src/worker.ts",
+    "config:check": "tsx scripts/check-config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run tests/unit",
@@ -26,6 +27,7 @@
     "docker:up": "sh scripts/docker.sh up --build -d app worker",
     "docker:test": "sh scripts/docker.sh --profile test run --build --rm tests",
     "docker:e2e": "sh scripts/docker.sh --profile test run --build --rm e2e",
+    "production:smoke": "sh scripts/production-smoke.sh",
     "demo:code": "tsx scripts/demo-code.ts",
     "prepare": "husky",
     "hooks:install": "sh scripts/install-hooks.sh"

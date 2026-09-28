@@ -5,6 +5,7 @@ import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
 import { populationAt, rankAt } from "../domain/eligibility";
+import { readHealth } from "./operations/health";
 
 export async function readState(actor: Actor) {
   return db.transaction(async (tx) => {
@@ -73,10 +74,14 @@ export async function readState(actor: Actor) {
       return {
         ...base,
         accounts,
+        // The worker heartbeat is presented through `health`.
         operations: [
           ...mail,
-          ...operations.map((row) => ({ id: row.key, ...row.data })),
+          ...operations
+            .filter((row) => row.key !== "worker")
+            .map((row) => ({ id: row.key, ...row.data })),
         ],
+        health: await readHealth(tx),
       };
     }
     const state = await loadDomain(tx);

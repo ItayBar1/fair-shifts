@@ -36,6 +36,14 @@ sh scripts/docker.sh --profile test down
 
 Compose מיועד לפיתוח סינתטי: סודות מקומיים גלויים ומייל כבוי. Google ומשלוח אמיתי דורשים חשבונות ספקים והגדרות. בדיקות משתמשות במתאם מייל מדומה ובקוד מהמסד המבודד, ללא עוקף־אימות באתר. הקוד והתלויות מותקנים ורצים בתוך התמונות.
 
+## תצורת הפעלה (staging/production)
+
+`compose.production.yaml` מפעיל מסד, אתר, עובד ו־cloudflared, עם סודות מחוץ למאגר ובדיקת תצורה לפני עלייה. ההוראות ב[מדריך ההפעלה](docs/operations.md). בדיקת התצורה ב־Docker עם סודות סינתטיים:
+
+```sh
+sh scripts/production-smoke.sh
+```
+
 ## בדיקה לפני commit וגיבוי ב־Git
 
 Husky מפעיל בדיקה לפני כל commit. אחרי clone מתקינים את ה־hook דרך Docker:

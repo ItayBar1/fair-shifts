@@ -9,6 +9,7 @@ import {
   account,
   emailOutbox,
   emailQuota,
+  operationsState,
 } from "../../src/server/auth-schema";
 import {
   soldiers,
@@ -41,6 +42,12 @@ import { loadDomain } from "../../src/server/repository";
 import { populationAt, rankAt } from "../../src/domain/eligibility";
 import { refreshRankReminders } from "../../src/server/ranks";
 import type { previewImportRestore } from "../../src/server/import-restores";
+import {
+  readHealth,
+  recordWorkerHeartbeat,
+  WORKER_STALE_MS,
+} from "../../src/server/operations/health";
+import { GET as healthRoute } from "../../src/app/api/health/route";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -4173,5 +4180,100 @@ describe("first duty vertical slice", () => {
     ).toHaveLength(0);
     const viewed = await command("import.get", { id: batch.id });
     expect(JSON.stringify(viewed)).not.toContain("0500000007");
+  });
+});
+
+describe("deployment health and worker heartbeat", () => {
+  const at = (iso: string) => new Date(iso);
+  it("reports a missing worker without failing the site", async () => {
+    const health = await readHealth(db, at("2026-09-29T09:00:00Z"));
+    expect(health).toMatchObject({
+      status: "degraded",
+      database: "ok",
+      worker: { status: "missing", sameVersion: false },
+    });
+    const response = await healthRoute();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect((await response.json()).database).toBe("ok");
+  });
+  it("tracks beats, keeps the last success while paused and marks delays", async () => {
+    await recordWorkerHeartbeat(db, {
+      now: at("2026-09-29T09:00:00Z"),
+      paused: false,
+      credited: 2,
+    });
+    expect(await readHealth(db, at("2026-09-29T09:00:30Z"))).toMatchObject({
+      status: "ok",
+      worker: {
+        status: "ok",
+        sameVersion: true,
+        lastSuccessAt: "2026-09-29T09:00:00.000Z",
+      },
+    });
+    // Restore mode: the worker still beats but does not run maintenance.
+    await recordWorkerHeartbeat(db, {
+      now: at("2026-09-29T09:01:00Z"),
+      paused: true,
+    });
+    const paused = await readHealth(db, at("2026-09-29T09:01:10Z"));
+    expect(paused.status).toBe("degraded");
+    expect(paused.worker).toMatchObject({
+      status: "paused",
+      lastBeatAt: "2026-09-29T09:01:00.000Z",
+      lastSuccessAt: "2026-09-29T09:00:00.000Z",
+    });
+    const limit = at("2026-09-29T09:01:00Z").getTime() + WORKER_STALE_MS;
+    expect((await readHealth(db, new Date(limit))).worker.status).not.toBe(
+      "stale"
+    );
+    expect((await readHealth(db, new Date(limit + 1))).worker.status).toBe(
+      "stale"
+    );
+  });
+  it("flags a worker running another version", async () => {
+    await db.insert(operationsState).values({
+      key: "worker",
+      data: { lastBeatAt: "2026-09-29T09:00:00.000Z", version: "older" },
+    });
+    const health = await readHealth(db, at("2026-09-29T09:00:10Z"));
+    expect(health.status).toBe("degraded");
+    expect(health.worker).toMatchObject({
+      status: "ok",
+      version: "older",
+      sameVersion: false,
+    });
+  });
+  it("shows health only to the technical account, without personal data", async () => {
+    await recordWorkerHeartbeat(db, { now: new Date(), paused: false });
+    const technicalState = await readState(technical);
+    expect(technicalState).toMatchObject({
+      health: { status: "ok", database: "ok" },
+    });
+    expect(technicalState.operations.some((row) => row.id === "worker")).toBe(
+      false
+    );
+    const payload = JSON.stringify(await (await healthRoute()).json());
+    for (const hidden of [
+      "technical@example.invalid",
+      "manager@example.invalid",
+      memberEmail,
+      "חייל לבדיקה",
+      "אחראי לבדיקה",
+    ])
+      expect(payload).not.toContain(hidden);
+    const [member] = await db.select().from(user).where(eq(user.id, memberId));
+    const soldierState = await readState({
+      id: member.id,
+      name: member.name,
+      role: "soldier",
+      soldierId: member.soldierId!,
+      securityEpoch: member.securityEpoch,
+    });
+    const managerState = await readState(manager);
+    for (const state of [soldierState, managerState]) {
+      expect(state).not.toHaveProperty("health");
+      expect(state.operations).toHaveLength(0);
+    }
   });
 });
