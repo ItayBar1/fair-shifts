@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { db, pool, unitTransaction } from "../../src/server/db";
+import { db, unitTransaction } from "../../src/server/db";
 import { settleDue } from "../../src/server/scoring";
 import { user, emailOutbox } from "../../src/server/auth-schema";
 import {
@@ -41,7 +41,7 @@ test.beforeAll(async () => {
     soldierId: id,
   });
 });
-test.afterAll(async () => pool.end());
+// The pool is shared by every spec in the worker; the worker exit closes it.
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(email);
