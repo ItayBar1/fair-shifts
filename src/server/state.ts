@@ -157,6 +157,7 @@ export async function readState(actor: Actor) {
               start: row.start,
               end: row.end,
               status: row.status,
+              wasPublished: row.wasPublished,
               location: row.location,
               instructions: row.instructions,
               version: row.version,

@@ -31,6 +31,21 @@ import {
   displayDate,
 } from "@/client/types";
 import {
+  type DaySegment,
+  dayOfMonth,
+  dutyDays,
+  isCancelled,
+  localDay,
+  monthGrid,
+  monthLabel,
+  monthOf,
+  onBoard,
+  overlapsMonth,
+  segmentLabel,
+  shiftMonth,
+  shortMonth,
+} from "@/client/calendar";
+import {
   ActionDialog,
   Badge,
   Empty,
@@ -80,9 +95,10 @@ export function CalendarView({ state }: { state: AppState }) {
   const [onlyMine, setOnlyMine] = useState(false);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"list" | "month">("month");
-  const [month, setMonth] = useState(
-    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  const [month, setMonth] = useState(() =>
+    monthOf(str(state.serverNow, new Date().toISOString()))
   );
+  const now = new Date().toISOString();
   const ownIds = new Set(
     state.assignments
       .filter(
@@ -93,39 +109,34 @@ export function CalendarView({ state }: { state: AppState }) {
       .map((a) => str(a.dutyId))
   );
   const visible = state.duties
-    .filter((d) => str(dutyStatus(d)) === "published")
+    .filter(onBoard)
     .filter(
       (d) => (!onlyMine || ownIds.has(d.id)) && str(d.name).includes(query)
     );
-  const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
   const monthDuties = visible
-    .filter((d) => {
-      const s = dutyStart(d);
-      return s.slice(0, 7) === monthKey;
-    })
+    .filter((d) => overlapsMonth(d, month))
     .sort((a, b) => dutyStart(a).localeCompare(dutyStart(b)));
+  const activeMonth = monthDuties.filter((d) => !isCancelled(d));
   const upcoming = visible.filter(
-    (d) => new Date(dutyEnd(d)) >= new Date()
+    (d) => !isCancelled(d) && new Date(dutyEnd(d)) >= new Date()
   ).length;
-  const startOffset = month.getDay();
-  const count = new Date(
-    month.getFullYear(),
-    month.getMonth() + 1,
-    0
-  ).getDate();
-  const cells = Math.ceil((startOffset + count) / 7) * 7;
+  const byDay = new Map<string, { duty: Row; segment: DaySegment }[]>();
+  for (const duty of monthDuties)
+    for (const { date, segment } of dutyDays(duty))
+      byDay.set(date, [...(byDay.get(date) ?? []), { duty, segment }]);
+  const today = localDay(now);
   return (
     <>
       <div className="stats-grid">
         <Stat
           label="תורנויות החודש"
-          value={monthDuties.length}
+          value={activeMonth.length}
           detail="מפורסמות בלוח היחידתי"
           icon={CalendarDays}
         />
         <Stat
           label="התורנויות שלי"
-          value={monthDuties.filter((d) => ownIds.has(d.id)).length}
+          value={activeMonth.filter((d) => ownIds.has(d.id)).length}
           detail="בחודש המוצג"
           icon={UsersRound}
           tone="blue"
@@ -155,34 +166,21 @@ export function CalendarView({ state }: { state: AppState }) {
             <button
               className="icon-btn"
               aria-label="החודש הקודם"
-              onClick={() =>
-                setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))
-              }
+              onClick={() => setMonth(shiftMonth(month, -1))}
             >
               <ChevronRight size={19} />
             </button>
-            <h2>
-              {new Intl.DateTimeFormat("he-IL", {
-                month: "long",
-                year: "numeric",
-              }).format(month)}
-            </h2>
+            <h2 aria-live="polite">{monthLabel(month)}</h2>
             <button
               className="icon-btn"
               aria-label="החודש הבא"
-              onClick={() =>
-                setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))
-              }
+              onClick={() => setMonth(shiftMonth(month, 1))}
             >
               <ChevronLeft size={19} />
             </button>
             <button
               className="btn small secondary"
-              onClick={() =>
-                setMonth(
-                  new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-                )
-              }
+              onClick={() => setMonth(monthOf(new Date().toISOString()))}
             >
               היום
             </button>
@@ -242,44 +240,37 @@ export function CalendarView({ state }: { state: AppState }) {
                 )}
               </div>
               <div className="calendar-days">
-                {Array.from({ length: cells }, (_, index) => {
-                  const day = index - startOffset + 1;
-                  const inMonth = day > 0 && day <= count;
-                  const date = `${monthKey}-${String(day).padStart(2, "0")}`;
-                  const today =
-                    new Intl.DateTimeFormat("en-CA", {
-                      timeZone: "Asia/Jerusalem",
-                    }).format(new Date()) === date;
-                  return (
-                    <div
-                      className={`calendar-day ${!inMonth ? "outside" : ""} ${today ? "is-today" : ""}`}
-                      key={index}
-                    >
-                      {inMonth && (
-                        <>
-                          <span className="day-number">{day}</span>
-                          {monthDuties
-                            .filter((d) => dutyStart(d).slice(0, 10) === date)
-                            .map((d) => (
-                              <Link
-                                key={d.id}
-                                href={`/duties/${d.id}`}
-                                className={`calendar-event ${ownIds.has(d.id) ? "mine" : ""}`}
-                              >
-                                <span>{str(d.name, "תורנות")}</span>
-                                <small>
-                                  {displayDate(dutyStart(d), true)
-                                    .split(",")
-                                    .at(-1)}{" "}
-                                  · {str(d.location, "פרטים בפנים")}
-                                </small>
-                              </Link>
-                            ))}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
+                {monthGrid(month).map((date, index) => (
+                  <div
+                    className={`calendar-day ${!date ? "outside" : ""} ${date === today ? "is-today" : ""}`}
+                    key={date ?? `pad-${index}`}
+                  >
+                    {date && (
+                      <>
+                        <span className="day-number">
+                          {Number(date.slice(8))}
+                        </span>
+                        {(byDay.get(date) ?? []).map(({ duty: d, segment }) => (
+                          <Link
+                            key={d.id}
+                            href={`/duties/${d.id}`}
+                            aria-label={`${str(d.name, "תורנות")}, ${segmentLabel(d, segment)}${isCancelled(d) ? ", בוטלה" : ""}`}
+                            className={`calendar-event ${segment} ${ownIds.has(d.id) ? "mine" : ""} ${isCancelled(d) ? "cancelled" : ""}`}
+                          >
+                            <span>{str(d.name, "תורנות")}</span>
+                            <small>
+                              {segmentLabel(d, segment)}
+                              {segment === "single" || segment === "start"
+                                ? ` · ${str(d.location, "פרטים בפנים")}`
+                                : ""}
+                              {isCancelled(d) ? " · בוטלה" : ""}
+                            </small>
+                          </Link>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -295,7 +286,14 @@ export function CalendarView({ state }: { state: AppState }) {
             <i className="legend-dot blue" />
             תורנות שלי
           </span>
-          <small>הלוח מציג תורנויות שפורסמו בלבד</small>
+          <span>
+            <i className="legend-dot muted" />
+            בוטלה
+          </span>
+          <small>
+            הלוח מציג תורנויות שפורסמו, לפי שעון ישראל. תורנות של כמה ימים
+            מופיעה בכל יום שבו היא מתקיימת.
+          </small>
         </div>
       </Panel>
     </>
@@ -313,19 +311,18 @@ export function DutyList({
       {duties.map((d) => (
         <Link href={`/duties/${d.id}`} className="duty-row" key={d.id}>
           <span className="date-tile">
-            <strong>{new Date(dutyStart(d)).getDate() || "—"}</strong>
-            <small>
-              {new Date(dutyStart(d)).toLocaleDateString("he-IL", {
-                month: "short",
-                timeZone: "Asia/Jerusalem",
-              })}
-            </small>
+            <strong>{dayOfMonth(dutyStart(d))}</strong>
+            <small>{shortMonth(dutyStart(d))}</small>
           </span>
           <span className="duty-row-title">
             <strong>{str(d.name, "תורנות")}</strong>
             <small>
               <MapPin size={13} />
               {str(d.location, "המיקום טרם נקבע")}
+            </small>
+            <small className="mobile-only">
+              {displayDate(dutyStart(d), true)} –{" "}
+              {displayDate(dutyEnd(d), true)}
             </small>
           </span>
           <span className="hide-mobile">
