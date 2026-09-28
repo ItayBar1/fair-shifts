@@ -75,10 +75,17 @@ export async function closeRound(
     id.parse((payload as Record<string, unknown>).id)
   );
   currentVersion(round.version, expectedVersion);
+  invariant(
+    round.data.status !== "closed",
+    "already_closed",
+    "הסבב כבר נסגר",
+    409
+  );
   await updateRecord(tx, round, {
     ...round.data,
     status: "closed",
     closedAt: new Date().toISOString(),
+    closedByName: actor.name,
   });
   await audit(tx, actor, "round.close", round.id);
   return { id: round.id };
@@ -100,14 +107,26 @@ export async function reopenRound(
     "invalid_window",
     "נדרש מועד סגירה עתידי לאחר פתיחת הסבב"
   );
+  const reopenedAt = new Date().toISOString();
   await updateRecord(tx, round, {
     ...round.data,
     status: "open",
     closesAt,
     closedAt: null,
+    reopenedAt,
+    reopenedByName: actor.name,
+    reopenCount: Number(round.data.reopenCount ?? 0) + 1,
   });
   await audit(tx, actor, "round.reopen", round.id);
   return { id: round.id };
+}
+function hasRange(value: unknown) {
+  const version = value as { start?: unknown; none?: boolean } | null;
+  return Boolean(version && typeof version.start === "string" && !version.none);
+}
+/** A row still binds or awaits review: an approved range or a pending change. */
+function isActive(row: Workflow) {
+  return hasRange(row.data.approved) || Boolean(row.data.pending);
 }
 async function archiveRevision(tx: DbTransaction, record: Workflow) {
   await createRecord(
@@ -188,6 +207,12 @@ export async function submitConstraint(
       403
     );
     currentVersion(existing.version, expectedVersion);
+    invariant(
+      !input.none || isActive(existing),
+      "nothing_to_cancel",
+      "אין בפריט זה אילוץ בתוקף או ממתין לביטול",
+      409
+    );
   } else
     invariant(
       expectedVersion === undefined,
@@ -211,14 +236,50 @@ export async function submitConstraint(
     );
   }
   const saved: Workflow[] = [];
-  const changes = input.none
-    ? (existing
-        ? [existing]
-        : existingRows.length
-          ? existingRows
-          : [undefined]
-      ).map((row) => ({ row, item: undefined }))
-    : items.map((item) => ({ row: existing, item }));
+  const active = existingRows.filter(isActive);
+  const declaration = existingRows.find(
+    (row) => row.data.status === "declared"
+  );
+  if (input.none && !input.id && !active.length) {
+    // Nothing to review: the declaration completes the submission directly.
+    if (declaration) await archiveRevision(tx, declaration);
+    const data = {
+      ...declaration?.data,
+      roundId: round.id,
+      status: "declared",
+      pending: null,
+      declared: {
+        version: (declaration?.version ?? 0) + 1,
+        none: true,
+        submittedAt: now.toISOString(),
+      },
+      submittedAt: now.toISOString(),
+    };
+    const record = declaration
+      ? await updateRecord(tx, declaration, data)
+      : await createRecord(tx, "constraint", data, actor.soldierId);
+    saved.push(record);
+    await audit(
+      tx,
+      actor,
+      "constraint.declare_none",
+      record.id,
+      { roundId: round.id },
+      actor.soldierId
+    );
+  }
+  const changes = saved.length
+    ? []
+    : input.none
+      ? (existing ? [existing] : active).map((row) => ({
+          row,
+          item: undefined,
+        }))
+      : items.map((item, index) => ({
+          // A later item replaces an earlier "no constraints" declaration.
+          row: existing ?? (index === 0 ? declaration : undefined),
+          item,
+        }));
   for (const { row, item } of changes) {
     if (row) await archiveRevision(tx, row);
     const pending = {
@@ -234,6 +295,7 @@ export async function submitConstraint(
       roundId: round.id,
       status: "pending",
       pending,
+      declared: null,
       submittedAt: now.toISOString(),
     };
     const record = row
@@ -372,18 +434,33 @@ export async function reviewConstraint(
         ? record.data.pending
         : record.data.approved,
     pending: null,
+    rejected: input.decision === "rejected" ? record.data.pending : null,
     decisionReason: input.reason,
     decidedBy: actor.id,
+    decidedByName: actor.name,
     decidedAt: new Date().toISOString(),
   };
   await updateRecord(tx, record, data);
+  const cancellation = Boolean(
+    (record.data.pending as { none?: boolean }).none
+  );
+  const keepsApproved = hasRange(record.data.approved);
   await createRecord(
     tx,
     "notification",
     {
       title:
-        input.decision === "approved" ? "האילוץ אושר" : "השינוי באילוץ נדחה",
-      body: "ההחלטה זמינה במסך האילוצים. גרסה מאושרת קודמת נשארת בתוקף אם השינוי נדחה.",
+        input.decision === "approved"
+          ? cancellation
+            ? "ביטול האילוץ אושר"
+            : "האילוץ אושר"
+          : keepsApproved
+            ? "השינוי באילוץ נדחה"
+            : "האילוץ נדחה",
+      body:
+        input.decision === "rejected" && keepsApproved
+          ? "הגרסה המאושרת הקודמת נשארת בתוקף. ההחלטה זמינה במסך האילוצים."
+          : "ההחלטה זמינה במסך האילוצים.",
       href: "/constraints",
     },
     person.id

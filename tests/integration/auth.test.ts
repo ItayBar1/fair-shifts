@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, afterAll, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
+import { DateTime } from "luxon";
 import { db, pool, unitTransaction } from "../../src/server/db";
 import {
   user,
@@ -302,6 +303,25 @@ describe("first duty vertical slice", () => {
       idempotencyKey: key,
     })) as { id: string; version: number };
   }
+  /** Adds a period the way the UI does: preview first, then confirm it. */
+  async function addPeriod(
+    payload: Record<string, unknown>,
+    expectedVersion?: number,
+    actor = manager
+  ) {
+    const preview = (await command(
+      "soldier.timeline.preview",
+      payload,
+      expectedVersion,
+      actor
+    )) as unknown as { previewToken: string };
+    return command(
+      "soldier.timeline",
+      { ...payload, confirmed: true, previewToken: preview.previewToken },
+      expectedVersion,
+      actor
+    );
+  }
   async function fixtureDuty() {
     const type = await command("dutyType.save", {
       name: "שמירה סינתטית",
@@ -481,8 +501,7 @@ describe("first duty vertical slice", () => {
       },
       1
     );
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "inactive",
@@ -631,6 +650,7 @@ describe("first duty vertical slice", () => {
       .where(eq(records.id, submission.id));
     expect(stored.data.approved).toMatchObject({ start: startDate });
     expect(stored.data.pending).toBeNull();
+    expect(stored.data.rejected).toMatchObject({ start: endDate });
     await expect(
       command(
         "constraint.review",
@@ -765,7 +785,8 @@ describe("first duty vertical slice", () => {
           .from(records)
           .where(eq(records.kind, "constraint_revision"))
       ).filter((row) => row.subjectId === actor.soldierId)
-    ).toHaveLength(5);
+      // The rejected item has no version in effect, so only one cancellation.
+    ).toHaveLength(4);
   });
   it("requires current impact confirmation and keeps a conflicting assignment for treatment", async () => {
     const { row, actor } = await fixtureDuty();
@@ -869,6 +890,9 @@ describe("first duty vertical slice", () => {
         actor
       )
     ).rejects.toThrow("אינו פתוח");
+    await expect(command("round.close", { id: round.id }, 2)).rejects.toThrow(
+      "כבר נסגר"
+    );
     const payload = {
       id: round.id,
       closesAt: new Date(Date.now() + 7200_000).toISOString(),
@@ -883,7 +907,381 @@ describe("first duty vertical slice", () => {
     );
     expect(
       (await db.select().from(records).where(eq(records.id, round.id)))[0].data
-    ).toMatchObject({ targetStart: date, targetEnd: date, status: "open" });
+    ).toMatchObject({
+      targetStart: date,
+      targetEnd: date,
+      status: "open",
+      reopenCount: 1,
+      reopenedByName: manager.name,
+    });
+  });
+  async function openRound(targetStart: string, targetEnd: string) {
+    return command("round.create", {
+      name: "סבב גבולות",
+      opensAt: new Date(Date.now() - 60_000).toISOString(),
+      closesAt: new Date(Date.now() + 3600_000).toISOString(),
+      targetStart,
+      targetEnd,
+    });
+  }
+  async function roundConstraints(roundId: string) {
+    return (
+      await db.select().from(records).where(eq(records.kind, "constraint"))
+    ).filter((row) => row.data.roundId === roundId);
+  }
+  it("records a no-constraints declaration directly as a completed submission and lets a later item replace it", async () => {
+    const { row, actor } = await fixtureDuty();
+    const date = row.data.start.slice(0, 10);
+    const round = await openRound(date, date);
+    const declared = await command(
+      "constraint.submit",
+      { roundId: round.id, none: true },
+      undefined,
+      actor
+    );
+    let [stored] = await roundConstraints(round.id);
+    expect(stored.data).toMatchObject({ status: "declared", pending: null });
+    expect(stored.data.declared).toMatchObject({ none: true, version: 1 });
+    await expect(
+      command("constraint.preview", { id: declared.id }, 1)
+    ).rejects.toThrow("אין גרסה ממתינה");
+    await expect(
+      command("constraint.review", { id: declared.id, decision: "approved" }, 1)
+    ).rejects.toThrow("אין גרסה ממתינה");
+    const managerView = await readState(manager);
+    expect(
+      managerView.constraints.find((item) => item.id === declared.id)
+    ).toMatchObject({ status: "declared", subjectId: actor.soldierId });
+    expect(
+      (await db.select().from(records).where(eq(records.kind, "audit"))).some(
+        (item) =>
+          item.data.action === "constraint.declare_none" &&
+          item.data.targetId === declared.id
+      )
+    ).toBe(true);
+    expect(
+      (await db.select().from(records).where(eq(records.kind, "notification")))
+        .length
+    ).toBe(0);
+    // Declaring again updates the same submission instead of adding a row.
+    await command(
+      "constraint.submit",
+      {
+        roundId: round.id,
+        none: true,
+        existingVersions: [{ id: declared.id, version: 1 }],
+      },
+      undefined,
+      actor
+    );
+    // A new item replaces the declaration and waits for review.
+    await command(
+      "constraint.submit",
+      {
+        roundId: round.id,
+        items: [{ startDate: date, endDate: date, reason: "אילוץ מאוחר" }],
+      },
+      undefined,
+      actor
+    );
+    const rows = await roundConstraints(round.id);
+    expect(rows).toHaveLength(1);
+    [stored] = rows;
+    expect(stored.id).toBe(declared.id);
+    expect(stored.data).toMatchObject({
+      status: "pending",
+      declared: null,
+      pending: { start: date, end: date },
+    });
+    await command(
+      "constraint.review",
+      { id: declared.id, decision: "rejected", reason: "ללא הצדקה" },
+      stored.version
+    );
+    // A rejected item without an approved version has nothing to cancel.
+    await expect(
+      command(
+        "constraint.submit",
+        { id: declared.id, roundId: round.id, none: true },
+        stored.version + 1,
+        actor
+      )
+    ).rejects.toThrow("אין בפריט");
+    await command(
+      "constraint.submit",
+      {
+        roundId: round.id,
+        none: true,
+        existingVersions: [{ id: declared.id, version: stored.version + 1 }],
+      },
+      undefined,
+      actor
+    );
+    const after = await roundConstraints(round.id);
+    expect(after.map((item) => item.data.status).sort()).toEqual([
+      "declared",
+      "rejected",
+    ]);
+    expect(
+      (await unitTransaction((tx) => loadDomain(tx))).soldiers.find(
+        (item) => item.id === actor.soldierId
+      )!.constraints
+    ).toHaveLength(0);
+  });
+  it("rejects submissions outside the window or target period and applies whole Israel days across a clock change", async () => {
+    const { actor } = await fixtureDuty();
+    const zone = "Asia/Jerusalem";
+    let day = DateTime.now().setZone(zone).startOf("day").plus({ days: 3 });
+    while (day.plus({ days: 1 }).offset === day.offset)
+      day = day.plus({ days: 1 });
+    const date = day.toISODate()!;
+    expect(day.plus({ days: 1 }).diff(day, "hours").hours).not.toBe(24);
+    const type = await command("dutyType.save", {
+      name: "גבולות יום",
+      pricing: { mode: "fixed", base: 4 },
+      roles: [{ name: "תורן", count: 1 }],
+    });
+    const at = (offsetDays: number, hour: number, minute = 0) =>
+      day.plus({ days: offsetDays }).set({ hour, minute }).toISO()!;
+    const windows = {
+      before: [at(-1, 23), at(0, 0, 30)],
+      lastHour: [at(0, 23), at(1, 0)],
+      nextDay: [at(1, 0), at(1, 1)],
+    } as const;
+    const dutyIds: Record<string, string> = {};
+    for (const [name, [start, end]] of Object.entries(windows)) {
+      const created = await command("duty.create", {
+        typeId: type.id,
+        name,
+        start,
+        end,
+      });
+      const [stored] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, created.id));
+      await command(
+        "duty.assign",
+        {
+          dutyId: created.id,
+          slotId: stored.data.slots[0].id,
+          soldierId: actor.soldierId,
+        },
+        1
+      );
+      dutyIds[name] = created.id;
+    }
+    const upcoming = await command("round.create", {
+      name: "טרם נפתח",
+      opensAt: new Date(Date.now() + 3600_000).toISOString(),
+      closesAt: new Date(Date.now() + 7200_000).toISOString(),
+      targetStart: date,
+      targetEnd: date,
+    });
+    const expired = await command("round.create", {
+      name: "חלון שעבר",
+      opensAt: new Date(Date.now() - 7200_000).toISOString(),
+      closesAt: new Date(Date.now() - 3600_000).toISOString(),
+      targetStart: date,
+      targetEnd: date,
+    });
+    for (const roundId of [upcoming.id, expired.id])
+      await expect(
+        command("constraint.submit", { roundId, none: true }, undefined, actor)
+      ).rejects.toThrow("אינו פתוח");
+    const round = await openRound(date, date);
+    const next = day.plus({ days: 1 }).toISODate()!;
+    const previous = day.minus({ days: 1 }).toISODate()!;
+    for (const [startDate, endDate] of [
+      [date, next],
+      [previous, date],
+      [next, next],
+    ])
+      await expect(
+        command(
+          "constraint.submit",
+          { roundId: round.id, startDate, endDate, reason: "מחוץ לתקופה" },
+          undefined,
+          actor
+        )
+      ).rejects.toThrow("תקופת היעד");
+    const submitted = await command(
+      "constraint.submit",
+      { roundId: round.id, startDate: date, endDate: date, reason: "יום שלם" },
+      undefined,
+      actor
+    );
+    const preview = (await command(
+      "constraint.preview",
+      { id: submitted.id },
+      1
+    )) as unknown as { conflicts: { dutyId: string }[] };
+    expect(preview.conflicts.map((item) => item.dutyId).sort()).toEqual(
+      [dutyIds.before, dutyIds.lastHour].sort()
+    );
+  });
+  it("lets one of two managers decide a shared constraint, shows who decided and rejects stale edits", async () => {
+    const { row, actor } = await fixtureDuty();
+    const second = await invite(
+      "אחראי שני לבדיקה",
+      "manager",
+      "manager-two@example.invalid",
+      "00003"
+    );
+    const other: Actor = {
+      id: second.id,
+      name: second.name,
+      role: "manager",
+      soldierId: second.soldierId!,
+      securityEpoch: 1,
+    };
+    const date = row.data.start.slice(0, 10);
+    const round = await openRound(date, date);
+    const submitted = await command(
+      "constraint.submit",
+      { roundId: round.id, startDate: date, endDate: date, reason: "משותף" },
+      undefined,
+      actor
+    );
+    const results = await Promise.allSettled([
+      command(
+        "constraint.review",
+        { id: submitted.id, decision: "approved" },
+        1
+      ),
+      command(
+        "constraint.review",
+        { id: submitted.id, decision: "rejected", reason: "החלטה מקבילה" },
+        1,
+        other
+      ),
+    ]);
+    expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    const failure = results.find((item) => item.status === "rejected") as
+      PromiseRejectedResult | undefined;
+    expect(failure?.reason).toMatchObject({ status: 409 });
+    const winner = results[0].status === "fulfilled" ? manager : other;
+    const [stored] = await roundConstraints(round.id);
+    expect(stored.version).toBe(2);
+    expect(stored.data).toMatchObject({
+      decidedBy: winner.id,
+      decidedByName: winner.name,
+      pending: null,
+    });
+    for (const viewer of [manager, other])
+      expect(
+        (await readState(viewer)).constraints.find(
+          (item) => item.id === submitted.id
+        )
+      ).toMatchObject({
+        decidedByName: winner.name,
+        status: stored.data.status,
+      });
+    expect(
+      (
+        await db.select().from(records).where(eq(records.kind, "notification"))
+      ).filter((item) => item.subjectId === actor.soldierId)
+    ).toHaveLength(1);
+    await expect(
+      command(
+        "constraint.submit",
+        {
+          id: submitted.id,
+          roundId: round.id,
+          startDate: date,
+          endDate: date,
+          reason: "עריכה מגרסה ישנה",
+        },
+        1,
+        actor
+      )
+    ).rejects.toThrow();
+    await expect(
+      command(
+        "constraint.review",
+        { id: submitted.id, decision: "approved" },
+        1
+      )
+    ).rejects.toThrow();
+  });
+  it("requires a new collision approval for every pending version and never carries it into the approved version", async () => {
+    const { row, actor } = await fixtureDuty();
+    const startDate = row.data.start.slice(0, 10);
+    const endDate = row.data.end.slice(0, 10);
+    const round = await openRound(startDate, endDate);
+    const submitted = await command(
+      "constraint.submit",
+      { roundId: round.id, startDate, endDate, reason: "גרסה ראשונה" },
+      undefined,
+      actor
+    );
+    const input = {
+      dutyId: row.id,
+      slotId: row.data.slots[0].id,
+      soldierId: actor.soldierId,
+      reviewPending: true,
+    };
+    const preview = await assignmentPreview(input, 1);
+    expect(preview.requirements.map((item) => item.code)).toEqual([
+      "pending_constraint",
+    ]);
+    const assigned = await command(
+      "duty.assign",
+      {
+        ...input,
+        previewToken: preview.previewToken,
+        approvalKeys: preview.requirements.map((item) => item.key),
+        approvalReason: "התנגשות מאושרת לגרסה הראשונה",
+      },
+      1
+    );
+    const attention = async () =>
+      (
+        await db
+          .select()
+          .from(assignments)
+          .where(eq(assignments.id, assigned.id))
+      )[0];
+    expect((await attention()).data.needsAttention ?? []).toEqual([]);
+    await command(
+      "constraint.submit",
+      {
+        id: submitted.id,
+        roundId: round.id,
+        startDate,
+        endDate,
+        reason: "גרסה שנייה",
+      },
+      1,
+      actor
+    );
+    expect((await attention()).data.needsAttention).toContain(
+      "pending_constraint"
+    );
+    const impact = (await command(
+      "constraint.preview",
+      { id: submitted.id },
+      2
+    )) as unknown as { conflicts: { id: string }[]; impactToken: string };
+    expect(impact.conflicts.map((item) => item.id)).toEqual([assigned.id]);
+    await command(
+      "constraint.review",
+      {
+        id: submitted.id,
+        decision: "approved",
+        impactToken: impact.impactToken,
+      },
+      2
+    );
+    const final = await attention();
+    expect(final.status).toBe("reserved");
+    expect(final.data.needsAttention).toContain("approved_constraint");
+    expect(final.data.approvals?.[0]).toMatchObject({
+      kind: "pending_constraint",
+      referenceVersion: 1,
+    });
   });
   it("preserves historical population when editing a profile and can change back to its original population", async () => {
     const { actor } = await fixtureDuty();
@@ -1570,8 +1968,7 @@ describe("first duty vertical slice", () => {
       approvedBy: manager.id,
       soldierVersion: 2,
     });
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "inactive",
@@ -1626,8 +2023,7 @@ describe("first duty vertical slice", () => {
       soldierId: actor.soldierId,
     };
     const preview = await assignmentPreview(input, 1);
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "exemption",
@@ -1783,8 +2179,7 @@ describe("first duty vertical slice", () => {
   });
   it("rejects a proposal when candidate availability changes before approval", async () => {
     const { row, actor, result } = await pendingLottery();
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "inactive",
@@ -1897,8 +2292,7 @@ describe("first duty vertical slice", () => {
       kind: "qualification",
       name: "כשירות נדירה לבדיקה",
     });
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "qualification",
@@ -2321,8 +2715,7 @@ describe("first duty vertical slice", () => {
       kind: "qualification",
       name: "הכשרה לבדיקה",
     });
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "qualification",
@@ -2396,8 +2789,7 @@ describe("first duty vertical slice", () => {
   });
   it("rejects an obsolete personnel impact preview and removes a period only once when managers compete", async () => {
     const { actor } = await fixtureDuty();
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "inactive",
@@ -2453,14 +2845,320 @@ describe("first duty vertical slice", () => {
       ).filter((item) => item.data.operation === "remove")
     ).toHaveLength(1);
   });
+  type PeriodPreview = {
+    previewToken: string;
+    impact: {
+      assignmentId: string;
+      before: string;
+      after: string;
+      affected: boolean;
+      reasons: { code: string }[];
+    }[];
+  };
+  async function periodPreview(
+    payload: Record<string, unknown>,
+    version: number,
+    actor = manager
+  ) {
+    return (await command(
+      "soldier.timeline.preview",
+      payload,
+      version,
+      actor
+    )) as unknown as PeriodPreview;
+  }
+  it("previews a new inactivity period that touches only the last day of a duty, saves nothing until confirmation and then flags it in the same save", async () => {
+    const { row, actor } = await fixtureDuty();
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    await db
+      .update(balances)
+      .set({ current: 7 })
+      .where(eq(balances.soldierId, actor.soldierId!));
+    const constraintId = randomUUID();
+    const constraint = {
+      approved: { start: "2029-06-01", end: "2029-06-02", version: 1 },
+      status: "approved",
+    };
+    await db.insert(records).values({
+      id: constraintId,
+      kind: "constraint",
+      subjectId: actor.soldierId,
+      data: constraint,
+    });
+    const lastDay = DateTime.fromISO(row.data.end)
+      .setZone("Asia/Jerusalem")
+      .toISODate()!;
+    const input = {
+      soldierId: actor.soldierId,
+      kind: "inactive",
+      startDate: lastDay,
+      endDate: lastDay,
+      reason: "קורס סינתטי",
+    };
+    await expect(periodPreview(input, 1, actor)).rejects.toMatchObject({
+      code: "forbidden",
+      status: 403,
+    });
+    const preview = await periodPreview(input, 1);
+    expect(preview.impact).toHaveLength(1);
+    expect(preview.impact[0]).toMatchObject({
+      before: "eligible",
+      after: "blocked",
+      affected: true,
+    });
+    expect(preview.impact[0].reasons.map((reason) => reason.code)).toContain(
+      "inactive"
+    );
+    const [unchanged] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(unchanged.version).toBe(1);
+    expect(unchanged.data.inactivePeriods).toHaveLength(0);
+    expect(
+      (await db.select().from(assignments))[0].data.needsAttention ?? []
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(records)
+        .where(eq(records.kind, "personnel_change"))
+    ).toHaveLength(0);
+    await expect(command("soldier.timeline", input, 1)).rejects.toThrow();
+    await expect(
+      command(
+        "soldier.timeline",
+        { ...input, confirmed: false, previewToken: preview.previewToken },
+        1
+      )
+    ).rejects.toThrow();
+    await command(
+      "soldier.timeline",
+      { ...input, confirmed: true, previewToken: preview.previewToken },
+      1
+    );
+    const [assigned] = await db.select().from(assignments);
+    expect(assigned.status).toBe("reserved");
+    expect(assigned.data.needsAttention).toContain("inactive");
+    const [saved] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(saved.version).toBe(2);
+    expect(saved.data.inactivePeriods).toEqual([
+      { start: lastDay, end: lastDay },
+    ]);
+    expect(
+      (
+        await db
+          .select()
+          .from(balances)
+          .where(eq(balances.soldierId, actor.soldierId!))
+      )[0].current
+    ).toBe(7);
+    expect(
+      (await db.select().from(records).where(eq(records.id, constraintId)))[0]
+        .data
+    ).toEqual(constraint);
+    // Inactivity blocks scheduling only; the account still signs in.
+    await requestCode(memberEmail);
+    await expect(
+      verifyCode(memberEmail, await storedCode(memberId))
+    ).resolves.toMatchObject({ epoch: 1 });
+  });
+  it("requires exemption approval for a partial overlap, rejects an obsolete preview and saves one of two competing confirmations", async () => {
+    const { row, actor } = await fixtureDuty();
+    const exemption = await command("eligibility.catalog.save", {
+      kind: "exemption",
+      name: "פטור חדש לבדיקה",
+    });
+    await db
+      .update(duties)
+      .set({
+        data: {
+          ...row.data,
+          requirements: { blockingExemptionIds: [exemption.id] },
+        },
+      })
+      .where(eq(duties.id, row.id));
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    const firstDay = DateTime.fromISO(row.data.start)
+      .setZone("Asia/Jerusalem")
+      .toISODate()!;
+    const input = {
+      soldierId: actor.soldierId,
+      kind: "exemption",
+      value: exemption.id,
+      startDate: "2026-01-01",
+      endDate: firstDay,
+    };
+    const obsolete = await periodPreview(input, 1);
+    expect(obsolete.impact[0]).toMatchObject({
+      before: "eligible",
+      affected: true,
+    });
+    expect(obsolete.impact[0].after).not.toBe("eligible");
+    expect(obsolete.impact[0].reasons.map((reason) => reason.code)).toContain(
+      "exemption"
+    );
+    await fixtureDuty();
+    await expect(
+      command(
+        "soldier.timeline",
+        { ...input, confirmed: true, previewToken: obsolete.previewToken },
+        1
+      )
+    ).rejects.toMatchObject({ code: "stale_preview", status: 409 });
+    const current = await periodPreview(input, 1);
+    const outcomes = await Promise.allSettled([
+      command(
+        "soldier.timeline",
+        { ...input, confirmed: true, previewToken: current.previewToken },
+        1
+      ),
+      command(
+        "soldier.timeline",
+        { ...input, confirmed: true, previewToken: current.previewToken },
+        1
+      ),
+    ]);
+    expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(person.version).toBe(2);
+    expect(person.data.exemptions).toHaveLength(1);
+    const [assigned] = await db
+      .select()
+      .from(assignments)
+      .where(eq(assignments.dutyId, row.id));
+    expect(assigned.status).toBe("reserved");
+    expect(assigned.data.needsAttention).toContain("exemption");
+    expect(
+      (await readState(actor)).soldiers.every((item) => !("exemptions" in item))
+    ).toBe(true);
+  });
+  it("counts combined qualification periods over the whole duty and clears the attention flag only when they cover it", async () => {
+    const { row, actor } = await fixtureDuty();
+    const qualification = await command("eligibility.catalog.save", {
+      kind: "qualification",
+      name: "כשירות מחולקת",
+    });
+    await addPeriod(
+      {
+        soldierId: actor.soldierId,
+        kind: "qualification",
+        value: qualification.id,
+        startDate: "2026-01-01",
+        endDate: "2030-12-31",
+      },
+      1
+    );
+    await db
+      .update(duties)
+      .set({
+        data: {
+          ...row.data,
+          requirements: { qualificationIds: [qualification.id] },
+        },
+      })
+      .where(eq(duties.id, row.id));
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    const firstDay = DateTime.fromISO(row.data.start)
+      .setZone("Asia/Jerusalem")
+      .toISODate()!;
+    const lastDay = DateTime.fromISO(row.data.end)
+      .setZone("Asia/Jerusalem")
+      .toISODate()!;
+    const edit = {
+      soldierId: actor.soldierId,
+      kind: "qualification",
+      operation: "replace",
+      index: 0,
+      value: qualification.id,
+      startDate: "2026-01-01",
+      endDate: DateTime.fromISO(firstDay).minus({ days: 1 }).toISODate()!,
+      reason: "קיצור לבדיקה",
+    };
+    const shortened = await timelinePreview(manager, edit, 2);
+    await command(
+      "soldier.timeline.edit",
+      { ...edit, confirmed: true, previewToken: shortened.previewToken },
+      2
+    );
+    expect(
+      (await db.select().from(assignments))[0].data.needsAttention
+    ).toContain("qualification");
+    const partial = await periodPreview(
+      {
+        soldierId: actor.soldierId,
+        kind: "qualification",
+        value: qualification.id,
+        startDate: firstDay,
+        endDate: firstDay,
+      },
+      3
+    );
+    expect(partial.impact[0]).toMatchObject({
+      after: "blocked",
+      affected: false,
+    });
+    const covering = {
+      soldierId: actor.soldierId,
+      kind: "qualification",
+      value: qualification.id,
+      startDate: firstDay,
+      endDate: lastDay,
+    };
+    const preview = await periodPreview(covering, 3);
+    expect(preview.impact[0]).toMatchObject({
+      before: "blocked",
+      after: "eligible",
+      affected: true,
+    });
+    await command(
+      "soldier.timeline",
+      { ...covering, confirmed: true, previewToken: preview.previewToken },
+      3
+    );
+    expect(
+      (await db.select().from(assignments))[0].data.needsAttention
+    ).toEqual([]);
+  });
   it("removes an exemption without discarding approved constraints and restricts both preview and catalog edits to managers", async () => {
     const { row, actor } = await fixtureDuty();
     const exemption = await command("eligibility.catalog.save", {
       kind: "exemption",
       name: "פטור סינתטי",
     });
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "exemption",
@@ -2647,8 +3345,7 @@ describe("first duty vertical slice", () => {
     };
     await command("duty.change.save", values, 1);
     const preview = await changePreview(change.id, 2);
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "inactive",
@@ -3883,8 +4580,7 @@ describe("first duty vertical slice", () => {
         kind: "exemption",
         name: "פטור סינתטי",
       });
-      await command(
-        "soldier.timeline",
+      await addPeriod(
         {
           soldierId: second.soldierId,
           kind: "exemption",

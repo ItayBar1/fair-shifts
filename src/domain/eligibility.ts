@@ -275,7 +275,7 @@ export function evaluateEligibility(
     )
   )
     block("allowed_hours", "התורנות חורגת מטווח השעות המותר");
-  // A consenting volunteer's own pending constraints never route a transfer to a manager (decision 159).
+  // A consenting volunteer's own pending constraints never route a transfer to a manager (decision 161).
   const volunteer = context.mode === "volunteer";
   const pending = soldier.constraints.filter(
     (constraint) => constraint.status === "pending"
