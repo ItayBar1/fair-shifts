@@ -25,6 +25,7 @@ import {
   CircleHelp,
 } from "lucide-react";
 import { type AppState, type Action, str, obj } from "@/client/types";
+import { unreadCount } from "@/client/notifications";
 import { Notice, Empty } from "./ui";
 import { CalendarView, DutyDetail, FairnessView, Dashboard } from "./views";
 import {
@@ -203,9 +204,7 @@ export function Workspace({ path }: { path: string }) {
   const pageTitle = effectivePath.startsWith("/duties/")
     ? "פרטי תורנות"
     : allLinks.find((l) => l.path === effectivePath)?.title || "המערכת";
-  const unread = state.notifications.filter(
-    (n) => !n.readAt && !n.read && !n.hiddenAt && !n.hidden
-  ).length;
+  const unread = unreadCount(state.notifications);
   const restricted =
     (effectivePath.startsWith("/manage") && !manager) ||
     (effectivePath.startsWith("/technical") && !technical) ||
