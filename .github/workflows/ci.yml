@@ -1,0 +1,19 @@
+name: Docker checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Types, lint, domain, PostgreSQL and production build
+        run: sh scripts/docker.sh --profile test run --build --rm tests
+      - name: Browser flow and mobile layout
+        run: sh scripts/docker.sh --profile test run --build --rm e2e
+      - name: Stop test services
+        if: always()
+        run: sh scripts/docker.sh --profile test down

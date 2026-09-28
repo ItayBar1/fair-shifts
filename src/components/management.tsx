@@ -1,0 +1,998 @@
+"use client";
+import { CatalogImpact } from "./duty-changes";
+import { useState } from "react";
+import Link from "next/link";
+import {
+  Search,
+  Plus,
+  CalendarDays,
+  ShieldCheck,
+  ArrowLeft,
+  Clock3,
+} from "lucide-react";
+import {
+  type AppState,
+  type Action,
+  type Row,
+  str,
+  num,
+  rows,
+  obj,
+  population,
+  displayDate,
+} from "@/client/types";
+import {
+  ActionDialog,
+  Badge,
+  Empty,
+  Panel,
+  Status,
+  Modal,
+  Form,
+  Notice,
+  populations,
+  type Field,
+} from "./ui";
+import { DutyList, dutyStatus } from "./views";
+import { RankRequirements } from "./rank-requirements";
+import { PeriodPlanning } from "./planning";
+import type { RankClause, Requirements } from "@/domain/types";
+const soldierFields = (s?: Row): Field[] => [
+  { name: "name", label: "שם מלא", required: true, value: str(s?.name) },
+  {
+    name: "personalNumber",
+    label: "מספר אישי",
+    required: true,
+    value: str(s?.personalNumber),
+    hint: "נשמר כטקסט, כולל אפסים בתחילת המספר",
+  },
+  {
+    name: "email",
+    label: "מייל מאושר להזמנה",
+    type: "email",
+    required: !s,
+    value: str(s?.email),
+  },
+  {
+    name: "population",
+    label: "אוכלוסיית שיבוץ",
+    type: "select",
+    required: true,
+    options: populations,
+    value: str(s?.population),
+  },
+  {
+    name: "serviceType",
+    label: "סוג שירות",
+    type: "select",
+    required: true,
+    options: [
+      { value: "mandatory", label: "חובה" },
+      { value: "career", label: "קבע" },
+    ],
+    value: str(s?.serviceType, "mandatory"),
+  },
+  { name: "phone", label: "טלפון", value: str(s?.phone) },
+  {
+    name: "enlistmentDate",
+    label: "תאריך גיוס",
+    type: "date",
+    value: str(s?.enlistmentDate),
+  },
+  {
+    name: "arrivalDate",
+    label: "תאריך הגעה ליחידה",
+    type: "date",
+    value: str(s?.arrivalDate),
+  },
+  {
+    name: "releaseDate",
+    label: "יום אחרון בשירות",
+    type: "date",
+    value: str(s?.releaseDate),
+  },
+  {
+    name: "officerDate",
+    label: "תחילת קצונה רגילה",
+    type: "date",
+    value: str(s?.officerDate),
+  },
+  {
+    name: "permanentDate",
+    label: "תחילת שירות קבע",
+    type: "date",
+    value: str(s?.permanentDate),
+  },
+  {
+    name: "graceEligible",
+    label: "זכאי לחודש חסד מתאריך ההגעה",
+    type: "checkbox",
+    value: Boolean(s?.graceEligible),
+    hint: "קליטת רשומה קיימת אינה מעניקה חסד אוטומטי",
+  },
+  {
+    name: "address",
+    label: "כתובת (רשות)",
+    full: true,
+    value: str(s?.address),
+  },
+  {
+    name: "currentScore",
+    label: "יתרת פתיחה",
+    type: "number",
+    min: 0,
+    value: num(s?.currentScore ?? s?.score),
+  },
+];
+export function SoldiersView({
+  state,
+  action,
+}: {
+  state: AppState;
+  action: Action;
+}) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState(state.actor.population || "");
+  const [selected, setSelected] = useState<Row | null>(null);
+  const filtered = state.soldiers.filter(
+    (s) =>
+      !s.deletedAt &&
+      (!search ||
+        str(s.name).includes(search) ||
+        str(s.personalNumber).includes(search)) &&
+      (!filter || s.population === filter || s.population === "academic")
+  );
+  return (
+    <>
+      <Panel
+        title="חיילי היחידה"
+        subtitle="נתוני השירות משמשים לבדיקת התאמה במועד התורנות"
+        actions={
+          <ActionDialog
+            title="הוספת חייל"
+            fields={soldierFields()}
+            action={action}
+            type="soldier.create"
+            description="לאחר הקליטה החייל יוכל להתחבר באמצעות המייל המאושר."
+          />
+        }
+      >
+        <div className="filters">
+          <label className="search">
+            <Search size={17} />
+            <input
+              aria-label="חיפוש חייל לפי שם או מספר אישי"
+              placeholder="שם או מספר אישי…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <select
+            aria-label="אוכלוסיית שיבוץ"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          >
+            <option value="">כל האוכלוסיות</option>
+            {populations.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label} וקמ״א
+              </option>
+            ))}
+          </select>
+          <span className="muted">{filtered.length} חיילים</span>
+        </div>
+        {filtered.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>שם</th>
+                  <th>מספר אישי</th>
+                  <th>אוכלוסייה</th>
+                  <th>דרגה</th>
+                  <th>שחרור</th>
+                  <th>מצב</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <span className="person">
+                        <span className="avatar small">
+                          {str(s.name).slice(0, 1)}
+                        </span>
+                        <strong>{str(s.name)}</strong>
+                      </span>
+                    </td>
+                    <td dir="ltr">{str(s.personalNumber)}</td>
+                    <td>{population(s.population)}</td>
+                    <td>{str(s.rankName ?? s.rank, "לא הוזנה")}</td>
+                    <td>{displayDate(s.releaseDate)}</td>
+                    <td>
+                      <Status value={s.status || "active"} />
+                    </td>
+                    <td>
+                      <button
+                        className="btn small secondary"
+                        onClick={() => setSelected(s)}
+                      >
+                        פרופיל ועריכה
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            title="לא נמצאו חיילים"
+            text="מוסיפים חייל יחיד או מייבאים את רשימת היחידה מ־Excel."
+            action={
+              <Link className="text-link" href="/manage/imports">
+                לייבוא חיילים <ArrowLeft size={15} />
+              </Link>
+            }
+          />
+        )}
+      </Panel>
+      {selected && (
+        <Modal
+          title={`פרופיל חייל · ${str(selected.name)}`}
+          onClose={() => setSelected(null)}
+          wide
+        >
+          <div className="tabs-heading">
+            <Badge>{population(selected.population)}</Badge>
+            <span className="muted">
+              מספר אישי {str(selected.personalNumber)}
+            </span>
+          </div>
+          <Form
+            fields={soldierFields(selected).filter(
+              (f) => !["email", "currentScore"].includes(f.name)
+            )}
+            onSubmit={async (v) => {
+              await action(
+                "soldier.update",
+                { id: selected.id, ...v },
+                selected.version
+              );
+              setSelected(null);
+            }}
+          />
+          <details className="disclosure">
+            <summary>מועדי שירות, כשירות והיסטוריה</summary>
+            <div className="stack">
+              {[
+                "serviceHistory",
+                "ranks",
+                "inactivity",
+                "qualifications",
+                "exemptions",
+              ].map((key) =>
+                rows(selected[key]).map((entry, i) => (
+                  <div className="history-row" key={`${key}-${i}`}>
+                    <strong>
+                      {str(
+                        entry.name ??
+                          entry.value ??
+                          entry.population ??
+                          entry.rank,
+                        "תקופת שירות"
+                      )}
+                    </strong>
+                    <span>
+                      {displayDate(entry.startDate ?? entry.from)} —{" "}
+                      {displayDate(entry.endDate ?? entry.to)}
+                    </span>
+                  </div>
+                ))
+              )}
+              <ActionDialog
+                title="הוספת שינוי לשירות או לזמינות"
+                fields={[
+                  {
+                    name: "kind",
+                    label: "סוג השינוי",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { value: "population", label: "מעבר אוכלוסיית שיבוץ" },
+                      { value: "inactive", label: "תקופת אי־פעילות" },
+                    ],
+                  },
+                  {
+                    name: "value",
+                    label: "אוכלוסייה חדשה (למעבר בלבד)",
+                    type: "select",
+                    options: populations,
+                  },
+                  {
+                    name: "startDate",
+                    label: "בתוקף מתאריך",
+                    type: "date",
+                    required: true,
+                  },
+                  { name: "endDate", label: "עד תאריך (כולל)", type: "date" },
+                  {
+                    name: "reason",
+                    label: "סיבה",
+                    type: "textarea",
+                    required: true,
+                    full: true,
+                  },
+                ]}
+                action={action}
+                type="soldier.timeline"
+                payload={{ soldierId: selected.id }}
+                version={selected.version}
+              />
+            </div>
+          </details>
+          <details className="disclosure">
+            <summary>ניהול כתובת מייל וחשבון</summary>
+            <div className="stack">
+              <ActionDialog
+                title="שינוי כתובת מייל"
+                fields={[
+                  {
+                    name: "email",
+                    label: "כתובת המייל החדשה",
+                    type: "email",
+                    required: true,
+                  },
+                  { name: "reason", label: "סיבת השינוי", required: true },
+                ]}
+                action={action}
+                type="account.email.request"
+                payload={{ soldierId: selected.id }}
+                version={selected.version}
+                description="נשלח אימות לכתובת החדשה. החיבורים הקיימים יבוטלו לאחר האימות, וקישור Google ייבדק מחדש."
+              />
+              <ActionDialog
+                title="אימות כתובת חדשה"
+                fields={[
+                  {
+                    name: "code",
+                    label: "קוד שנשלח לכתובת החדשה",
+                    required: true,
+                  },
+                  {
+                    name: "disconnectGoogle",
+                    label:
+                      "הבנתי שקישור Google הישן יוסר וכל החיבורים הקיימים יבוטלו",
+                    type: "checkbox",
+                    required: true,
+                  },
+                ]}
+                action={action}
+                type="account.email.confirm"
+                payload={{ soldierId: selected.id }}
+                version={selected.version}
+              />
+              <ActionDialog
+                title="מחיקת משתמש"
+                buttonLabel="מחיקת המשתמש והמידע הרגיש"
+                fields={[
+                  {
+                    name: "reason",
+                    label: "סיבת המחיקה",
+                    type: "textarea",
+                    required: true,
+                    full: true,
+                  },
+                  {
+                    name: "confirmed",
+                    label:
+                      "הבנתי שפרטי הקשר והמידע הרגיש יימחקו, שיבוצים עתידיים יתפנו וההיסטוריה הנדרשת תישמר",
+                    type: "checkbox",
+                    required: true,
+                  },
+                ]}
+                action={action}
+                type="soldier.delete"
+                payload={{ id: selected.id }}
+                version={selected.version}
+                danger
+              />
+            </div>
+          </details>
+        </Modal>
+      )}
+    </>
+  );
+}
+export function EligibilityView({
+  state,
+  action,
+}: {
+  state: AppState;
+  action: Action;
+}) {
+  const catalogs = rows(state.eligibilityCatalog);
+  return (
+    <>
+      <Notice>
+        פטורים וכשירויות מוזנים לאחר בדיקת האחראי. שינוי נתונים מסמן שיבוצים
+        שנפגעו לטיפול ואינו מבטל אותם אוטומטית.
+      </Notice>
+      <div className="two-columns">
+        <Panel
+          title="סוגי פטורים וכשירויות"
+          actions={
+            <ActionDialog
+              title="הגדרה חדשה"
+              fields={[
+                {
+                  name: "kind",
+                  label: "סוג ההגדרה",
+                  type: "select",
+                  required: true,
+                  options: [
+                    { value: "qualification", label: "כשירות נדרשת" },
+                    { value: "exemption", label: "פטור" },
+                  ],
+                },
+                { name: "name", label: "שם", required: true },
+                {
+                  name: "description",
+                  label: "הסבר לשימוש",
+                  type: "textarea",
+                  full: true,
+                },
+              ]}
+              action={action}
+              type="eligibility.catalog.save"
+            />
+          }
+        >
+          {catalogs.length ? (
+            catalogs.map((c) => (
+              <div className="task-item" key={c.id}>
+                <span className="task-symbol teal">
+                  <ShieldCheck size={20} />
+                </span>
+                <span>
+                  <strong>{str(c.name)}</strong>
+                  <small>{str(c.description)}</small>
+                </span>
+                <Badge>{c.kind === "exemption" ? "פטור" : "כשירות"}</Badge>
+              </div>
+            ))
+          ) : (
+            <Empty
+              title="הקטלוג עדיין ריק"
+              text="מגדירים סוג פטור או כשירות, ואז משייכים אותו לחיילים ולסוגי תורנות."
+            />
+          )}
+        </Panel>
+        <Panel title="שיוך לחייל" subtitle="תוקף הכשירות נבדק לכל משך התורנות">
+          <Form
+            fields={[
+              {
+                name: "soldierId",
+                label: "חייל",
+                type: "select",
+                required: true,
+                options: state.soldiers
+                  .filter((s) => !s.deletedAt)
+                  .map((s) => ({ value: s.id, label: str(s.name) })),
+              },
+              {
+                name: "kind",
+                label: "מה משייכים",
+                type: "select",
+                required: true,
+                options: [
+                  { value: "qualification", label: "כשירות" },
+                  { value: "exemption", label: "פטור" },
+                ],
+              },
+              {
+                name: "value",
+                label: "סוג מהקטלוג",
+                type: "select",
+                required: true,
+                options: catalogs.map((c) => ({
+                  value: c.id,
+                  label: str(c.name),
+                })),
+              },
+              {
+                name: "startDate",
+                label: "תחילת תוקף",
+                type: "date",
+                required: true,
+              },
+              { name: "endDate", label: "סיום תוקף (כולל)", type: "date" },
+              {
+                name: "reason",
+                label: "הערת אחראי",
+                type: "textarea",
+                full: true,
+              },
+            ]}
+            onSubmit={(v) =>
+              action(
+                "soldier.timeline",
+                v,
+                state.soldiers.find((s) => s.id === v.soldierId)?.version
+              )
+            }
+            submitLabel="שמירת שיוך"
+          />
+        </Panel>
+      </div>
+    </>
+  );
+}
+export { RanksView } from "./ranks";
+function CatalogForm({
+  state,
+  initial,
+  action,
+  onDone,
+}: {
+  state: AppState;
+  initial?: Row;
+  action: Action;
+  onDone: () => void;
+}) {
+  const [rankClauses, setRankClauses] = useState<RankClause[]>(
+    Array.isArray(initial?.ranks) ? (initial.ranks as RankClause[]) : []
+  );
+  const [roleItems, setRoles] = useState<
+    { id: string; name: string; count: number; requirements: Requirements }[]
+  >(
+    initial
+      ? rows(initial.roles).map((r) => ({
+          id: str(r.id, crypto.randomUUID()),
+          name: str(r.name),
+          count: num(r.count, 1),
+          requirements: obj(r.requirements),
+        }))
+      : [{ id: crypto.randomUUID(), name: "תורן", count: 1, requirements: {} }]
+  );
+  const [bonus, setBonus] = useState(false);
+  const pricing = obj(initial?.pricing);
+  const fields: Field[] = [
+    {
+      name: "name",
+      label: "שם סוג התורנות",
+      required: true,
+      value: str(initial?.name),
+    },
+    {
+      name: "populations",
+      label: "אוכלוסיות מותרות",
+      type: "multiselect",
+      required: true,
+      options: populations,
+      value: Array.isArray(initial?.populations)
+        ? initial.populations.map(String)
+        : populations.map((p) => p.value),
+    },
+    {
+      name: "mode",
+      label: "אופן התמחור",
+      type: "select",
+      required: true,
+      options: [
+        { value: "fixed", label: "מחיר קבוע לביצוע" },
+        { value: "daily", label: "מחיר לכל 24 שעות" },
+      ],
+      value: str(pricing.mode, "fixed"),
+    },
+    {
+      name: "base",
+      label: "ניקוד בסיס",
+      type: "number",
+      required: true,
+      min: 0,
+      step: "0.01",
+      value: num(pricing.base ?? pricing.amount),
+    },
+    {
+      name: "restBeforeMinutes",
+      label: "מנוחה לפני (דקות)",
+      type: "number",
+      min: 0,
+      value: num(initial?.restBeforeMinutes),
+    },
+    {
+      name: "restAfterMinutes",
+      label: "מנוחה אחרי (דקות)",
+      type: "number",
+      min: 0,
+      value: num(initial?.restAfterMinutes),
+    },
+    {
+      name: "description",
+      label: "הסבר והנחיות ברירת מחדל",
+      type: "textarea",
+      full: true,
+      value: str(initial?.description),
+    },
+    {
+      name: "qualificationIds",
+      label: "כשירויות נדרשות",
+      type: "multiselect",
+      options: rows(state.eligibilityCatalog)
+        .filter((r) => r.kind === "qualification")
+        .map((r) => ({ value: r.id, label: str(r.name) })),
+      value: Array.isArray(initial?.qualificationIds)
+        ? initial.qualificationIds.map(String)
+        : [],
+    },
+    {
+      name: "exemptionIds",
+      label: "פטורים פוסלים",
+      type: "multiselect",
+      options: rows(state.eligibilityCatalog)
+        .filter((r) => r.kind === "exemption")
+        .map((r) => ({ value: r.id, label: str(r.name) })),
+      value: Array.isArray(initial?.exemptionIds)
+        ? initial.exemptionIds.map(String)
+        : [],
+    },
+  ];
+  if (bonus)
+    fields.push(
+      { name: "bonusName", label: "שם תוספת הזמן", required: true },
+      {
+        name: "bonusPoints",
+        label: "נקודות לתוספת",
+        type: "number",
+        required: true,
+        min: 0,
+        step: "0.01",
+      },
+      {
+        name: "windowStart",
+        label: "תחילת החלון היומי",
+        type: "time",
+        required: true,
+      },
+      {
+        name: "windowEnd",
+        label: "סיום החלון היומי",
+        type: "time",
+        required: true,
+      },
+      {
+        name: "bonusDays",
+        label: "ימי תחולה",
+        hint: "0=ראשון, 6=שבת. מופרדים בפסיק",
+        value: "0,1,2,3,4,5,6",
+        required: true,
+      },
+      {
+        name: "minimumHours",
+        label: "מינימום שעות בחלון",
+        type: "number",
+        min: 0,
+        step: "0.25",
+        value: 0,
+        hint: "0 — מספיקה חפיפה כלשהי",
+      },
+      {
+        name: "recurrence",
+        label: "ספירת התוספת",
+        type: "select",
+        required: true,
+        options: [
+          { value: "per_day", label: "לכל חלון יומי מתאים" },
+          { value: "once", label: "פעם אחת לביצוע" },
+        ],
+        value: "per_day",
+      }
+    );
+  return (
+    <>
+      <Form
+        fields={fields}
+        onSubmit={async (v) => {
+          const supplements = bonus
+            ? [
+                ...rows(pricing.supplements),
+                {
+                  id: crypto.randomUUID(),
+                  name: v.bonusName,
+                  points: v.bonusPoints,
+                  windowStart: v.windowStart,
+                  windowEnd: v.windowEnd,
+                  weekdays: str(v.bonusDays).split(",").map(Number),
+                  minimumHours: v.minimumHours,
+                  recurrence: v.recurrence,
+                },
+              ]
+            : rows(pricing.supplements);
+          await action(
+            "dutyType.save",
+            {
+              id: initial?.id,
+              name: v.name,
+              description: v.description,
+              populations: v.populations,
+              ranks: rankClauses,
+              pricing: { mode: v.mode, base: v.base, supplements },
+              restBeforeMinutes: v.restBeforeMinutes,
+              restAfterMinutes: v.restAfterMinutes,
+              qualificationIds: v.qualificationIds,
+              exemptionIds: v.exemptionIds,
+              roles: roleItems,
+            },
+            initial?.version
+          );
+          onDone();
+        }}
+      >
+        <RankRequirements
+          catalog={rows(state.rankCatalog)}
+          value={rankClauses}
+          onChange={setRankClauses}
+          label="תנאי דרגה לסוג התורנות"
+        />
+        <div className="subsection">
+          <h3>הרכב התורנות</h3>
+          {roleItems.map((role, i) => (
+            <div className="role-editor" key={role.id}>
+              <label className="field">
+                <span>שם תפקיד</span>
+                <input
+                  value={role.name}
+                  required
+                  onChange={(e) =>
+                    setRoles(
+                      roleItems.map((r, index) =>
+                        index === i ? { ...r, name: e.target.value } : r
+                      )
+                    )
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>מקומות</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  required
+                  value={role.count}
+                  onChange={(e) =>
+                    setRoles(
+                      roleItems.map((r, index) =>
+                        index === i
+                          ? { ...r, count: Number(e.target.value) }
+                          : r
+                      )
+                    )
+                  }
+                />
+              </label>
+              <RankRequirements
+                catalog={rows(state.rankCatalog)}
+                value={role.requirements.ranks ?? []}
+                onChange={(ranks) =>
+                  setRoles(
+                    roleItems.map((r, index) =>
+                      index === i
+                        ? { ...r, requirements: { ...r.requirements, ranks } }
+                        : r
+                    )
+                  )
+                }
+                label={`תנאי דרגה לתפקיד ${i + 1}`}
+              />
+              {roleItems.length > 1 && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() =>
+                    setRoles(roleItems.filter((_, index) => index !== i))
+                  }
+                >
+                  הסרה
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() =>
+              setRoles([
+                ...roleItems,
+                {
+                  id: crypto.randomUUID(),
+                  name: "",
+                  count: 1,
+                  requirements: {},
+                },
+              ])
+            }
+          >
+            <Plus size={15} />
+            הוספת תפקיד
+          </button>
+        </div>
+        <label className="check-field inline">
+          <input
+            type="checkbox"
+            checked={bonus}
+            onChange={(e) => setBonus(e.target.checked)}
+          />
+          הגדרת תוספת זמן
+        </label>
+        <p className="muted">
+          שינוי המחירון יחול על תורנויות חדשות. מופעים קיימים שומרים את הכללים
+          שנקבעו להם.
+        </p>
+      </Form>
+    </>
+  );
+}
+export function CatalogView({
+  state,
+  action,
+}: {
+  state: AppState;
+  action: Action;
+}) {
+  const [editing, setEditing] = useState<Row | true | null>(null);
+  return (
+    <>
+      <div className="page-actions">
+        <button className="btn primary" onClick={() => setEditing(true)}>
+          <Plus size={17} />
+          סוג תורנות חדש
+        </button>
+      </div>
+      {state.dutyTypes.length ? (
+        <div className="catalog-grid">
+          {state.dutyTypes.map((type) => (
+            <Panel key={type.id}>
+              <div className="catalog-card">
+                <span className="task-symbol teal">
+                  <CalendarDays size={23} />
+                </span>
+                <Badge>
+                  {rows(type.roles).reduce((n, r) => n + num(r.count, 1), 0)}{" "}
+                  מקומות
+                </Badge>
+                <h2>{str(type.name)}</h2>
+                <p>{str(type.description, "לא נוספו הנחיות")}</p>
+                <div className="price-line">
+                  <strong>
+                    {num(obj(type.pricing).base ?? obj(type.pricing).amount)}
+                  </strong>
+                  <span>
+                    נקודות{" "}
+                    {obj(type.pricing).mode === "daily"
+                      ? "ל־24 שעות"
+                      : "לביצוע"}
+                  </span>
+                </div>
+                <div className="meta-line">
+                  <Clock3 size={15} />
+                  מנוחה: {num(type.restBeforeMinutes)} דקות לפני ·{" "}
+                  {num(type.restAfterMinutes)} אחרי
+                </div>
+                <button
+                  className="btn secondary full-width"
+                  onClick={() => setEditing(type)}
+                >
+                  פרטים ועריכה
+                </button>
+                <CatalogImpact state={state} action={action} catalog={type} />
+              </div>
+            </Panel>
+          ))}
+        </div>
+      ) : (
+        <Panel>
+          <Empty
+            title="מתחילים בהגדרת סוג תורנות"
+            text="מגדירים פעם אחת הרכב, תנאי התאמה וניקוד. כל מופע חדש יתחיל מההגדרות האלה."
+            action={
+              <button className="btn primary" onClick={() => setEditing(true)}>
+                <Plus size={17} />
+                יצירת סוג תורנות
+              </button>
+            }
+          />
+        </Panel>
+      )}
+      {editing && (
+        <Modal
+          title={editing === true ? "סוג תורנות חדש" : "עריכת סוג תורנות"}
+          wide
+          onClose={() => setEditing(null)}
+        >
+          <CatalogForm
+            state={state}
+            initial={editing === true ? undefined : editing}
+            action={action}
+            onDone={() => setEditing(null)}
+          />
+        </Modal>
+      )}
+    </>
+  );
+}
+export function PlanningView({
+  state,
+  action,
+}: {
+  state: AppState;
+  action: Action;
+}) {
+  return (
+    <>
+      <div className="two-columns">
+        <Panel title="תורנות חדשה" subtitle="המופע יישמר כטיוטה משותפת לאחראים">
+          {state.dutyTypes.length ? (
+            <Form
+              fields={[
+                {
+                  name: "typeId",
+                  label: "סוג תורנות",
+                  type: "select",
+                  required: true,
+                  options: state.dutyTypes.map((t) => ({
+                    value: t.id,
+                    label: str(t.name),
+                  })),
+                },
+                { name: "name", label: "שם המופע", required: true },
+                {
+                  name: "start",
+                  label: "תחילת התורנות",
+                  type: "datetime-local",
+                  required: true,
+                },
+                {
+                  name: "end",
+                  label: "סיום התורנות",
+                  type: "datetime-local",
+                  required: true,
+                },
+                { name: "location", label: "מיקום", required: true },
+                {
+                  name: "instructions",
+                  label: "הנחיות",
+                  type: "textarea",
+                  full: true,
+                },
+              ]}
+              onSubmit={(v) => action("duty.create", v)}
+              submitLabel="יצירת טיוטה"
+            />
+          ) : (
+            <Empty
+              title="צריך להגדיר קודם סוג תורנות"
+              action={
+                <Link className="btn primary" href="/manage/catalog">
+                  לקטלוג התורנויות
+                </Link>
+              }
+            />
+          )}
+        </Panel>
+        <PeriodPlanning state={state} action={action} />
+      </div>
+      <Panel
+        title="תורנויות בתכנון"
+        subtitle="פתיחת תורנות מאפשרת שיבוץ ידני, הגרלה ופרסום"
+      >
+        <DutyList
+          state={state}
+          duties={state.duties.filter((d) => dutyStatus(d) !== "cancelled")}
+        />
+      </Panel>
+    </>
+  );
+}

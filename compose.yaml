@@ -1,0 +1,97 @@
+name: fair-shifts
+x-app: &app
+  build:
+    context: .
+    target: development
+  init: true
+  environment: &env
+    DATABASE_URL: postgresql://fair_shifts:development-only@db:5432/fair_shifts
+    BETTER_AUTH_URL: http://localhost:3000
+    BETTER_AUTH_SECRET: local-synthetic-only-secret-change-before-production-0001
+    OTP_SECRET: local-synthetic-only-otp-change-before-production-00000001
+    MAIL_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    MAIL_TRANSPORT: disabled
+    RESTORE_MODE: "false"
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:18.6-bookworm
+    environment:
+      POSTGRES_USER: fair_shifts
+      POSTGRES_PASSWORD: development-only
+      POSTGRES_DB: fair_shifts
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U fair_shifts -d fair_shifts"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  app:
+    <<: *app
+    ports: ["127.0.0.1:3000:3000"]
+    command: [sh, -c, "pnpm db:migrate && pnpm dev --hostname 0.0.0.0"]
+  worker:
+    <<: *app
+    command: [sh, -c, "pnpm db:migrate && pnpm worker"]
+  tools:
+    <<: *app
+    build:
+      context: .
+      target: tooling
+    profiles: [tools]
+    command: [pnpm, typecheck]
+  test-db:
+    image: postgres:18.6-bookworm
+    profiles: [test]
+    environment:
+      POSTGRES_USER: fair_shifts
+      POSTGRES_PASSWORD: test-only
+      POSTGRES_DB: fair_shifts_test
+    tmpfs: [/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U fair_shifts -d fair_shifts_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  tests:
+    <<: *app
+    profiles: [test]
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql://fair_shifts:test-only@test-db:5432/fair_shifts_test
+      TEST_DATABASE_URL: postgresql://fair_shifts:test-only@test-db:5432/fair_shifts_test
+      NODE_ENV: test
+    depends_on:
+      test-db:
+        condition: service_healthy
+    command:
+      [
+        sh,
+        -c,
+        "pnpm db:migrate && pnpm typecheck && pnpm lint && pnpm test && pnpm test:integration && pnpm build",
+      ]
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    profiles: [test]
+    init: true
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql://fair_shifts:test-only@test-db:5432/fair_shifts_test
+      TEST_DATABASE_URL: postgresql://fair_shifts:test-only@test-db:5432/fair_shifts_test
+      BETTER_AUTH_URL: http://127.0.0.1:3000
+      CI: "true"
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./test-results:/app/test-results
+      - ./playwright-report:/app/playwright-report
+
+volumes:
+  postgres-data:
