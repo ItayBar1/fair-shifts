@@ -143,6 +143,8 @@ export const emailOutbox = pgTable(
       .references(() => user.id),
     eventKey: text("event_key").notNull().unique(),
     kind: text("kind").notNull(),
+    // Hours before the duty for a duty reminder; checked against current preferences.
+    reminderHours: integer("reminder_hours"),
     priority: integer("priority").notNull().default(2),
     title: text("title").notNull(),
     body: text("body").notNull(),

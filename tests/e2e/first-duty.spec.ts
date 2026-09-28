@@ -1,13 +1,15 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { db, pool } from "../../src/server/db";
+import { db, unitTransaction } from "../../src/server/db";
+import { settleDue } from "../../src/server/scoring";
 import { user, emailOutbox } from "../../src/server/auth-schema";
 import {
   soldiers,
   balances,
   soldierContacts,
   records,
+  duties,
 } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
@@ -39,7 +41,7 @@ test.beforeAll(async () => {
     soldierId: id,
   });
 });
-test.afterAll(async () => pool.end());
+// The pool is shared by every spec in the worker; the worker exit closes it.
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(email);
@@ -1283,6 +1285,142 @@ test("multi-day duties appear on every Israeli day and month, independent of the
     path: "test-results/calendar-multiday.png",
     fullPage: true,
   });
+  await context.close();
+});
+
+test("manager corrects a finished duty with an impact preview while the draw value stays", async ({
+  page,
+  browser,
+}) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
+  await account(
+    "תיקון אחראי",
+    "fix-manager@example.invalid",
+    "300001",
+    "manager"
+  );
+  const memberId = await account(
+    "תיקון חייל",
+    "fix-soldier@example.invalid",
+    "300002",
+    "soldier"
+  );
+  await login(page, "fix-manager@example.invalid");
+  const api = async (
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number
+  ) => {
+    const response = await page.request.post("/api/v1/actions", {
+      headers: { origin: "http://127.0.0.1:3000" },
+      data: { type, payload, expectedVersion, idempotencyKey: randomUUID() },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+    return (await response.json()).result as { id: string; version: number };
+  };
+  const type = await api("dutyType.save", {
+    name: "תיקון עבר",
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: 1 }],
+  });
+  const created = await api("duty.create", {
+    typeId: type.id,
+    name: "שמירה שהסתיימה",
+    start: DateTime.now().plus({ days: 1 }).toISO(),
+    end: DateTime.now().plus({ days: 2 }).toISO(),
+  });
+  const state = await (await page.request.get("/api/v1/state")).json();
+  const row = state.duties.find((d: { id: string }) => d.id === created.id);
+  await api(
+    "duty.assign",
+    { dutyId: row.id, slotId: row.slots[0].id, soldierId: memberId },
+    1
+  );
+  await api("duty.publish", { id: row.id, confirmed: true }, 2);
+  const [published] = await db
+    .select()
+    .from(duties)
+    .where(eq(duties.id, row.id));
+  const zone = "Asia/Jerusalem";
+  const day = DateTime.now().setZone(zone).minus({ days: 3 }).startOf("day");
+  await db
+    .update(duties)
+    .set({
+      data: {
+        ...published.data,
+        start: day.set({ hour: 8 }).toISO()!,
+        end: day.set({ hour: 16 }).toISO()!,
+      },
+    })
+    .where(eq(duties.id, row.id));
+  await unitTransaction((tx) => settleDue(tx));
+
+  await page.goto(`/duties/${row.id}`);
+  const panel = page.locator(".panel").filter({ hasText: "תיקון ביצוע עבר" });
+  await expect(
+    panel.getByText("ביצוע 4 נקודות · בהגרלה 4 נקודות")
+  ).toBeVisible();
+  await panel.getByRole("button", { name: "תיקון ביצוע" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("סיום הביצוע")).toHaveValue(
+    day.set({ hour: 16 }).toFormat("yyyy-MM-dd'T'HH:mm")
+  );
+  await dialog
+    .getByLabel("סיום הביצוע")
+    .fill(day.set({ hour: 20 }).toFormat("yyyy-MM-dd'T'HH:mm"));
+  await dialog.getByLabel("שווי ידני").fill("6");
+  await dialog.getByLabel("סיבת התיקון").fill("הביצוע התארך בארבע שעות");
+  await dialog.getByRole("button", { name: "תצוגת השפעה" }).click();
+  await expect(dialog.getByText("שווי בהגרלה (נשמר)")).toBeVisible();
+  await expect(dialog.getByText("היסטוריה: 4 ← 6 נקודות")).toBeVisible();
+  await expect(dialog.getByText("יתרה כיום: 4 ← 6")).toBeVisible();
+  await page.screenshot({
+    path: "test-results/performance-correction-preview.png",
+    fullPage: true,
+  });
+  await dialog.getByLabel("בדקתי את התיקון ואת השפעתו").check();
+  await dialog.getByRole("button", { name: "שמירת התיקון" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    panel.getByText("ביצוע 6 נקודות · בהגרלה 4 נקודות")
+  ).toBeVisible();
+  await expect(panel.getByText("תוקן", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByRole("cell", { name: "הביצוע התארך בארבע שעות" })
+  ).toBeVisible();
+  const [saved] = await db
+    .select()
+    .from(balances)
+    .where(eq(balances.soldierId, memberId));
+  expect(saved.current).toBe(6);
+
+  const context = await browser.newContext();
+  const member = await context.newPage();
+  await login(member, "fix-soldier@example.invalid");
+  await member.setViewportSize({ width: 390, height: 844 });
+  await member.goto(`/duties/${row.id}`);
+  await expect(
+    member.getByText("בוצע בפועל: תיקון חייל, 6 נקודות")
+  ).toBeVisible();
+  await expect(member.getByText("תיקון ביצוע עבר")).toHaveCount(0);
+  await expect(member.getByText("הביצוע התארך בארבע שעות")).toHaveCount(0);
+  expect(
+    await member.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
   await context.close();
 });
 test("population moves preview their impact before saving in the transition, the profile and the import", async ({

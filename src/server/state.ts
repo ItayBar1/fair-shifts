@@ -5,6 +5,25 @@ import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
 import { populationAt, rankAt } from "../domain/eligibility";
+import { effectivePreferences } from "./notifications";
+import { resolvePreferences } from "../domain/notification-preferences";
+import type { DbTransaction } from "./db";
+
+async function preferencesState(tx: DbTransaction, actor: Actor) {
+  const current = await effectivePreferences(tx, actor.id);
+  return {
+    ...current.preferences,
+    source: current.source,
+    version: current.version,
+  };
+}
+function unitDefaults(workflows: (typeof records.$inferSelect)[]) {
+  const row = workflows.find((item) => item.kind === "notification_defaults");
+  return {
+    ...resolvePreferences(null, row?.data).preferences,
+    version: row?.version,
+  };
+}
 
 export async function readState(actor: Actor) {
   return db.transaction(async (tx) => {
@@ -39,6 +58,8 @@ export async function readState(actor: Actor) {
       ledger: [],
       notifications: [],
       settings: {},
+      notificationDefaults: undefined as
+        ReturnType<typeof unitDefaults> | undefined,
       accounts: [],
       audit: [],
       imports: [],
@@ -46,6 +67,8 @@ export async function readState(actor: Actor) {
       rankRules: [],
       rankReminders: [],
       rankCatalog: [],
+      performanceCorrections: [],
+      scoreDecisions: [],
     };
     if (actor.role === "technical") {
       const accounts = await tx
@@ -72,6 +95,7 @@ export async function readState(actor: Actor) {
       const operations = await tx.select().from(operationsState);
       return {
         ...base,
+        settings: await preferencesState(tx, actor),
         accounts,
         operations: [
           ...mail,
@@ -183,6 +207,14 @@ export async function readState(actor: Actor) {
                 soldierId: row.soldierId,
                 status: row.status,
                 points: row.points,
+                ...(row.performance && {
+                  performance: {
+                    performerId: row.performance.performerId,
+                    start: row.performance.start,
+                    end: row.performance.end,
+                    points: row.performance.points,
+                  },
+                }),
               }
         ),
       dutyTypes: managing
@@ -197,8 +229,19 @@ export async function readState(actor: Actor) {
       rounds: workflow("round"),
       constraints: managing ? workflow("constraint") : own("constraint"),
       requests: managing ? workflow("request") : own("request"),
-      notifications: own("notification"),
-      settings: own("settings")[0] ?? {},
+      // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
+      notifications: workflows
+        .filter(
+          (row) =>
+            row.kind === "notification" &&
+            !row.data.hiddenAt &&
+            (typeof row.data.accountId === "string"
+              ? row.data.accountId === actor.id
+              : Boolean(actor.soldierId) && row.subjectId === actor.soldierId)
+        )
+        .map((row) => ({ ...row.data, id: row.id, version: row.version })),
+      settings: await preferencesState(tx, actor),
+      notificationDefaults: managing ? unitDefaults(workflows) : undefined,
       ledger: managing
         ? scoreRows
         : scoreRows
@@ -232,6 +275,10 @@ export async function readState(actor: Actor) {
       lotteryAttempts: managing ? workflow("lottery_attempt") : [],
       planningRuns: managing ? workflow("planning_run") : [],
       dutyChanges: managing ? workflow("duty_change") : [],
+      performanceCorrections: managing
+        ? workflow("performance_correction")
+        : [],
+      scoreDecisions: managing ? workflow("score_decision") : [],
     };
   });
 }
