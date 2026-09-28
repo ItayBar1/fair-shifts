@@ -26,7 +26,7 @@ import type {
 } from "../domain/types";
 import { enqueueEmail } from "./operations/email";
 
-// Consensual transfer of a published seat before it starts (decisions 108-109, 149, 161).
+// Consensual transfer of a published seat before it starts (decisions 108-109, 149, 162).
 type CandidateStatus = "pending" | "declined" | "accepted" | "closed";
 type TransferStatus =
   | "awaiting_consent"
@@ -133,7 +133,7 @@ async function notifyManagers(
     .select()
     .from(user)
     .where(and(eq(user.role, "manager"), isNull(user.deletedAt)));
-  // Site notifications only (decision 161); no subject so the soldier never receives the manager copy.
+  // Site notifications only (decision 162); no subject so the soldier never receives the manager copy.
   for (const account of managers)
     await createRecord(tx, "notification", {
       accountId: account.id,
@@ -217,7 +217,7 @@ export async function offerTransfer(
       "invalid_candidate",
       "אחד החיילים שנבחרו אינו זמין לקבלת הצעות"
     );
-    // The offerer learns only that the candidate is unsuitable, never why (decision 161).
+    // The offerer learns only that the candidate is unsuitable, never why (decision 162).
     invariant(
       candidateEligibility(state, person, duty, seat.slotId).status !==
         "blocked",

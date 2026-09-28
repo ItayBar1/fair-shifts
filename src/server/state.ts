@@ -47,6 +47,8 @@ export async function readState(actor: Actor) {
       rankRules: [],
       rankReminders: [],
       rankCatalog: [],
+      performanceCorrections: [],
+      scoreDecisions: [],
     };
     if (actor.role === "technical") {
       const accounts = await tx
@@ -185,6 +187,14 @@ export async function readState(actor: Actor) {
                 status: row.status,
                 points: row.points,
                 version: row.version,
+                ...(row.performance && {
+                  performance: {
+                    performerId: row.performance.performerId,
+                    start: row.performance.start,
+                    end: row.performance.end,
+                    points: row.performance.points,
+                  },
+                }),
               }
         ),
       dutyTypes: managing
@@ -234,6 +244,10 @@ export async function readState(actor: Actor) {
       lotteryAttempts: managing ? workflow("lottery_attempt") : [],
       planningRuns: managing ? workflow("planning_run") : [],
       dutyChanges: managing ? workflow("duty_change") : [],
+      performanceCorrections: managing
+        ? workflow("performance_correction")
+        : [],
+      scoreDecisions: managing ? workflow("score_decision") : [],
     };
   });
 }
