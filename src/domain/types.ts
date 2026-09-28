@@ -42,10 +42,20 @@ export interface Constraint extends DateRange {
   version: number;
   status: "pending" | "approved" | "rejected";
 }
+/** Weekdays use ISO numbering: 1 = Monday … 7 = Sunday. */
 export interface DailyWindow {
   startTime: string;
   endTime: string;
   weekdays?: number[];
+}
+export type Gender = "male" | "female" | "other";
+/**
+ * A personal hours limit. Within its dates every part of a duty must fall in
+ * one of its windows; outside them the limit does not apply.
+ */
+export interface AllowedHours extends DateRange {
+  id: string;
+  windows: DailyWindow[];
 }
 export interface Soldier {
   id: string;
@@ -61,9 +71,9 @@ export interface Soldier {
   exemptions: TimedExemption[];
   inactivePeriods: DateRange[];
   constraints: Constraint[];
-  gender?: string;
+  gender?: Gender;
   capabilities?: string[];
-  allowedHours?: DailyWindow[];
+  allowedHours?: AllowedHours[];
 }
 export interface RankClause {
   trackId: string;
@@ -77,7 +87,7 @@ export interface Requirements {
   ranks?: RankClause[];
   qualificationIds?: string[];
   blockingExemptionIds?: string[];
-  genders?: string[];
+  genders?: Gender[];
   capabilityIds?: string[];
 }
 export interface TimeSurcharge {
@@ -129,7 +139,12 @@ export interface Assignment {
   pendingReviewConfirmed?: boolean;
 }
 export interface SpecificApproval {
-  kind: "exemption" | "rank" | "pending_constraint" | "near_release";
+  kind:
+    | "exemption"
+    | "rank"
+    | "allowed_hours"
+    | "pending_constraint"
+    | "near_release";
   soldierId: string;
   dutyId: string;
   dutyVersion: number;

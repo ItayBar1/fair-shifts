@@ -3796,3 +3796,541 @@ describe("first duty vertical slice", () => {
     expect(JSON.stringify(viewed)).not.toContain("0500000007");
   });
 });
+describe("gender, capability and personal hours conditions", () => {
+  async function command(
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number,
+    actor = manager
+  ) {
+    return (await executeAction(actor, {
+      type,
+      payload,
+      expectedVersion,
+      idempotencyKey: randomUUID(),
+    })) as Record<string, unknown> & { id: string; version: number };
+  }
+  type ConditionsPreview = {
+    previewToken: string;
+    impact: {
+      assignmentId: string;
+      before: string;
+      after: string;
+      affected: boolean;
+      reasons: { code: string; referenceId?: string }[];
+    }[];
+  };
+  const previewConditions = async (
+    payload: Record<string, unknown>,
+    version: number,
+    actor = manager
+  ) =>
+    (await command(
+      "soldier.conditions.preview",
+      payload,
+      version,
+      actor
+    )) as unknown as ConditionsPreview;
+  async function saveConditions(
+    payload: Record<string, unknown>,
+    version: number
+  ) {
+    const preview = await previewConditions(payload, version);
+    return command(
+      "soldier.conditions",
+      { ...payload, confirmed: true, previewToken: preview.previewToken },
+      version
+    );
+  }
+  async function member() {
+    const [row] = await db.select().from(user).where(eq(user.id, memberId));
+    const actor: Actor = {
+      id: row.id,
+      name: row.name,
+      role: "soldier",
+      soldierId: row.soldierId!,
+      securityEpoch: row.securityEpoch,
+    };
+    return actor;
+  }
+  /** A local Israeli date a few days ahead, away from any clock change today. */
+  const day = (offset = 3) =>
+    DateTime.now()
+      .setZone("Asia/Jerusalem")
+      .plus({ days: offset })
+      .toISODate()!;
+  async function localDuty(
+    typeId: string,
+    start: string,
+    end: string,
+    name = "תורנות תנאים"
+  ) {
+    const created = await command("duty.create", { typeId, name, start, end });
+    return (await db.select().from(duties).where(eq(duties.id, created.id)))[0];
+  }
+  const plainType = () =>
+    command("dutyType.save", {
+      name: "תורנות שעות",
+      pricing: { mode: "fixed", base: 4 },
+      roles: [{ name: "תורן", count: 1 }],
+    });
+
+  it("saves a gender change only after a current confirmed preview, flags the assignment in the same save and hides conditions from soldiers", async () => {
+    const actor = await member();
+    const capability = await command("eligibility.catalog.save", {
+      kind: "capability",
+      name: "נשיאת משקל",
+    });
+    const type = await command("dutyType.save", {
+      name: "תורנות מותנית",
+      pricing: { mode: "fixed", base: 4 },
+      genders: ["female"],
+      capabilityIds: [capability.id],
+      roles: [{ name: "תורנית", count: 1 }],
+    });
+    const row = await localDuty(type.id, `${day()}T08:00`, `${day()}T16:00`);
+    expect(row.data.requirements).toMatchObject({
+      genders: ["female"],
+      capabilityIds: [capability.id],
+    });
+    const blocked = (await command(
+      "duty.assignment.preview",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      row.version
+    )) as unknown as { status: string; blockers: { code: string }[] };
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.blockers.map((item) => item.code).sort()).toEqual([
+      "capability",
+      "gender",
+    ]);
+    const base = {
+      soldierId: actor.soldierId,
+      gender: "female",
+      capabilityIds: [capability.id],
+    };
+    await expect(previewConditions(base, 1, actor)).rejects.toMatchObject({
+      code: "forbidden",
+      status: 403,
+    });
+    await saveConditions(base, 1);
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      row.version
+    );
+    await db
+      .update(balances)
+      .set({ current: 9 })
+      .where(eq(balances.soldierId, actor.soldierId!));
+    const change = { ...base, gender: "male", reason: "תיקון נתון" };
+    const preview = await previewConditions(change, 2);
+    expect(preview.impact).toHaveLength(1);
+    expect(preview.impact[0]).toMatchObject({
+      before: "eligible",
+      after: "blocked",
+      affected: true,
+    });
+    expect(preview.impact[0].reasons.map((item) => item.code)).toEqual([
+      "gender",
+    ]);
+    const [unchanged] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(unchanged).toMatchObject({ version: 2 });
+    expect(unchanged.data.gender).toBe("female");
+    await expect(command("soldier.conditions", change, 2)).rejects.toThrow();
+    await expect(
+      command(
+        "soldier.conditions",
+        { ...change, confirmed: false, previewToken: preview.previewToken },
+        2
+      )
+    ).rejects.toThrow();
+    const saved = await command(
+      "soldier.conditions",
+      { ...change, confirmed: true, previewToken: preview.previewToken },
+      2
+    );
+    expect(saved).toMatchObject({ version: 3, flagged: 1 });
+    const [assigned] = await db.select().from(assignments);
+    expect(assigned.status).toBe("reserved");
+    expect(assigned.data.needsAttention).toEqual(["gender"]);
+    expect(
+      (
+        await db
+          .select()
+          .from(balances)
+          .where(eq(balances.soldierId, actor.soldierId!))
+      )[0].current
+    ).toBe(9);
+    const changes = await db
+      .select()
+      .from(records)
+      .where(
+        and(
+          eq(records.kind, "personnel_change"),
+          eq(records.subjectId, actor.soldierId!)
+        )
+      );
+    expect(changes.map((item) => item.data.kind)).toEqual([
+      "conditions",
+      "conditions",
+    ]);
+    expect(
+      changes.find((item) => item.data.reason === "תיקון נתון")!.data
+    ).toMatchObject({
+      before: { gender: "female" },
+      after: { gender: "male", capabilities: [capability.id] },
+    });
+    const visible = JSON.stringify((await readState(actor)).soldiers);
+    for (const key of ["gender", "capabilities", "allowedHours"])
+      expect(visible).not.toContain(key);
+    const managed = (await readState(manager)).soldiers.find(
+      (item) => item.id === actor.soldierId
+    ) as Record<string, unknown>;
+    expect(managed).toMatchObject({
+      gender: "male",
+      capabilities: [capability.id],
+    });
+  });
+
+  it("validates condition input and catalog references on the server", async () => {
+    const actor = await member();
+    const qualification = await command("eligibility.catalog.save", {
+      kind: "qualification",
+      name: "כשירות ולא יכולת",
+    });
+    const exemption = await command("eligibility.catalog.save", {
+      kind: "exemption",
+      name: "פטור ולא יכולת",
+    });
+    const limit = {
+      start: day(),
+      end: day(10),
+      windows: [{ startTime: "08:00", endTime: "17:00", weekdays: [7, 1] }],
+    };
+    const soldierId = actor.soldierId;
+    await expect(
+      previewConditions({ soldierId, capabilityIds: [qualification.id] }, 1)
+    ).rejects.toMatchObject({ code: "catalog_kind" });
+    await expect(
+      previewConditions(
+        { soldierId, allowedHours: [{ ...limit, start: day(10), end: day() }] },
+        1
+      )
+    ).rejects.toMatchObject({ code: "date_range" });
+    await expect(
+      previewConditions(
+        { soldierId, allowedHours: [{ ...limit, id: randomUUID() }] },
+        1
+      )
+    ).rejects.toMatchObject({ code: "not_found" });
+    for (const invalid of [
+      { allowedHours: [{ ...limit, windows: [] }] },
+      {
+        allowedHours: [
+          { ...limit, windows: [{ ...limit.windows[0], startTime: "25:00" }] },
+        ],
+      },
+      {
+        allowedHours: [
+          { ...limit, windows: [{ ...limit.windows[0], weekdays: [0] }] },
+        ],
+      },
+      { gender: "unknown" },
+    ])
+      await expect(
+        previewConditions({ soldierId, ...invalid }, 1)
+      ).rejects.toThrow();
+    await expect(previewConditions({ soldierId }, 1)).rejects.toMatchObject({
+      code: "no_change",
+    });
+    await expect(
+      previewConditions({ soldierId, gender: "other" }, 7)
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      command("dutyType.save", {
+        name: "יכולת שגויה",
+        pricing: { mode: "fixed", base: 4 },
+        capabilityIds: [exemption.id],
+        roles: [{ name: "תורן", count: 1 }],
+      })
+    ).rejects.toMatchObject({ code: "invalid_requirement" });
+    await expect(
+      command("dutyType.save", {
+        name: "מגדר שגוי",
+        pricing: { mode: "fixed", base: 4 },
+        roles: [
+          { name: "תורן", count: 1, requirements: { genders: ["unknown"] } },
+        ],
+      })
+    ).rejects.toThrow();
+    const saved = await saveConditions({ soldierId, allowedHours: [limit] }, 1);
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, saved.id));
+    expect(person.data.allowedHours).toEqual([
+      {
+        ...limit,
+        id: expect.any(String),
+        windows: [{ ...limit.windows[0], weekdays: [1, 7] }],
+      },
+    ]);
+    // Keeping the stored id edits the same limit instead of replacing it.
+    const id = person.data.allowedHours![0].id;
+    await saveConditions(
+      { soldierId, allowedHours: [{ ...limit, id, end: day(12) }] },
+      2
+    );
+    expect(
+      (await db.select().from(soldiers).where(eq(soldiers.id, soldierId!)))[0]
+        .data.allowedHours
+    ).toMatchObject([{ id, end: day(12) }]);
+  });
+
+  it("rejects a stale conditions preview and saves only one of two competing confirmations", async () => {
+    const actor = await member();
+    const type = await plainType();
+    const row = await localDuty(type.id, `${day()}T18:00`, `${day()}T23:00`);
+    const input = {
+      soldierId: actor.soldierId,
+      allowedHours: [
+        {
+          start: day(),
+          end: day(),
+          windows: [
+            {
+              startTime: "08:00",
+              endTime: "17:00",
+              weekdays: [1, 2, 3, 4, 5, 6, 7],
+            },
+          ],
+        },
+      ],
+    };
+    const obsolete = await previewConditions(input, 1);
+    expect(obsolete.impact).toEqual([]);
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      row.version
+    );
+    await expect(
+      command(
+        "soldier.conditions",
+        { ...input, confirmed: true, previewToken: obsolete.previewToken },
+        1
+      )
+    ).rejects.toMatchObject({ code: "stale_preview", status: 409 });
+    const current = await previewConditions(input, 1);
+    expect(current.impact[0]).toMatchObject({
+      before: "eligible",
+      after: "approval_required",
+      affected: true,
+    });
+    const outcomes = await Promise.allSettled(
+      [0, 1].map(() =>
+        command(
+          "soldier.conditions",
+          { ...input, confirmed: true, previewToken: current.previewToken },
+          1
+        )
+      )
+    );
+    expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(person.version).toBe(2);
+    expect(person.data.allowedHours).toHaveLength(1);
+    const [assigned] = await db.select().from(assignments);
+    expect(assigned.status).toBe("reserved");
+    expect(assigned.data.needsAttention).toEqual(["allowed_hours"]);
+  });
+
+  it("checks personal hours over a night in Israeli time, keeps them out of the lottery and allows only a justified manual exception", async () => {
+    const actor = await member();
+    const type = await plainType();
+    const night = await localDuty(
+      type.id,
+      `${day()}T23:00`,
+      `${day(4)}T05:00`,
+      "לילה בתוך החלון"
+    );
+    const evening = await localDuty(
+      type.id,
+      `${day(5)}T20:00`,
+      `${day(6)}T02:00`,
+      "ערב שחורג מהחלון"
+    );
+    await saveConditions(
+      {
+        soldierId: actor.soldierId,
+        allowedHours: [
+          {
+            start: day(),
+            end: day(6),
+            windows: [
+              {
+                startTime: "22:00",
+                endTime: "06:00",
+                weekdays: [1, 2, 3, 4, 5, 6, 7],
+              },
+            ],
+          },
+        ],
+      },
+      1
+    );
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    const limitId = person.data.allowedHours![0].id;
+    const preview = async (row: typeof night) =>
+      (await command(
+        "duty.assignment.preview",
+        {
+          dutyId: row.id,
+          slotId: row.data.slots[0].id,
+          soldierId: actor.soldierId,
+        },
+        (await db.select().from(duties).where(eq(duties.id, row.id)))[0].version
+      )) as unknown as {
+        status: string;
+        previewToken: string;
+        requirements: { key: string; code: string; referenceId?: string }[];
+      };
+    expect((await preview(night)).status).toBe("eligible");
+    const outside = await preview(evening);
+    expect(outside.status).toBe("approval_required");
+    expect(outside.requirements).toMatchObject([
+      { code: "allowed_hours", referenceId: limitId },
+    ]);
+    // The lottery picks the only candidate without a blocking limit.
+    await db
+      .update(balances)
+      .set({ current: 100 })
+      .where(eq(balances.soldierId, manager.soldierId!));
+    const drawn = (await command(
+      "duty.lottery",
+      { dutyId: evening.id, slotId: evening.data.slots[0].id },
+      evening.version
+    )) as unknown as { candidateId: string };
+    expect(drawn.candidateId).toBe(manager.soldierId);
+    const other = await localDuty(
+      type.id,
+      `${day(5)}T20:00`,
+      `${day(6)}T02:00`,
+      "ערב נוסף"
+    );
+    const assignInput = {
+      dutyId: other.id,
+      slotId: other.data.slots[0].id,
+      soldierId: actor.soldierId,
+    };
+    const checked = await preview(other);
+    await expect(
+      command(
+        "duty.assign",
+        { ...assignInput, previewToken: checked.previewToken },
+        other.version
+      )
+    ).rejects.toMatchObject({ code: "approval_required" });
+    await command(
+      "duty.assign",
+      {
+        ...assignInput,
+        previewToken: checked.previewToken,
+        approvalKeys: checked.requirements.map((item) => item.key),
+        approvalReason: "אושר חריג שעות נקודתי",
+      },
+      other.version
+    );
+    const [assigned] = await db
+      .select()
+      .from(assignments)
+      .where(eq(assignments.dutyId, other.id));
+    expect(assigned.status).toBe("reserved");
+    expect(assigned.data.approvals).toMatchObject([
+      {
+        kind: "allowed_hours",
+        referenceId: limitId,
+        reason: "אושר חריג שעות נקודתי",
+        approvedBy: manager.id,
+      },
+    ]);
+    expect(
+      (
+        await db
+          .select()
+          .from(soldiers)
+          .where(eq(soldiers.id, actor.soldierId!))
+      )[0].data.allowedHours
+    ).toEqual(person.data.allowedHours);
+  });
+
+  it("snapshots role conditions into a duty and keeps them when the catalog changes later", async () => {
+    const capability = await command("eligibility.catalog.save", {
+      kind: "capability",
+      name: "נהיגה",
+    });
+    const roles = [
+      {
+        name: "נהג",
+        count: 1,
+        requirements: {
+          genders: ["female", "other"],
+          capabilityIds: [capability.id],
+        },
+      },
+      { name: "מלווה", count: 1 },
+    ];
+    const type = await command("dutyType.save", {
+      name: "סיור",
+      pricing: { mode: "fixed", base: 4 },
+      roles,
+    });
+    const row = await localDuty(type.id, `${day()}T08:00`, `${day()}T12:00`);
+    expect(row.data.slots.map((slot) => slot.requirements)).toEqual([
+      roles[0].requirements,
+      undefined,
+    ]);
+    const [catalogRow] = await db
+      .select()
+      .from(records)
+      .where(eq(records.id, capability.id));
+    expect(catalogRow.data.kind).toBe("capability");
+    await command(
+      "dutyType.save",
+      {
+        id: type.id,
+        name: "סיור",
+        pricing: { mode: "fixed", base: 4 },
+        genders: ["male"],
+        roles: [{ name: "נהג", count: 1 }],
+      },
+      1
+    );
+    const [kept] = await db.select().from(duties).where(eq(duties.id, row.id));
+    expect(kept.data.requirements.genders ?? []).toEqual([]);
+    expect(kept.data.slots[0].requirements).toEqual(roles[0].requirements);
+  });
+});

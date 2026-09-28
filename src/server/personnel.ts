@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { DateTime } from "luxon";
 import type { DbTransaction } from "./db";
@@ -14,10 +14,10 @@ import {
   updateRecord,
   type Actor,
 } from "./repository";
-import { id, date, population, text } from "./validation";
+import { id, date, population, text, gender } from "./validation";
 import { invariant } from "./errors";
 import { evaluateEligibility } from "../domain/eligibility";
-import type { Soldier } from "../domain/types";
+import type { AllowedHours, Soldier } from "../domain/types";
 import { refreshRankReminders } from "./ranks";
 
 /** Changed rules flag existing reservations; they never silently remove an assignee. */
@@ -79,7 +79,7 @@ export async function saveEligibilityCatalog(
   const input = z
     .object({
       id: id.optional(),
-      kind: z.enum(["qualification", "exemption"]),
+      kind: z.enum(["qualification", "exemption", "capability"]),
       name: text,
       description: z.string().max(2000).default(""),
     })
@@ -497,6 +497,181 @@ export async function updateTimeline(
   return {
     id: person.id,
     version: person.version + 1,
+    flagged: await reassessAssignments(tx, person.id),
+  };
+}
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה לא תקינה");
+const conditionsInput = z.object({
+  soldierId: id,
+  gender: z.preprocess(
+    (value) => (value === "" || value === null ? undefined : value),
+    gender.optional()
+  ),
+  capabilityIds: z.array(id).max(50).default([]),
+  allowedHours: z
+    .array(
+      z.object({
+        id: id.optional(),
+        start: date,
+        end: date,
+        windows: z
+          .array(
+            z.object({
+              startTime: clock,
+              endTime: clock,
+              weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+            })
+          )
+          .min(1)
+          .max(7),
+      })
+    )
+    .max(20)
+    .default([]),
+  reason: z.string().trim().max(2000).default(""),
+});
+function conditionsOf(data: Soldier) {
+  return {
+    gender: data.gender ?? null,
+    capabilities: data.capabilities ?? [],
+    allowedHours: data.allowedHours ?? [],
+  };
+}
+/**
+ * Gender, capabilities and personal hours limits are replaced as one set, and
+ * only against the impact the manager reviewed (decision 160).
+ */
+async function inspectConditions(
+  tx: DbTransaction,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  const input = conditionsInput.parse(payload);
+  const person = await loadSoldierForTimeline(
+    tx,
+    input.soldierId,
+    expectedVersion
+  );
+  const capabilities = [...new Set(input.capabilityIds)].sort();
+  for (const capabilityId of capabilities) {
+    const catalog = await findRecord(tx, "eligibility_catalog", capabilityId);
+    invariant(
+      catalog.data.kind === "capability",
+      "catalog_kind",
+      "היכולת שנבחרה אינה מוגדרת בקטלוג היכולות"
+    );
+  }
+  const existingIds = new Set(
+    (person.data.allowedHours ?? []).map((limit) => limit.id)
+  );
+  const allowedHours: AllowedHours[] = input.allowedHours.map((limit) => {
+    invariant(
+      limit.start <= limit.end,
+      "date_range",
+      "נדרש טווח תוקף תקין להגבלת השעות"
+    );
+    invariant(
+      !limit.id || existingIds.has(limit.id),
+      "not_found",
+      "הגבלת השעות שנבחרה לא נמצאה",
+      404
+    );
+    return {
+      id: limit.id ?? randomUUID(),
+      start: limit.start,
+      end: limit.end,
+      windows: limit.windows.map((window) => ({
+        startTime: window.startTime,
+        endTime: window.endTime,
+        weekdays: [...new Set(window.weekdays)].sort(),
+      })),
+    };
+  });
+  invariant(
+    new Set(allowedHours.map((limit) => limit.id)).size === allowedHours.length,
+    "invalid_input",
+    "הגבלת שעות מופיעה פעמיים"
+  );
+  const data: Soldier = {
+    ...person.data,
+    version: person.version + 1,
+    capabilities,
+    allowedHours,
+  };
+  if (input.gender) data.gender = input.gender;
+  else delete data.gender;
+  const before = conditionsOf(person.data);
+  const after = conditionsOf(data);
+  const comparable = (value: typeof before) =>
+    JSON.stringify({
+      ...value,
+      allowedHours: value.allowedHours.map(({ start, end, windows }) => ({
+        start,
+        end,
+        windows,
+      })),
+    });
+  invariant(
+    comparable(before) !== comparable(after),
+    "no_change",
+    "לא בוצע שינוי בתנאי ההתאמה"
+  );
+  const { previewToken, impact } = await assessPeriodImpact(
+    tx,
+    person.id,
+    data,
+    input
+  );
+  return { input, person, data, before, after, previewToken, impact };
+}
+export async function previewSoldierConditions(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const checked = await inspectConditions(tx, payload, expectedVersion);
+  return { previewToken: checked.previewToken, impact: checked.impact };
+}
+export async function saveSoldierConditions(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const confirmation = z
+    .object({ previewToken: z.string().length(64), confirmed: z.literal(true) })
+    .parse(payload);
+  const { input, person, data, before, after, previewToken } =
+    await inspectConditions(tx, payload, expectedVersion);
+  invariant(
+    confirmation.previewToken === previewToken,
+    "stale_preview",
+    "נתוני החייל או השיבוצים השתנו. יש לבדוק שוב את השפעת השינוי",
+    409
+  );
+  await tx
+    .update(soldiers)
+    .set({ data, version: data.version, updatedAt: new Date() })
+    .where(eq(soldiers.id, person.id));
+  await createRecord(
+    tx,
+    "personnel_change",
+    {
+      kind: "conditions",
+      before,
+      after,
+      reason: input.reason,
+      actorId: actor.id,
+    },
+    person.id
+  );
+  await audit(tx, actor, "soldier.conditions", person.id, {}, person.id);
+  return {
+    id: person.id,
+    version: data.version,
     flagged: await reassessAssignments(tx, person.id),
   };
 }

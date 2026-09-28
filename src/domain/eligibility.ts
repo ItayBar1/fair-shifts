@@ -199,14 +199,15 @@ export function evaluateEligibility(
         "אוכלוסיית השירות אינה מתאימה לכל התורנות",
         reference
       );
-    if (
-      requirements.genders?.length &&
-      (!soldier.gender || !requirements.genders.includes(soldier.gender))
-    )
-      block("gender", "תנאי המגדר אינו מתקיים", reference);
+    if (requirements.genders?.length) {
+      if (!soldier.gender)
+        block("gender", "מידע חסר: מגדר נדרש לתורנות", reference);
+      else if (!requirements.genders.includes(soldier.gender))
+        block("gender", "תנאי המגדר אינו מתקיים", reference);
+    }
     for (const capability of requirements.capabilityIds ?? []) {
       if (!soldier.capabilities?.includes(capability))
-        block("capability", "מידע חסר או יכולת נדרשת אינה מתקיימת", capability);
+        block("capability", "יכולת נדרשת אינה רשומה לחייל", capability);
     }
     for (const qualificationId of requirements.qualificationIds ?? []) {
       const ranges = soldier.qualifications
@@ -267,14 +268,31 @@ export function evaluateEligibility(
   if (slot.requirements)
     checkRequirements(slot.requirements, `slot:${slot.id}`);
 
-  if (
-    soldier.allowedHours &&
-    !coveredByRanges(
-      target,
-      soldier.allowedHours.flatMap((window) => dailyWindows(duty, window))
-    )
-  )
-    block("allowed_hours", "התורנות חורגת מטווח השעות המותר");
+  for (const limit of soldier.allowedHours ?? []) {
+    const period = datesToInstants(limit);
+    const limited = {
+      start: Math.max(target.start, period.start),
+      end: Math.min(target.end, period.end),
+    };
+    if (limited.start >= limited.end) continue;
+    const allowed = limit.windows.flatMap((window) =>
+      dailyWindows(duty, window, true)
+    );
+    if (coveredByRanges(limited, allowed)) continue;
+    if (context.mode === "manual") {
+      if (!hasApproval("allowed_hours", limit.id))
+        requireApproval(
+          "allowed_hours",
+          "התורנות חורגת מטווח השעות המותר; נדרש אישור חריג עם סיבה",
+          limit.id
+        );
+    } else
+      block(
+        "allowed_hours",
+        "התורנות חורגת מטווח השעות המותר; חריגה אפשרית בשיבוץ ידני בלבד",
+        limit.id
+      );
+  }
   const pending = soldier.constraints.filter(
     (constraint) => constraint.status === "pending"
   );

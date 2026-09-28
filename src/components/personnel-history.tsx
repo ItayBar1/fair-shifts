@@ -225,7 +225,7 @@ function TimelineEdit({
     </Modal>
   );
 }
-function ImpactList({
+export function ImpactList({
   impact,
   empty = "אין שיבוצים פעילים שהושפעו.",
 }: {
