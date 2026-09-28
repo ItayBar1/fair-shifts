@@ -18,6 +18,7 @@ export async function readState(actor: Actor) {
     };
     const base = {
       actor: publicActor,
+      serverNow: new Date().toISOString(),
       soldiers: [],
       dutyTypes: [],
       duties: [],
@@ -72,7 +73,7 @@ export async function readState(actor: Actor) {
     const workflows = await tx.select().from(records);
     const scoreRows = await tx.select().from(ledger);
     const managing = actor.role === "manager";
-    const now = new Date().toISOString();
+    const now = base.serverNow;
     const soldiers = state.soldiers.map((person) => {
       const rank = rankAt(person, now);
       const summary = {
@@ -103,7 +104,10 @@ export async function readState(actor: Actor) {
       };
     });
     const visibleDuties = state.duties.filter(
-      (row) => managing || row.status === "published"
+      (row) =>
+        managing ||
+        row.status === "published" ||
+        (row.status === "cancelled" && row.wasPublished)
     );
     const visibleIds = new Set(visibleDuties.map((row) => row.id));
     const workflow = (kind: string) =>
@@ -149,7 +153,11 @@ export async function readState(actor: Actor) {
             }
       ),
       assignments: state.assignments
-        .filter((row) => visibleIds.has(row.dutyId))
+        .filter(
+          (row) =>
+            visibleIds.has(row.dutyId) &&
+            (managing || row.status !== "cancelled")
+        )
         .map((row) =>
           managing
             ? row

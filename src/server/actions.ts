@@ -50,6 +50,8 @@ import {
   saveDutyChange,
   previewDutyChange,
   publishDutyChange,
+  applyDraftDutyChange,
+  cancelDuty,
   discardDutyChange,
   previewCatalogImpact,
 } from "./duty-changes";
@@ -185,6 +187,17 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "duty.change.publish":
         result = await publishDutyChange(tx, actor, payload, expectedVersion);
+        break;
+      case "duty.change.apply":
+        result = await applyDraftDutyChange(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "duty.cancel":
+        result = await cancelDuty(tx, actor, payload, expectedVersion);
         break;
       case "duty.change.discard":
         result = await discardDutyChange(tx, actor, payload, expectedVersion);

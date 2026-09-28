@@ -106,6 +106,7 @@ export interface Duty extends InstantRange {
   version: number;
   rulesVersion?: number;
   status: "draft" | "published" | "cancelled";
+  wasPublished?: boolean;
   location?: string;
   instructions?: string;
   requirements: Requirements;

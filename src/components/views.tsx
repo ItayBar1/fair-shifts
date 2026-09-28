@@ -38,7 +38,6 @@ import {
   Status,
   QuickAction,
   Notice,
-  type Field,
 } from "./ui";
 export const dutyStart = (d: Row) => str(d.start ?? d.startsAt);
 export const dutyEnd = (d: Row) => str(d.end ?? d.endsAt);
@@ -476,8 +475,9 @@ export function Dashboard({
   );
   const concerns = state.assignments.filter(
     (a) =>
-      a.needsReview ||
-      (Array.isArray(a.needsAttention) && a.needsAttention.length > 0)
+      ["reserved", "held"].includes(str(a.status)) &&
+      (a.needsReview ||
+        (Array.isArray(a.needsAttention) && a.needsAttention.length > 0))
   );
   return (
     <>
@@ -636,37 +636,9 @@ export function DutyDetail({
   const manager = state.actor.role === "manager";
   const assignments = activeAssignments(state, id);
   const slots = dutySlots(duty);
-  const fields: Field[] = [
-    {
-      name: "name",
-      label: "שם התורנות",
-      required: true,
-      value: str(duty.name),
-    },
-    { name: "location", label: "מיקום", value: str(duty.location) },
-    {
-      name: "start",
-      label: "תחילת התורנות",
-      type: "datetime-local",
-      required: true,
-      value: dutyStart(duty).slice(0, 16),
-    },
-    {
-      name: "end",
-      label: "סיום התורנות",
-      type: "datetime-local",
-      required: true,
-      value: dutyEnd(duty).slice(0, 16),
-    },
-    {
-      name: "instructions",
-      label: "הנחיות",
-      type: "textarea",
-      full: true,
-      value: str(duty.instructions),
-    },
-    { name: "reason", label: "סיבת השינוי", required: true, full: true },
-  ];
+  const future =
+    new Date(dutyStart(duty)).getTime() >
+    new Date(str(state.serverNow)).getTime();
   return (
     <>
       <Link className="text-link back-link" href="/calendar">
@@ -681,9 +653,12 @@ export function DutyDetail({
           <div>
             <div className="inline">
               <Status value={dutyStatus(duty)} />
-              {duty.needsReview === true && (
-                <Badge tone="warning">דורשת טיפול</Badge>
-              )}
+              {(duty.needsReview === true ||
+                assignments.some(
+                  (item) =>
+                    Array.isArray(item.needsAttention) &&
+                    item.needsAttention.length > 0
+                )) && <Badge tone="warning">דורשת טיפול</Badge>}
             </div>
             <h2>{str(duty.name)}</h2>
             <div className="meta-line">
@@ -705,9 +680,15 @@ export function DutyDetail({
             <p>{str(duty.instructions)}</p>
           </div>
         ) : null}
+        {manager && dutyStatus(duty) === "draft" && !future && (
+          <Notice tone="warning">
+            מועד תחילת הטיוטה חלף. היא נשארת לטיפול עם השיבוצים והניקוד השמור;
+            ניתן לבטל אותה או לטפל בתיעוד הביצוע.
+          </Notice>
+        )}
         {manager && (
           <div className="panel-actions">
-            {dutyStatus(duty) === "draft" && (
+            {dutyStatus(duty) === "draft" && future && (
               <ActionDialog
                 title="פרסום התורנות"
                 buttonLabel="פרסום לחיילים"
@@ -726,39 +707,34 @@ export function DutyDetail({
                 version={duty.version}
               />
             )}
-            {dutyStatus(duty) === "draft" && (
+            {(dutyStatus(duty) === "draft" ||
+              (dutyStatus(duty) === "published" && future)) && (
               <ActionDialog
-                title={
-                  dutyStatus(duty) === "published"
-                    ? "עדכן ופרסם"
-                    : "עריכת טיוטה"
-                }
-                fields={fields}
+                title="ביטול תורנות"
+                description={`הביטול יפנה ${assignments.length} שיבוצים וישחרר ${assignments.reduce((sum, item) => sum + num(item.points), 0)} נקודות שמורות. ניקוד נוכחי והיסטוריה יישמרו.`}
+                buttonLabel="ביטול תורנות"
+                fields={[
+                  {
+                    name: "reason",
+                    label: "סיבת הביטול",
+                    type: "textarea",
+                    required: true,
+                    full: true,
+                  },
+                  {
+                    name: "confirmed",
+                    label: "מאשר לבטל ולפנות את השיבוצים",
+                    type: "checkbox",
+                    required: true,
+                  },
+                ]}
                 action={action}
-                type="duty.update"
+                type="duty.cancel"
                 payload={{ id }}
                 version={duty.version}
-                description="הפרטים הקיימים נשארים מחייבים עד אישור השינוי. המערכת תבדוק מחדש את כל השיבוצים."
+                danger
               />
             )}
-            <ActionDialog
-              title="ביטול תורנות"
-              buttonLabel="ביטול תורנות"
-              fields={[
-                {
-                  name: "reason",
-                  label: "סיבת הביטול",
-                  type: "textarea",
-                  required: true,
-                  full: true,
-                },
-              ]}
-              action={action}
-              type="duty.cancel"
-              payload={{ id }}
-              version={duty.version}
-              danger
-            />
           </div>
         )}
       </Panel>
@@ -868,9 +844,11 @@ export function DutyDetail({
           </div>
         </Panel>
       )}
-      {manager && dutyStatus(duty) === "published" && (
-        <DutyChanges state={state} action={action} duty={duty} />
-      )}
+      {manager &&
+        future &&
+        ["published", "draft"].includes(str(dutyStatus(duty))) && (
+          <DutyChanges state={state} action={action} duty={duty} />
+        )}
       {manager && <LotteryHistory state={state} action={action} dutyId={id} />}
     </>
   );

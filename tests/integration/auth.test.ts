@@ -1921,6 +1921,240 @@ describe("first duty vertical slice", () => {
       affected: unknown[];
     };
   }
+  it("edits a draft and explicitly applies catalog changes without publishing or double reserving points", async () => {
+    const { row, actor } = await fixtureDuty();
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    await command(
+      "dutyType.save",
+      {
+        id: row.typeId,
+        name: "קטלוג לטיוטה",
+        pricing: { mode: "fixed", base: 9 },
+        roles: [{ name: "תורן", count: 2 }],
+      },
+      1
+    );
+    const change = await command(
+      "duty.change.create",
+      { dutyId: row.id, reason: "עדכון טיוטה מפורש", applyCatalog: true },
+      2
+    );
+    const proposal = (
+      await db.select().from(records).where(eq(records.id, change.id))
+    )[0];
+    const proposed = proposal.data.proposed as typeof row.data;
+    await command(
+      "duty.change.save",
+      {
+        ...proposed,
+        id: change.id,
+        name: "טיוטה מעודכנת",
+        reason: "שינוי פרטים והרכב",
+        seats: proposed.slots.map((slot, index) => ({
+          slotId: slot.id,
+          soldierId: index ? null : actor.soldierId,
+          extraPoints: index ? 0 : 2,
+        })),
+      },
+      1
+    );
+    expect(
+      (await db.select().from(assignments)).filter(
+        (item) => item.status === "reserved"
+      )
+    ).toMatchObject([{ points: 4 }]);
+    const preview = await changePreview(change.id, 2);
+    const payload = {
+      id: change.id,
+      confirmed: true,
+      previewToken: preview.previewToken,
+    };
+    await expect(command("duty.change.publish", payload, 2)).rejects.toThrow(
+      "אינו מפרסם טיוטה"
+    );
+    await command("duty.change.apply", payload, 2);
+    const [updated] = await db
+      .select()
+      .from(duties)
+      .where(eq(duties.id, row.id));
+    expect(updated.data).toMatchObject({
+      name: "טיוטה מעודכנת",
+      status: "draft",
+      version: 3,
+    });
+    expect(updated.data.slots).toHaveLength(2);
+    expect(
+      (await db.select().from(assignments)).filter(
+        (item) => item.status === "reserved"
+      )
+    ).toMatchObject([{ points: 11 }]);
+    const privateState = await readState(actor);
+    expect(privateState.duties).toHaveLength(0);
+    expect(privateState.notifications).toHaveLength(0);
+    expect(await db.select().from(emailOutbox)).toHaveLength(0);
+    await command("duty.publish", { id: row.id, confirmed: true }, 3);
+    const published = await readState(actor);
+    expect(published.duties[0].name).toBe("טיוטה מעודכנת");
+    expect(published.assignments).toHaveLength(1);
+  });
+  it("cancels an expired draft explicitly and releases reservations without earning points or revealing it", async () => {
+    const { row, actor } = await fixtureDuty();
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    const [live] = await db.select().from(duties).where(eq(duties.id, row.id));
+    await db
+      .update(duties)
+      .set({
+        data: {
+          ...live.data,
+          start: new Date(Date.now() - 2 * 86400_000).toISOString(),
+          end: new Date(Date.now() - 86400_000).toISOString(),
+        },
+      })
+      .where(eq(duties.id, row.id));
+    await unitTransaction((tx) => settleDue(tx));
+    expect((await db.select().from(assignments))[0].status).toBe("reserved");
+    await expect(
+      command(
+        "duty.cancel",
+        { id: row.id, reason: "ביטול", confirmed: true },
+        2,
+        actor
+      )
+    ).rejects.toMatchObject({ code: "forbidden", status: 403 });
+    const cancellation = {
+      type: "duty.cancel",
+      payload: { id: row.id, reason: "טיוטה שלא בוצעה", confirmed: true },
+      expectedVersion: 2,
+      idempotencyKey: randomUUID(),
+    };
+    const result = await executeAction(manager, cancellation);
+    expect(await executeAction(manager, cancellation)).toEqual(result);
+    expect((await db.select().from(assignments))[0].status).toBe("cancelled");
+    expect(await db.select().from(ledger)).toHaveLength(0);
+    expect(
+      (await db.select().from(balances)).every((item) => item.current === 0)
+    ).toBe(true);
+    const state = await readState(actor);
+    expect(state.duties).toHaveLength(0);
+    expect(state.notifications).toHaveLength(0);
+  });
+  it("cancels a future published duty atomically, closes proposals and sends one cancellation per affected soldier", async () => {
+    const { row, actor } = await publishedFixture();
+    const change = await command(
+      "duty.change.create",
+      { dutyId: row.id, reason: "הצעה פתוחה" },
+      3
+    );
+    const preview = await changePreview(change.id, 1);
+    await expect(
+      command(
+        "duty.change.apply",
+        { id: change.id, confirmed: true, previewToken: preview.previewToken },
+        1
+      )
+    ).rejects.toThrow("אינה מיועדת לתורנות שפורסמה");
+    const results = await Promise.allSettled([
+      command(
+        "duty.cancel",
+        { id: row.id, reason: "ביטול מאושר", confirmed: true },
+        3
+      ),
+      command(
+        "duty.cancel",
+        { id: row.id, reason: "ביטול מתחרה", confirmed: true },
+        3
+      ),
+    ]);
+    expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    const state = await readState(actor);
+    expect(state.duties[0].status).toBe("cancelled");
+    expect(
+      state.assignments.filter((item) => item.status === "reserved")
+    ).toHaveLength(0);
+    expect(
+      (
+        await db.select().from(records).where(eq(records.kind, "notification"))
+      ).filter(
+        (item) =>
+          item.subjectId === actor.soldierId &&
+          item.data.title === "התורנות בוטלה"
+      )
+    ).toHaveLength(1);
+    expect(
+      (await db.select().from(records).where(eq(records.id, change.id)))[0].data
+        .status
+    ).toBe("cancelled");
+    const messages = await db.select().from(emailOutbox);
+    expect(
+      messages.filter((item) => item.kind === "publication")[0].status
+    ).toBe("cancelled");
+    expect(
+      messages.filter((item) => item.kind === "publication-change")
+    ).toHaveLength(1);
+    await unitTransaction((tx) =>
+      settleDue(tx, new Date(Date.now() + 15 * 86400_000))
+    );
+    expect(await db.select().from(ledger)).toHaveLength(0);
+  });
+  it("serializes cancellation with publication and refuses to cancel a published duty after it starts", async () => {
+    const { row, actor } = await fixtureDuty();
+    await command(
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[0].id,
+        soldierId: actor.soldierId,
+      },
+      1
+    );
+    const outcomes = await Promise.allSettled([
+      command("duty.publish", { id: row.id, confirmed: true }, 2),
+      command(
+        "duty.cancel",
+        { id: row.id, reason: "ביטול מתחרה לפרסום", confirmed: true },
+        2
+      ),
+    ]);
+    expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    const [live] = await db.select().from(duties).where(eq(duties.id, row.id));
+    await db
+      .update(duties)
+      .set({
+        data: {
+          ...live.data,
+          status: "published",
+          start: new Date(Date.now() - 3600_000).toISOString(),
+        },
+      })
+      .where(eq(duties.id, row.id));
+    await expect(
+      command(
+        "duty.cancel",
+        { id: row.id, reason: "נדרש ביצוע", confirmed: true },
+        live.version
+      )
+    ).rejects.toThrow("מחייב טיפול בביצוע");
+  });
   it("keeps a published duty binding until an atomic versioned update replaces its reservations", async () => {
     const { row, actor } = await publishedFixture();
     const change = await command(

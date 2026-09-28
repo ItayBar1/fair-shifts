@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
-import { assignments, duties, dutySlots, dutyTypes } from "./schema";
+import { assignments, duties, dutySlots, dutyTypes, records } from "./schema";
 import { emailOutbox, user } from "./auth-schema";
 import {
   audit,
@@ -55,10 +55,10 @@ async function liveDuty(tx: DbTransaction, dutyId: string, version: number) {
   invariant(row, "not_found", "תורנות לא נמצאה", 404);
   currentVersion(row.version, version);
   invariant(
-    row.data.status === "published" &&
+    (row.data.status === "published" || row.data.status === "draft") &&
       instant(row.data.start).toMillis() > Date.now(),
     "cannot_change",
-    "מסלול זה מיועד לתורנות שפורסמה וטרם התחילה"
+    "ניתן לשנות טיוטה או תורנות שפורסמה וטרם התחילה"
   );
   return row;
 }
@@ -385,11 +385,12 @@ export async function previewDutyChange(
     previewToken: checked.previewToken,
   };
 }
-export async function publishDutyChange(
+async function applyDutyChange(
   tx: DbTransaction,
   actor: Actor,
   payload: unknown,
-  expectedVersion?: number
+  expectedVersion: number | undefined,
+  mode: "draft" | "published"
 ) {
   manager(actor);
   const input = previewInput
@@ -408,6 +409,13 @@ export async function publishDutyChange(
   const { row, change, live, state, original, simulated, checks, affected } =
     checked;
   invariant(
+    live.data.status === mode,
+    "wrong_change_mode",
+    mode === "draft"
+      ? "שמירת שינוי בטיוטה אינה מיועדת לתורנות שפורסמה"
+      : "עדכן ופרסם אינו מפרסם טיוטה. יש לשמור אותה ולפרסם במפורש"
+  );
+  invariant(
     input.previewToken === checked.previewToken,
     "stale_preview",
     "הנתונים השתנו. יש לבדוק שוב את השפעת השינוי",
@@ -421,7 +429,7 @@ export async function publishDutyChange(
   invariant(
     checks.every((check) => check.status !== "blocked"),
     "blocked_change",
-    "יש שיבוצים חסומים. יש לטפל בהם במפורש לפני הפרסום",
+    "יש שיבוצים חסומים. יש לטפל בהם במפורש לפני השלמת השינוי",
     422,
     checks
   );
@@ -443,16 +451,7 @@ export async function publishDutyChange(
     replacedBy: row.id,
     actorId: actor.id,
   });
-  for (const item of original)
-    await tx
-      .update(assignments)
-      .set({
-        status: "cancelled",
-        version: item.version + 1,
-        data: { ...item, status: "cancelled", version: item.version + 1 },
-        updatedAt: new Date(),
-      })
-      .where(eq(assignments.id, item.id));
+  await releaseReservations(tx, original);
   for (const slot of change.proposed.slots)
     await tx
       .insert(dutySlots)
@@ -501,16 +500,8 @@ export async function publishDutyChange(
     })
     .where(eq(duties.id, live.id));
   const href = `/duties/${live.id}`;
-  await tx
-    .update(emailOutbox)
-    .set({ status: "cancelled", leaseUntil: null, updatedAt: new Date() })
-    .where(
-      and(
-        eq(emailOutbox.href, href),
-        inArray(emailOutbox.status, ["pending", "sending"])
-      )
-    );
-  for (const item of affected) {
+  if (mode === "published") await cancelDutyEmails(tx, href);
+  for (const item of mode === "published" ? affected : []) {
     const [account] = await tx
       .select()
       .from(user)
@@ -551,15 +542,171 @@ export async function publishDutyChange(
   }
   const closed = await updateRecord(tx, row, {
     ...row.data,
-    status: "published",
-    publishedBy: actor.id,
-    publishedAt: new Date().toISOString(),
+    status: mode === "published" ? "published" : "applied",
+    appliedBy: actor.id,
+    appliedAt: new Date().toISOString(),
   });
-  await audit(tx, actor, "duty.update.publish", live.id, {
-    changeId: row.id,
-    version: live.version + 1,
-  });
+  await audit(
+    tx,
+    actor,
+    mode === "published" ? "duty.update.publish" : "duty.update.draft",
+    live.id,
+    {
+      changeId: row.id,
+      version: live.version + 1,
+    }
+  );
   return { id: closed.id, version: closed.version, dutyId: live.id };
+}
+export function publishDutyChange(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  return applyDutyChange(tx, actor, payload, expectedVersion, "published");
+}
+export function applyDraftDutyChange(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  return applyDutyChange(tx, actor, payload, expectedVersion, "draft");
+}
+async function releaseReservations(tx: DbTransaction, original: Assignment[]) {
+  for (const item of original)
+    await tx
+      .update(assignments)
+      .set({
+        status: "cancelled",
+        version: item.version + 1,
+        data: { ...item, status: "cancelled", version: item.version + 1 },
+        updatedAt: new Date(),
+      })
+      .where(eq(assignments.id, item.id));
+}
+async function cancelDutyEmails(tx: DbTransaction, href: string) {
+  await tx
+    .update(emailOutbox)
+    .set({ status: "cancelled", leaseUntil: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(emailOutbox.href, href),
+        inArray(emailOutbox.status, ["pending", "sending"])
+      )
+    );
+}
+export async function cancelDuty(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const input = z
+    .object({ id, reason: text, confirmed: z.literal(true) })
+    .parse(payload);
+  const [live] = await tx.select().from(duties).where(eq(duties.id, input.id));
+  invariant(live, "not_found", "תורנות לא נמצאה", 404);
+  currentVersion(live.version, expectedVersion);
+  invariant(
+    live.data.status !== "cancelled",
+    "already_cancelled",
+    "התורנות כבר בוטלה",
+    409
+  );
+  invariant(
+    live.data.status === "draft" ||
+      instant(live.data.start).toMillis() > Date.now(),
+    "performance_started",
+    "ביטול תורנות שפורסמה והתחילה מחייב טיפול בביצוע"
+  );
+  const state = await loadDomain(tx);
+  const original = state.assignments.filter(
+    (item) => item.dutyId === live.id && item.status !== "cancelled"
+  );
+  invariant(
+    original.every((item) => item.status === "reserved"),
+    "performance_started",
+    "נדרש טיפול בביצוע לפני ביטול זה"
+  );
+  const version = live.version + 1;
+  await createRecord(tx, "duty_revision", {
+    dutyId: live.id,
+    duty: live.data,
+    assignmentIds: original.map((item) => item.id),
+    cancelledBy: actor.id,
+    reason: input.reason,
+  });
+  await releaseReservations(tx, original);
+  await tx
+    .update(duties)
+    .set({
+      version,
+      data: {
+        ...live.data,
+        status: "cancelled",
+        wasPublished: live.data.status === "published",
+        version,
+        rulesVersion: (live.data.rulesVersion ?? live.version) + 1,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(duties.id, live.id));
+  const proposals = await tx
+    .select()
+    .from(records)
+    .where(eq(records.kind, "duty_change"));
+  for (const proposal of proposals.filter(
+    (item) => item.data.dutyId === live.id && item.data.status === "open"
+  ))
+    await updateRecord(tx, proposal, {
+      ...proposal.data,
+      status: "cancelled",
+      cancelledBy: actor.id,
+    });
+  const href = `/duties/${live.id}`;
+  await cancelDutyEmails(tx, href);
+  if (live.data.status === "published") {
+    for (const soldierId of new Set(original.map((item) => item.soldierId))) {
+      const [account] = await tx
+        .select()
+        .from(user)
+        .where(eq(user.soldierId, soldierId));
+      if (!account || account.deletedAt) continue;
+      const title = "התורנות בוטלה";
+      const body = `התורנות ${live.name} בוטלה. השיבוץ שלך לתורנות זו אינו בתוקף.`;
+      await createRecord(
+        tx,
+        "notification",
+        {
+          accountId: account.id,
+          title,
+          body,
+          href,
+          dutyId: live.id,
+          dutyVersion: version,
+        },
+        soldierId
+      );
+      await enqueueEmail(tx, {
+        recipientAccountId: account.id,
+        eventKey: `cancel:${live.id}:${version}:${account.id}`,
+        kind: "publication-change",
+        title,
+        body,
+        href,
+        priority: 1,
+        expiresAt: new Date(Date.now() + 86400_000),
+      });
+    }
+  }
+  await audit(tx, actor, "duty.cancel", live.id, {
+    reason: input.reason,
+    version,
+  });
+  return { id: live.id, version };
 }
 export async function discardDutyChange(
   tx: DbTransaction,

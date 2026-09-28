@@ -108,6 +108,37 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   expect(
     (await (await memberPage.request.get("/api/v1/state")).json()).duties
   ).toHaveLength(0);
+  await page.getByRole("button", { name: "עריכת טיוטה", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("סיבת השינוי")
+    .fill("שינוי טיוטה לבדיקה");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "שמירה", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.getByRole("button", { name: "עריכת ההצעה והשיבוצים" }).click();
+  await page.getByLabel("המיקום המוצע").fill("אתר טיוטה מעודכן");
+  await page.getByRole("button", { name: "שמירת הצעה בלבד" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.getByRole("button", { name: "בדיקת השפעת השינוי" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "השוואה לפני שמירת הטיוטה" })
+  ).toBeVisible();
+  await page
+    .getByLabel("בדקתי את השינויים, הסרת השיבוצים והניקוד ומאשר לשמור בטיוטה")
+    .check();
+  await page
+    .getByRole("button", { name: "שמירת השינוי בטיוטה", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  expect(
+    (await (await memberPage.request.get("/api/v1/state")).json()).duties
+  ).toHaveLength(0);
+  expect(
+    (await (await memberPage.request.get("/api/v1/state")).json()).notifications
+  ).toHaveLength(0);
   await page.getByRole("button", { name: "פרסום לחיילים" }).click();
   await page.getByLabel("בדקתי את הפרטים והשיבוצים").check();
   await page
@@ -188,9 +219,12 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await memberPage.reload();
   await expect(memberPage.getByText(/^מאושר:/)).toBeVisible();
   const managerState = await (await page.request.get("/api/v1/state")).json();
-  expect(managerState.assignments[0].needsAttention).toContain(
-    "approved_constraint"
-  );
+  expect(
+    managerState.assignments.find(
+      (item: { status: string; dutyId: string }) =>
+        item.status === "reserved" && item.dutyId === state.duties[0].id
+    ).needsAttention
+  ).toContain("approved_constraint");
   await page.goto("/manage/ranks");
   for (const [name, order] of [
     ["דרגה א לבדיקה", 1],
@@ -476,5 +510,31 @@ test("manager invites, assigns and publishes; soldier sees only published duties
       (duty: { name: string }) => duty.name === "מופע לתכנון ואישור"
     ).location
   ).toBe("מיקום חדש לבדיקה");
+  await page.getByRole("button", { name: "ביטול תורנות", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("סיבת הביטול")
+    .fill("ביטול סינתטי מאושר");
+  await page.getByLabel("מאשר לבטל ולפנות את השיבוצים").check();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "שמירה", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  const cancelledState = await (
+    await memberPage.request.get("/api/v1/state")
+  ).json();
+  const cancelled = cancelledState.duties.find(
+    (duty: { name: string }) => duty.name === "מופע לתכנון ואישור"
+  );
+  expect(cancelled.status).toBe("cancelled");
+  expect(
+    cancelledState.assignments.filter(
+      (item: { dutyId: string; status: string }) =>
+        item.dutyId === cancelled.id && item.status === "reserved"
+    )
+  ).toHaveLength(0);
+  await memberPage.goto(`/duties/${cancelled.id}`);
+  await expect(memberPage.getByText("בוטלה", { exact: true })).toBeVisible();
   await soldierContext.close();
 });

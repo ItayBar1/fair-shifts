@@ -47,9 +47,8 @@ export function CatalogImpact({
           onClose={() => setPreview(null)}
         >
           <Notice>
-            שינוי הקטלוג אינו משנה מופעים קיימים. בתורנות שפורסמה ניתן ליצור
-            הצעת שינוי ולבחור החלה מפורשת מהקטלוג. תנאים הדורשים חריגה יחייבו
-            אישור חדש.
+            שינוי הקטלוג אינו משנה מופעים קיימים. ניתן ליצור הצעת שינוי ולבחור
+            החלה מפורשת מהקטלוג. תנאים הדורשים חריגה יחייבו אישור חדש.
           </Notice>
           {rows(preview.duties).length ? (
             rows(preview.duties).map((duty) => (
@@ -95,6 +94,7 @@ export function DutyChanges({
   action: Action;
   duty: Row;
 }) {
+  const draft = duty.status === "draft";
   const changes = rows(state.dutyChanges).filter(
     (change) => change.dutyId === duty.id && change.status === "open"
   );
@@ -103,7 +103,7 @@ export function DutyChanges({
       title="הצעות לשינוי התורנות"
       actions={
         <ActionDialog
-          title="יצירת הצעת שינוי"
+          title={draft ? "עריכת טיוטה" : "יצירת הצעת שינוי"}
           action={action}
           type="duty.change.create"
           payload={{ dutyId: duty.id }}
@@ -116,12 +116,20 @@ export function DutyChanges({
               type: "checkbox",
             },
           ]}
-          description="התורנות המפורסמת נשארת מחייבת עד בדיקת ההשפעה ועדכן ופרסם."
+          description={
+            draft
+              ? "השיבוצים והניקוד השמור ישתנו רק לאחר בדיקת ההשפעה ושמירת השינוי בטיוטה."
+              : "התורנות המפורסמת נשארת מחייבת עד בדיקת ההשפעה ועדכן ופרסם."
+          }
         />
       }
     >
       {!changes.length && (
-        <p>אפשר לשמור הצעה, לבדוק את השפעתה ולפרסם אותה לאחר טיפול בשיבוצים.</p>
+        <p>
+          {draft
+            ? "אפשר לבדוק את שינוי הפרטים והשיבוצים ולשמור בטיוטה. פרסום לחיילים מתבצע בנפרד."
+            : "אפשר לשמור הצעה, לבדוק את השפעתה ולפרסם אותה לאחר טיפול בשיבוצים."}
+        </p>
       )}
       {changes.map((change) => (
         <ChangeEditor
@@ -146,6 +154,7 @@ function ChangeEditor({
   duty: Row;
   change: Row;
 }) {
+  const draft = duty.status === "draft";
   const [editing, setEditing] = useState(false);
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [reviewPending, setReviewPending] = useState(false);
@@ -318,7 +327,7 @@ function ChangeEditor({
       )}
       {preview && (
         <Modal
-          title="השוואה לפני עדכן ופרסם"
+          title={draft ? "השוואה לפני שמירת הטיוטה" : "השוואה לפני עדכן ופרסם"}
           wide
           onClose={() => setPreview(null)}
         >
@@ -429,7 +438,7 @@ function ChangeEditor({
           ))}
           {blocked ? (
             <Notice tone="danger">
-              יש לחזור להצעה ולטפל בשיבוצים החסומים לפני פרסום.
+              יש לחזור להצעה ולטפל בשיבוצים החסומים לפני השלמת השינוי.
             </Notice>
           ) : (
             <Form
@@ -442,15 +451,17 @@ function ChangeEditor({
                 })),
                 {
                   name: "confirmed",
-                  label: "בדקתי את השינויים, הסרת השיבוצים והניקוד ומאשר לפרסם",
+                  label: draft
+                    ? "בדקתי את השינויים, הסרת השיבוצים והניקוד ומאשר לשמור בטיוטה"
+                    : "בדקתי את השינויים, הסרת השיבוצים והניקוד ומאשר לפרסם",
                   type: "checkbox",
                   required: true,
                 },
               ]}
-              submitLabel="עדכן ופרסם"
+              submitLabel={draft ? "שמירת השינוי בטיוטה" : "עדכן ופרסם"}
               onSubmit={async (values) => {
                 await action(
-                  "duty.change.publish",
+                  draft ? "duty.change.apply" : "duty.change.publish",
                   {
                     id: change.id,
                     ...values,
