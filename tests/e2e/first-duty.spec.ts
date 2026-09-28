@@ -13,6 +13,7 @@ import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
 import ExcelJS from "exceljs";
+import { DateTime } from "luxon";
 import { createImportTemplate } from "../../src/server/import-workbook";
 
 test.beforeAll(async () => {
@@ -1010,4 +1011,192 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
     .where(eq(user.email, "filter-soldier@example.invalid"));
   expect(unchanged.responsibility).toBeNull();
   await memberContext.close();
+});
+
+test("multi-day duties appear on every Israeli day and month, independent of the browser zone", async ({
+  page,
+  browser,
+}) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
+  await account(
+    "לוח אחראי",
+    "calendar-manager@example.invalid",
+    "200001",
+    "manager"
+  );
+  const memberId = await account(
+    "לוח חייל",
+    "calendar-soldier@example.invalid",
+    "200002",
+    "soldier"
+  );
+  await login(page, "calendar-manager@example.invalid");
+  const api = async (
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number
+  ) => {
+    const response = await page.request.post("/api/v1/actions", {
+      headers: { origin: "http://127.0.0.1:3000" },
+      data: { type, payload, expectedVersion, idempotencyKey: randomUUID() },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+    return (await response.json()).result as { id: string; version: number };
+  };
+  const zone = "Asia/Jerusalem";
+  const target = DateTime.now()
+    .setZone(zone)
+    .plus({ months: 2 })
+    .startOf("month");
+  const lastDay = target.endOf("month").startOf("day");
+  const type = await api("dutyType.save", {
+    name: "לוח רב יומי",
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: 1 }],
+  });
+  async function publishedDuty(name: string, start: DateTime, end: DateTime) {
+    const created = await api("duty.create", {
+      typeId: type.id,
+      name,
+      start: start.toISO(),
+      end: end.toISO(),
+      location: "אתר לוח",
+    });
+    const state = await (await page.request.get("/api/v1/state")).json();
+    const row = state.duties.find((d: { id: string }) => d.id === created.id);
+    await api(
+      "duty.assign",
+      { dutyId: row.id, slotId: row.slots[0].id, soldierId: memberId },
+      1
+    );
+    await api("duty.publish", { id: row.id, confirmed: true }, 2);
+    return row.id as string;
+  }
+  const crossingId = await publishedDuty(
+    "לילה חוצה חודש",
+    lastDay.set({ hour: 22 }),
+    lastDay.plus({ days: 2 }).set({ hour: 6 })
+  );
+  const cancelledId = await publishedDuty(
+    "תורנות שבוטלה",
+    target.set({ day: 10, hour: 8 }),
+    target.set({ day: 10, hour: 16 })
+  );
+  await api(
+    "duty.cancel",
+    { id: cancelledId, reason: "ביטול לבדיקת הלוח", confirmed: true },
+    3
+  );
+  await api("duty.create", {
+    typeId: type.id,
+    name: "טיוטה שאינה בלוח",
+    start: target.set({ day: 12, hour: 8 }).toISO(),
+    end: target.set({ day: 12, hour: 16 }).toISO(),
+  });
+
+  const context = await browser.newContext({
+    timezoneId: "America/Los_Angeles",
+  });
+  const member = await context.newPage();
+  await login(member, "calendar-soldier@example.invalid");
+  await member.goto("/calendar");
+  const next = member.getByRole("button", { name: "החודש הבא" });
+  await next.click();
+  await next.click();
+  const monthTitle = target.setLocale("he").toFormat("LLLL yyyy");
+  await expect(member.getByRole("heading", { name: monthTitle })).toBeVisible();
+  const cellOf = (link: ReturnType<Page["getByRole"]>) =>
+    link.locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' calendar-day ')][1]"
+    );
+  const startLink = member.getByRole("link", {
+    name: "לילה חוצה חודש, התחלה 22:00",
+  });
+  await expect(startLink).toHaveCount(1);
+  await expect(cellOf(startLink).locator(".day-number")).toHaveText(
+    String(lastDay.day)
+  );
+  const cancelled = member.getByRole("link", {
+    name: "תורנות שבוטלה, 08:00–16:00, בוטלה",
+  });
+  await expect(cancelled).toHaveCount(1);
+  await expect(cellOf(cancelled).locator(".day-number")).toHaveText("10");
+  await expect(member.getByText("טיוטה שאינה בלוח")).toHaveCount(0);
+  await expect(
+    member
+      .locator(".stat")
+      .filter({ hasText: "תורנויות החודש" })
+      .locator("strong")
+  ).toHaveText("1");
+
+  await next.click();
+  const nextMonth = target.plus({ months: 1 });
+  await expect(
+    member.getByRole("heading", {
+      name: nextMonth.setLocale("he").toFormat("LLLL yyyy"),
+    })
+  ).toBeVisible();
+  const middle = member.getByRole("link", { name: "לילה חוצה חודש, ממשיכה" });
+  const end = member.getByRole("link", { name: "לילה חוצה חודש, סיום 06:00" });
+  await expect(cellOf(middle).locator(".day-number")).toHaveText("1");
+  await expect(cellOf(end).locator(".day-number")).toHaveText("2");
+  await expect(
+    member.getByRole("link", { name: /^לילה חוצה חודש/ })
+  ).toHaveCount(2);
+
+  await member.getByRole("button", { name: "תצוגת רשימה" }).click();
+  await expect(
+    member.locator(".duty-row").filter({ hasText: "לילה חוצה חודש" })
+  ).toHaveCount(1);
+  await member.getByRole("button", { name: "תצוגת חודש" }).click();
+  await member.getByRole("button", { name: "התורנויות שלי" }).click();
+  await expect(end).toBeVisible();
+  await member.getByRole("button", { name: "כל היחידה" }).click();
+
+  await end.focus();
+  await member.keyboard.press("Enter");
+  await expect(member).toHaveURL(new RegExp(`/duties/${crossingId}$`));
+  await expect(member.getByText("לילה חוצה חודש").first()).toBeVisible();
+  await expect(member.getByText("לוח חייל").first()).toBeVisible();
+
+  await member.setViewportSize({ width: 390, height: 844 });
+  await member.goto("/calendar");
+  await next.click();
+  await next.click();
+  await expect(startLink).toBeVisible();
+  expect(
+    await member.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await member.screenshot({
+    path: "test-results/calendar-multiday-mobile.png",
+    fullPage: true,
+  });
+  await member.getByRole("button", { name: "תצוגת רשימה" }).click();
+  await expect(
+    member
+      .locator(".duty-row")
+      .filter({ hasText: "לילה חוצה חודש" })
+      .locator(".mobile-only")
+  ).toBeVisible();
+  await member.setViewportSize({ width: 1280, height: 900 });
+  await member.getByRole("button", { name: "תצוגת חודש" }).click();
+  await member.screenshot({
+    path: "test-results/calendar-multiday.png",
+    fullPage: true,
+  });
+  await context.close();
 });

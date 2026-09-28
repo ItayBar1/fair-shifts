@@ -2606,7 +2606,11 @@ describe("first duty vertical slice", () => {
       1
     );
     const state = await readState(actor);
-    expect(state.duties[0].status).toBe("cancelled");
+    expect(state.duties[0]).toMatchObject({
+      status: "cancelled",
+      wasPublished: true,
+    });
+    expect(state.duties[0]).not.toHaveProperty("requirements");
     expect(
       state.assignments.filter((item) => item.status === "reserved")
     ).toHaveLength(0);
