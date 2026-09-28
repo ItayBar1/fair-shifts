@@ -1,13 +1,7 @@
 import Decimal from "decimal.js";
 import { roundPoints } from "./pricing";
 import { instant } from "./time";
-import type {
-  Assignment,
-  Duty,
-  ScoreEvent,
-  ScoreOperation,
-  Soldier,
-} from "./types";
+import type { Assignment, Duty, ScoreOperation, Soldier } from "./types";
 
 export function schedulingScore(
   soldier: Soldier,
@@ -82,44 +76,72 @@ export function rankFairness(
   });
 }
 
-/** A barrier changes the meaning of a raw historical delta, so history can change while current balance awaits a decision. */
-export function correctionImpact(
+/** A ledger entry as seen by correction rules; `barrier` marks set, percent, clamped or group operations. */
+export interface LedgerEvent {
+  id: string;
+  soldierId: string;
+  kind: string;
+  effectiveAt: string;
+  recordedAt: string;
+  barrier: boolean;
+}
+
+/** Barriers in effect from the performance onwards, in effective order, regardless of when they were recorded. */
+export function correctionBarriers(
   soldierId: string,
-  performedAt: string,
-  previousPoints: number,
-  correctedPoints: number,
-  events: ScoreEvent[]
-):
-  | { status: "automatic"; delta: number }
+  performedEnd: string,
+  events: LedgerEvent[]
+): LedgerEvent[] {
+  const from = instant(performedEnd).toMillis();
+  return events
+    .filter(
+      (event) =>
+        event.soldierId === soldierId &&
+        event.barrier &&
+        instant(event.effectiveAt).toMillis() >= from
+    )
+    .sort(
+      (a, b) =>
+        instant(a.effectiveAt).toMillis() - instant(b.effectiveAt).toMillis() ||
+        a.id.localeCompare(b.id)
+    );
+}
+
+/**
+ * The balance reflects `reflected` points of this performance. Without a barrier or an open decision
+ * the difference to the corrected history is applied once with a zero floor; otherwise it waits for a manager.
+ */
+export function correctionEffect(input: {
+  balance: number;
+  reflected: number;
+  corrected: number;
+  barriers: LedgerEvent[];
+  openDecision: boolean;
+}):
   | {
-      status: "decision_required";
-      barrierIds: string[];
-      proposedDelta: number;
-    } {
+      status: "automatic";
+      delta: number;
+      after: number;
+      clamped: boolean;
+    }
+  | { status: "decision_required"; rawDelta: number } {
   if (
-    ![previousPoints, correctedPoints].every(
+    ![input.balance, input.reflected, input.corrected].every(
       (value) => Number.isSafeInteger(value) && value >= 0
     )
   )
     throw new Error("ניקוד הביצוע חייב להיות שלם ולא שלילי");
-  const barrierIds = events
-    .filter(
-      (event) =>
-        event.soldierId === soldierId &&
-        instant(event.effectiveAt) >= instant(performedAt) &&
-        (event.kind === "normalization" ||
-          event.kind === "set" ||
-          event.kind === "reduce_percent" ||
-          event.clamped)
-    )
-    .map((event) => event.id);
-  return barrierIds.length
-    ? {
-        status: "decision_required",
-        barrierIds,
-        proposedDelta: correctedPoints - previousPoints,
-      }
-    : { status: "automatic", delta: correctedPoints - previousPoints };
+  const rawDelta = input.corrected - input.reflected;
+  if (input.barriers.length || input.openDecision)
+    return { status: "decision_required", rawDelta };
+  const raw = input.balance + rawDelta;
+  const after = Math.max(0, raw);
+  return {
+    status: "automatic",
+    delta: after - input.balance,
+    after,
+    clamped: raw < 0,
+  };
 }
 
 export function dueCredits(

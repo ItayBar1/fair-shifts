@@ -1,5 +1,5 @@
 ALTER TABLE "email_outbox" ADD COLUMN "reminder_hours" integer;--> statement-breakpoint
--- Preferences saved before decision 161 were explicit personal choices. Map them to the
+-- Preferences saved before decision 162 were explicit personal choices. Map them to the
 -- per-type email switches; keep only whole reminder hours 1-168, at most three.
 UPDATE "records" SET "data" = jsonb_build_object(
   'accountId', "data"->'accountId',
