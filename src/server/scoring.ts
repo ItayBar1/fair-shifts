@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import Decimal from "decimal.js";
 import type { DbTransaction } from "./db";
 import { assignments, balances, duties, ledger, soldiers } from "./schema";
@@ -270,81 +270,4 @@ export async function applyScore(
     operation: input.operation,
   });
   return { changed: rows.length };
-}
-
-export async function applyPerformanceCorrection(
-  tx: DbTransaction,
-  actor: Actor,
-  input: {
-    soldierId: string;
-    assignmentId: string;
-    newPoints: number;
-    reason: string;
-    correctionId: string;
-    effectiveAt: Date;
-  }
-) {
-  const [original] = await tx
-    .select()
-    .from(ledger)
-    .where(eq(ledger.sourceKey, `performance:${input.assignmentId}`));
-  invariant(original, "not_credited", "הביצוע טרם נזקף");
-  const later = await tx
-    .select()
-    .from(ledger)
-    .where(
-      and(
-        eq(ledger.soldierId, input.soldierId),
-        gt(ledger.effectiveAt, input.effectiveAt)
-      )
-    );
-  const priorCorrections = await tx
-    .select()
-    .from(ledger)
-    .where(eq(ledger.soldierId, input.soldierId));
-  const currentPerformance =
-    original.amount +
-    priorCorrections
-      .filter(
-        (row) =>
-          row.kind === "correction" &&
-          row.data.assignmentId === input.assignmentId
-      )
-      .reduce((sum, row) => sum + row.amount, 0);
-  const delta = input.newPoints - currentPerformance;
-  if (
-    later.some(
-      (row) => row.data.barrier === true || row.kind === "normalization"
-    )
-  ) {
-    const decision = await createRecord(
-      tx,
-      "score_decision",
-      {
-        assignmentId: input.assignmentId,
-        correctionId: input.correctionId,
-        previousPoints: currentPerformance,
-        newPoints: input.newPoints,
-        suggestedDelta: delta,
-        status: "pending",
-        reason: input.reason,
-      },
-      input.soldierId
-    );
-    return { status: "approval_required", decisionId: decision.id };
-  }
-  await postScore(tx, {
-    soldierId: input.soldierId,
-    sourceKey: `correction:${input.correctionId}:${input.soldierId}`,
-    kind: "correction",
-    actorId: actor.id,
-    reason: input.reason,
-    effectiveAt: new Date(),
-    amount: delta,
-    data: {
-      assignmentId: input.assignmentId,
-      correctedEffectiveAt: input.effectiveAt.toISOString(),
-    },
-  });
-  return { status: "applied" };
 }
