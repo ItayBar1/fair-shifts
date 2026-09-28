@@ -41,7 +41,7 @@ import {
 } from "@/client/soldier-filters";
 import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
-import { PersonnelHistory } from "./personnel-history";
+import { AddPeriod, PersonnelHistory } from "./personnel-history";
 import type { RankClause, Requirements } from "@/domain/types";
 const soldierFields = (s?: Row): Field[] => [
   { name: "name", label: "שם מלא", required: true, value: str(s?.name) },
@@ -358,22 +358,13 @@ export function SoldiersView({
                 ))
               )}
               <ActionDialog
-                title="הוספת שינוי לשירות או לזמינות"
+                title="מעבר אוכלוסיית שיבוץ"
                 fields={[
                   {
-                    name: "kind",
-                    label: "סוג השינוי",
+                    name: "value",
+                    label: "אוכלוסייה חדשה",
                     type: "select",
                     required: true,
-                    options: [
-                      { value: "population", label: "מעבר אוכלוסיית שיבוץ" },
-                      { value: "inactive", label: "תקופת אי־פעילות" },
-                    ],
-                  },
-                  {
-                    name: "value",
-                    label: "אוכלוסייה חדשה (למעבר בלבד)",
-                    type: "select",
                     options: populations,
                   },
                   {
@@ -382,7 +373,6 @@ export function SoldiersView({
                     type: "date",
                     required: true,
                   },
-                  { name: "endDate", label: "עד תאריך (כולל)", type: "date" },
                   {
                     name: "reason",
                     label: "סיבה",
@@ -393,8 +383,36 @@ export function SoldiersView({
                 ]}
                 action={action}
                 type="soldier.timeline"
-                payload={{ soldierId: selected.id }}
+                payload={{ soldierId: selected.id, kind: "population" }}
                 version={selected.version}
+              />
+              <h3>הוספת תקופת אי־פעילות</h3>
+              <AddPeriod
+                state={state}
+                action={action}
+                fixed={{ soldierId: selected.id, kind: "inactive" }}
+                fields={[
+                  {
+                    name: "startDate",
+                    label: "אי־פעילות מתאריך",
+                    type: "date",
+                    required: true,
+                  },
+                  {
+                    name: "endDate",
+                    label: "אי־פעילות עד תאריך (כולל)",
+                    type: "date",
+                    required: true,
+                  },
+                  {
+                    name: "reason",
+                    label: "סיבת אי־הפעילות",
+                    type: "textarea",
+                    required: true,
+                    full: true,
+                  },
+                ]}
+                submitLabel="בדיקת השפעת אי־הפעילות"
               />
             </div>
           </details>
@@ -565,7 +583,9 @@ export function EligibilityView({
           )}
         </Panel>
         <Panel title="שיוך לחייל" subtitle="תוקף הכשירות נבדק לכל משך התורנות">
-          <Form
+          <AddPeriod
+            state={state}
+            action={action}
             fields={[
               {
                 name: "soldierId",
@@ -615,14 +635,7 @@ export function EligibilityView({
                 full: true,
               },
             ]}
-            onSubmit={(v) =>
-              action(
-                "soldier.timeline",
-                v,
-                state.soldiers.find((s) => s.id === v.soldierId)?.version
-              )
-            }
-            submitLabel="שמירת שיוך"
+            submitLabel="בדיקת השפעת השיוך"
           />
         </Panel>
       </div>
