@@ -234,7 +234,8 @@ describe("durable email queue", () => {
       enqueueEmail(tx, {
         recipientAccountId: memberId,
         eventKey: "reminder",
-        kind: "reminder",
+        kind: "duty-reminder",
+        reminderHours: 24,
         title: "תזכורת",
         body: "בדיקה",
         priority: 2,
@@ -265,7 +266,8 @@ describe("durable email queue", () => {
         await enqueueEmail(tx, {
           recipientAccountId: memberId,
           eventKey,
-          kind: "reminder",
+          kind: "duty-reminder",
+          reminderHours: 24,
           title: "תזכורת",
           body: "בדיקה",
           expiresAt: new Date(now.getTime() + 3600_000),
@@ -4573,6 +4575,65 @@ describe("first duty vertical slice", () => {
       );
       expect((await request(open.id)).data.status).toBe("expired");
       expect(await reservedIn(row.id)).toHaveLength(0);
+    });
+    it("emails a transfer only to recipients who keep the transfer type enabled, while the site copy stays", async () => {
+      const { actor, seat, first, second } = await seatFixture();
+      await command(
+        "settings.save",
+        {
+          reminderHours: [24],
+          email: {
+            dutyReminder: true,
+            roundOpening: true,
+            roundClosing: true,
+            publication: true,
+            transfer: false,
+          },
+        },
+        undefined,
+        first
+      );
+      await command(
+        "transfer.offer",
+        {
+          assignmentId: seat.id,
+          candidateIds: [first.soldierId, second.soldierId],
+        },
+        1,
+        actor
+      );
+      const sent: string[] = [];
+      for (let index = 0; index < 20; index++) {
+        const result = await deliverNextEmail(
+          async (message) => {
+            sent.push(message.eventKey);
+            return `synthetic-${message.eventKey}`;
+          },
+          new Date(Date.now() + 1000)
+        );
+        if (result.status === "idle") break;
+      }
+      const offers = (await db.select().from(emailOutbox)).filter(
+        (item) => item.kind === "transfer"
+      );
+      expect(
+        offers.find((item) => item.recipientAccountId === first.id)
+      ).toMatchObject({ status: "cancelled", error: "preference_disabled" });
+      expect(
+        sent.some(
+          (key) => key.startsWith("transfer:") && key.endsWith(second.id)
+        )
+      ).toBe(true);
+      expect(
+        sent.some(
+          (key) => key.startsWith("transfer:") && key.endsWith(first.id)
+        )
+      ).toBe(false);
+      expect(
+        (await readState(first)).notifications.map(
+          (item) => (item as { title?: string }).title
+        )
+      ).toContain("הוצעה לך תורנות");
     });
     it("hands acceptance with an exemption to a manager and keeps the original seat", async () => {
       const { row, actor, seat, second } = await seatFixture();
