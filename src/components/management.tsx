@@ -34,6 +34,11 @@ import {
   type Field,
 } from "./ui";
 import { DutyList, dutyStatus } from "./views";
+import {
+  defaultPopulations,
+  filterSoldiers,
+  rankTracks,
+} from "@/client/soldier-filters";
 import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
 import { PersonnelHistory } from "./personnel-history";
@@ -133,20 +138,24 @@ export function SoldiersView({
   action: Action;
 }) {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState(state.actor.population || "");
+  const defaults = defaultPopulations(state.actor.population);
+  const [shown, setShown] = useState<string[]>(defaults);
+  const [rank, setRank] = useState("");
+  const tracks = rankTracks(rows(state.rankCatalog));
   const [selectedRecord, setSelected] = useState<Row | null>(null);
   const selected = selectedRecord
     ? (state.soldiers.find((person) => person.id === selectedRecord.id) ??
       selectedRecord)
     : null;
-  const filtered = state.soldiers.filter(
-    (s) =>
-      !s.deletedAt &&
-      (!search ||
-        str(s.name).includes(search) ||
-        str(s.personalNumber).includes(search)) &&
-      (!filter || s.population === filter || s.population === "academic")
-  );
+  const filtered = filterSoldiers(state.soldiers, {
+    search,
+    populations: shown,
+    rank,
+  });
+  const isDefault =
+    !rank &&
+    shown.length === defaults.length &&
+    defaults.every((value) => shown.includes(value));
   return (
     <>
       <Panel
@@ -172,20 +181,63 @@ export function SoldiersView({
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
-          <select
-            aria-label="אוכלוסיית שיבוץ"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          >
-            <option value="">כל האוכלוסיות</option>
+          <fieldset className="toggle-group">
+            <legend>אוכלוסיות מוצגות</legend>
             {populations.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label} וקמ״א
-              </option>
+              <label key={p.value} className="toggle">
+                <input
+                  type="checkbox"
+                  checked={shown.includes(p.value)}
+                  onChange={(e) =>
+                    setShown(
+                      e.target.checked
+                        ? [...shown, p.value]
+                        : shown.filter((value) => value !== p.value)
+                    )
+                  }
+                />
+                {p.label}
+              </label>
+            ))}
+          </fieldset>
+          <select
+            aria-label="סינון לפי דרגה נוכחית"
+            value={rank}
+            onChange={(e) => setRank(e.target.value)}
+          >
+            <option value="">כל הדרגות</option>
+            <option value="missing">דרגה חסרה</option>
+            {tracks.map((t) => (
+              <optgroup key={t.track} label={`מסלול ${t.track}`}>
+                <option value={`track:${t.track}`}>
+                  כל הדרגות במסלול {t.track}
+                </option>
+                {t.ranks.map((r) => (
+                  <option key={r.id} value={`rank:${r.id}`}>
+                    {r.name}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
-          <span className="muted">{filtered.length} חיילים</span>
+          {!isDefault && (
+            <button
+              className="btn small secondary"
+              onClick={() => {
+                setShown(defaults);
+                setRank("");
+              }}
+            >
+              חזרה לברירת המחדל
+            </button>
+          )}
+          <span className="muted" role="status">
+            {filtered.length} חיילים מוצגים
+          </span>
         </div>
+        <p className="muted filter-note">
+          הסינון משנה את התצוגה בלבד. שני האחראים רשאים לנהל את כל החיילים.
+        </p>
         {filtered.length ? (
           <div className="table-scroll">
             <table>
@@ -213,7 +265,18 @@ export function SoldiersView({
                     </td>
                     <td dir="ltr">{str(s.personalNumber)}</td>
                     <td>{population(s.population)}</td>
-                    <td>{str(s.rankName ?? s.rank, "לא הוזנה")}</td>
+                    <td>
+                      {s.rankId ? (
+                        <>
+                          {str(s.rankName)}{" "}
+                          <small className="muted">
+                            · מסלול {str(s.rankTrack)}
+                          </small>
+                        </>
+                      ) : (
+                        <Badge tone="warning">דרגה חסרה</Badge>
+                      )}
+                    </td>
                     <td>{displayDate(s.releaseDate)}</td>
                     <td>
                       <Status value={s.status || "active"} />

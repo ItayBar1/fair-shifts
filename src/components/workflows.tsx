@@ -3,6 +3,7 @@ import { useState } from "react";
 import {
   type AppState,
   type Action,
+  type Row,
   str,
   num,
   rows,
@@ -354,6 +355,9 @@ export function TechnicalView({
                 : "הענקת הרשאת אחראי"}
             </QuickAction>
           )}
+          {row.role === "manager" && (
+            <ResponsibilitySelect row={row} action={action} />
+          )}
           {row.lockedAt && row.role === "manager" ? (
             <QuickAction
               action={action}
@@ -367,5 +371,38 @@ export function TechnicalView({
         </div>
       ))}
     </Panel>
+  );
+}
+
+function ResponsibilitySelect({ row, action }: { row: Row; action: Action }) {
+  const [pending, setPending] = useState(false);
+  return (
+    <select
+      aria-label={`תחום אחריות · ${str(row.name)}`}
+      value={
+        row.population === "mandatory" || row.population === "career"
+          ? row.population
+          : ""
+      }
+      disabled={pending}
+      onChange={async (e) => {
+        setPending(true);
+        try {
+          await action(
+            "account.responsibility",
+            { id: row.id, population: e.target.value || null },
+            row.version
+          );
+        } catch {
+          /* workspace displays API error */
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      <option value="">תחום אחריות: כל האוכלוסיות</option>
+      <option value="mandatory">תחום אחריות: חובה</option>
+      <option value="career">תחום אחריות: קבע / קצינים</option>
+    </select>
   );
 }

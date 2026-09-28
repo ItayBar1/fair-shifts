@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, pool } from "../../src/server/db";
 import { user, emailOutbox } from "../../src/server/auth-schema";
-import { soldiers, balances, soldierContacts } from "../../src/server/schema";
+import {
+  soldiers,
+  balances,
+  soldierContacts,
+  records,
+} from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
@@ -742,4 +747,244 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     )
   ).toMatchObject({ currentScore: 5 });
   await soldierContext.close();
+});
+
+test("responsibility filters default per manager, hide KAMA and filter rank without granting or limiting access", async ({
+  page,
+  browser,
+}) => {
+  const sergeant = randomUUID();
+  const foreignSergeant = randomUUID();
+  await db.insert(records).values([
+    {
+      id: sergeant,
+      kind: "rank_catalog",
+      data: {
+        name: "רס״ל מסנן",
+        track: "נגדים מסנן",
+        order: 1,
+        source: "בדיקה",
+      },
+    },
+    {
+      id: foreignSergeant,
+      kind: "rank_catalog",
+      data: {
+        name: "רס״ל מסנן",
+        track: "מסלול אחר מסנן",
+        order: 1,
+        source: "בדיקה",
+      },
+    },
+  ]);
+  async function person(
+    name: string,
+    personalNumber: string,
+    population: "mandatory" | "career" | "academic",
+    rank?: { rankId: string; trackId: string }
+  ) {
+    const id = randomUUID();
+    const data = soldier({
+      id,
+      name,
+      personalNumber,
+      service: {
+        type: population === "career" ? "career" : "mandatory",
+        basePopulation: population,
+        graceEligible: false,
+      },
+      rankHistory: rank
+        ? [{ ...rank, effectiveFrom: "2026-01-01", order: 1 }]
+        : [],
+    });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    return id;
+  }
+  await person("מסנן חובה נגד", "100001", "mandatory", {
+    rankId: sergeant,
+    trackId: "נגדים מסנן",
+  });
+  await person("מסנן חובה מסלול אחר", "100002", "mandatory", {
+    rankId: foreignSergeant,
+    trackId: "מסלול אחר מסנן",
+  });
+  await person("מסנן קבע", "100003", "career");
+  await person("מסנן קמא", "100004", "academic");
+  const careerSoldier = await person("מסנן אחראי קבע", "100005", "career");
+  const mandatoryManager = await person(
+    "מסנן אחראי חובה",
+    "100007",
+    "mandatory"
+  );
+  await createInvitedAccount({
+    name: "מסנן אחראי חובה",
+    email: "mandatory-manager@example.invalid",
+    role: "manager",
+    soldierId: mandatoryManager,
+  });
+  const memberSoldier = await person("מסנן חייל", "100006", "mandatory");
+  await createInvitedAccount({
+    name: "מסנן אחראי קבע",
+    email: "career-manager@example.invalid",
+    role: "manager",
+    soldierId: careerSoldier,
+  });
+  await createInvitedAccount({
+    name: "מסנן חייל",
+    email: "filter-soldier@example.invalid",
+    role: "soldier",
+    soldierId: memberSoldier,
+  });
+  await createInvitedAccount({
+    name: "טכני לבדיקה",
+    email: "technical@example.invalid",
+    role: "technical",
+  });
+
+  const technicalContext = await browser.newContext();
+  const technicalPage = await technicalContext.newPage();
+  await login(technicalPage, "technical@example.invalid");
+  await technicalPage.goto("/technical/permissions");
+  const careerSelect = technicalPage.getByLabel(
+    "תחום אחריות · מסנן אחראי קבע",
+    { exact: true }
+  );
+  await careerSelect.selectOption("career");
+  await expect(careerSelect).toHaveValue("career");
+  const mandatorySelect = technicalPage.getByLabel(
+    "תחום אחריות · מסנן אחראי חובה",
+    { exact: true }
+  );
+  await mandatorySelect.selectOption("mandatory");
+  await expect(mandatorySelect).toHaveValue("mandatory");
+  await technicalContext.close();
+
+  const rowsNamed = (target: Page) =>
+    target.locator("tbody tr").filter({ hasText: "מסנן" });
+  const visibleNames = async (target: Page) =>
+    (await rowsNamed(target).locator("strong").allTextContents()).sort();
+
+  await login(page, "mandatory-manager@example.invalid");
+  await page.goto("/manage/soldiers");
+  await page.getByLabel("חיפוש חייל לפי שם או מספר אישי").fill("מסנן");
+  await expect(page.getByLabel("חובה", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("קמ״א", { exact: true })).toBeChecked();
+  await expect(
+    page.getByLabel("קבע / קצינים", { exact: true })
+  ).not.toBeChecked();
+  await expect
+    .poll(() => visibleNames(page))
+    .toEqual(
+      [
+        "מסנן חובה נגד",
+        "מסנן חובה מסלול אחר",
+        "מסנן חייל",
+        "מסנן קמא",
+        "מסנן אחראי חובה",
+      ].sort()
+    );
+  await page.getByLabel("קמ״א", { exact: true }).uncheck();
+  await expect(rowsNamed(page).filter({ hasText: "מסנן קמא" })).toHaveCount(0);
+  await page.getByLabel("קבע / קצינים", { exact: true }).check();
+  await expect(rowsNamed(page).filter({ hasText: "מסנן קבע" })).toHaveCount(1);
+  await page
+    .getByLabel("סינון לפי דרגה נוכחית")
+    .selectOption(`rank:${sergeant}`);
+  await expect.poll(() => visibleNames(page)).toEqual(["מסנן חובה נגד"]);
+  await expect(page.getByText("· מסלול נגדים מסנן")).toBeVisible();
+  await page
+    .getByLabel("סינון לפי דרגה נוכחית")
+    .selectOption("track:מסלול אחר מסנן");
+  await expect.poll(() => visibleNames(page)).toEqual(["מסנן חובה מסלול אחר"]);
+  await page.getByLabel("סינון לפי דרגה נוכחית").selectOption("missing");
+  await expect
+    .poll(() => visibleNames(page))
+    .toEqual(
+      ["מסנן חייל", "מסנן קבע", "מסנן אחראי קבע", "מסנן אחראי חובה"].sort()
+    );
+  await expect(
+    rowsNamed(page).first().getByText("דרגה חסרה", { exact: true })
+  ).toBeVisible();
+  await page.getByRole("button", { name: "חזרה לברירת המחדל" }).click();
+  await expect(page.getByLabel("קמ״א", { exact: true })).toBeChecked();
+  await expect(
+    page.getByLabel("קבע / קצינים", { exact: true })
+  ).not.toBeChecked();
+  await page.screenshot({
+    path: "test-results/soldier-filters.png",
+    fullPage: true,
+  });
+
+  const careerContext = await browser.newContext();
+  const careerPage = await careerContext.newPage();
+  await login(careerPage, "career-manager@example.invalid");
+  await careerPage.setViewportSize({ width: 390, height: 844 });
+  await careerPage.goto("/manage/soldiers");
+  await careerPage.getByLabel("חיפוש חייל לפי שם או מספר אישי").fill("מסנן");
+  await expect
+    .poll(() => visibleNames(careerPage))
+    .toEqual(["מסנן קבע", "מסנן אחראי קבע", "מסנן קמא"].sort());
+  const academic = careerPage.getByLabel("קמ״א", { exact: true });
+  await academic.focus();
+  await careerPage.keyboard.press("Space");
+  await expect(academic).not.toBeChecked();
+  await expect(
+    rowsNamed(careerPage).filter({ hasText: "מסנן קמא" })
+  ).toHaveCount(0);
+  await careerPage.getByLabel("חובה", { exact: true }).check();
+  const mandatoryRow = rowsNamed(careerPage).filter({
+    hasText: "מסנן חובה נגד",
+  });
+  await expect(mandatoryRow).toHaveCount(1);
+  expect(
+    await careerPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await careerPage.screenshot({
+    path: "test-results/soldier-filters-mobile.png",
+    fullPage: true,
+  });
+  await mandatoryRow.getByRole("button", { name: "פרופיל ועריכה" }).click();
+  await expect(careerPage.getByRole("dialog")).toContainText("מסנן חובה נגד");
+  const careerState = await (
+    await careerPage.request.get("/api/v1/state")
+  ).json();
+  const managerState = await (await page.request.get("/api/v1/state")).json();
+  const ids = (state: { soldiers: { id: string }[] }) =>
+    state.soldiers.map((row) => row.id).sort();
+  expect(careerState.actor.population).toBe("career");
+  expect(managerState.actor.population).toBe("mandatory");
+  expect(ids(careerState)).toEqual(ids(managerState));
+  await careerContext.close();
+
+  const memberContext = await browser.newContext();
+  const memberPage = await memberContext.newPage();
+  await login(memberPage, "filter-soldier@example.invalid");
+  const memberState = await (
+    await memberPage.request.get("/api/v1/state")
+  ).json();
+  const listed = memberState.soldiers.find(
+    (row: { name: string }) => row.name === "מסנן חובה נגד"
+  );
+  expect(listed.rankName).toBe("רס״ל מסנן");
+  for (const key of ["rankId", "rankTrack", "email", "phone", "rankHistory"])
+    expect(listed).not.toHaveProperty(key);
+  const forged = await memberPage.request.post("/api/v1/actions", {
+    headers: { origin: "http://127.0.0.1:3000" },
+    data: {
+      type: "account.responsibility",
+      payload: { id: memberState.actor.id, population: "career" },
+      expectedVersion: 1,
+      idempotencyKey: randomUUID(),
+    },
+  });
+  expect(forged.ok()).toBe(false);
+  const [unchanged] = await db
+    .select()
+    .from(user)
+    .where(eq(user.email, "filter-soldier@example.invalid"));
+  expect(unchanged.population).toBeNull();
+  await memberContext.close();
 });

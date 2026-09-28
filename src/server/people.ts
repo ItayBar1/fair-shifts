@@ -114,7 +114,7 @@ export async function saveSoldier(
     }
     await tx
       .update(user)
-      .set({ name: data.name, population: input.population })
+      .set({ name: data.name })
       .where(eq(user.soldierId, id));
   } else {
     await tx.insert(soldiers).values({

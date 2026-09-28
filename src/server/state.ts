@@ -8,13 +8,18 @@ import { populationAt, rankAt } from "../domain/eligibility";
 
 export async function readState(actor: Actor) {
   return db.transaction(async (tx) => {
-    await assertActorCurrent(actor, tx);
-    const publicActor = {
+    const current = await assertActorCurrent(actor, tx);
+    const publicActor: {
+      id: string;
+      name: string;
+      role: Actor["role"];
+      soldierId?: string;
+      population?: string;
+    } = {
       id: actor.id,
       name: actor.name,
       role: actor.role,
       soldierId: actor.soldierId,
-      population: actor.population,
     };
     const base = {
       actor: publicActor,
@@ -43,6 +48,7 @@ export async function readState(actor: Actor) {
           id: user.id,
           name: user.name,
           role: user.role,
+          population: user.population,
           lockedAt: user.lockedAt,
           version: user.securityEpoch,
         })
@@ -68,6 +74,13 @@ export async function readState(actor: Actor) {
       };
     }
     const state = await loadDomain(tx);
+    // Explicit responsibility from the technical account; otherwise the
+    // manager's own current population. Only a default screen filter.
+    const self = state.soldiers.find((row) => row.id === actor.soldierId);
+    publicActor.population =
+      current.population === "mandatory" || current.population === "career"
+        ? current.population
+        : self && populationAt(self, base.serverNow);
     const contacts = await tx.select().from(soldierContacts);
     const catalog = await tx.select().from(dutyTypes);
     const workflows = await tx.select().from(records);
@@ -94,6 +107,8 @@ export async function readState(actor: Actor) {
         ...person,
         ...summary,
         ...contact,
+        rankId: rank?.rankId,
+        rankTrack: rank?.trackId,
         serviceType: person.service.type,
         arrivalDate: person.service.arrivalDate,
         enlistmentDate: person.service.enlistmentDate,

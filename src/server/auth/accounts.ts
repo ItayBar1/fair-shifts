@@ -180,6 +180,45 @@ export async function setRole(
   };
   return tx ? work(tx) : db.transaction(work);
 }
+// Default screen filter for a manager; never a permission boundary and never
+// the manager's own scheduling population.
+export async function setResponsibility(
+  actor: Actor,
+  targetId: string,
+  population: "mandatory" | "career" | null,
+  tx?: DbTransaction
+) {
+  const work = async (cx: DbTransaction) => {
+    await assertActorCurrent(actor, cx);
+    invariant(
+      actor.role === "technical",
+      "FORBIDDEN",
+      "רק מנהל טכני מגדיר את תחום האחריות של אחראי",
+      403
+    );
+    const [target] = await cx
+      .select()
+      .from(user)
+      .where(eq(user.id, targetId))
+      .for("update");
+    invariant(
+      target && target.role === "manager" && !target.deletedAt,
+      "ACCOUNT_TYPE",
+      "תחום אחריות מוגדר רק לאחראי פעיל"
+    );
+    await cx
+      .update(user)
+      .set({ population, updatedAt: new Date() })
+      .where(eq(user.id, targetId));
+    await audit(
+      cx,
+      actor.id,
+      targetId,
+      `responsibility:${population ?? "all"}`
+    );
+  };
+  return tx ? work(tx) : db.transaction(work);
+}
 export async function unlockAccount(
   actor: Actor,
   targetId: string,

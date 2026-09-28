@@ -7,6 +7,7 @@ import { commandSchema, id } from "./validation";
 import {
   assertActorCurrent,
   setRole,
+  setResponsibility,
   unlockAccount,
   type Actor,
 } from "./auth/accounts";
@@ -258,6 +259,24 @@ export async function executeAction(actor: Actor, value: unknown) {
         invariant(target, "not_found", "חשבון לא נמצא", 404);
         currentVersion(target.securityEpoch, expectedVersion);
         await setRole(actor, input.id, input.role, tx);
+        result = { success: true };
+        break;
+      }
+      case "account.responsibility": {
+        const input = z
+          .object({
+            id: z.string(),
+            population: z.enum(["mandatory", "career"]).nullable(),
+          })
+          .parse(payload);
+        const [target] = await tx
+          .select()
+          .from(user)
+          .where(eq(user.id, input.id))
+          .for("update");
+        invariant(target, "not_found", "חשבון לא נמצא", 404);
+        currentVersion(target.securityEpoch, expectedVersion);
+        await setResponsibility(actor, input.id, input.population, tx);
         result = { success: true };
         break;
       }
