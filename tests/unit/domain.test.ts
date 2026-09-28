@@ -3,6 +3,8 @@ import { calculatePrice, priceSplitExecution } from "../../src/domain/pricing";
 import {
   evaluateEligibility,
   canAccessAfterService,
+  populationMoves,
+  populationTimeline,
 } from "../../src/domain/eligibility";
 import { drawCandidate } from "../../src/domain/scheduling";
 import {
@@ -263,5 +265,57 @@ describe("Israel time boundaries", () => {
     expect(resolveLocalTime("2026-10-25", "01:30", 180)).not.toBe(
       resolveLocalTime("2026-10-25", "01:30", 120)
     );
+  });
+});
+describe("population timeline", () => {
+  const career = soldier({
+    service: {
+      type: "career",
+      basePopulation: "mandatory",
+      graceEligible: false,
+      permanentFrom: "2026-01-01",
+    },
+  });
+  it("merges dates that do not change the effective population", () => {
+    expect(
+      populationTimeline({
+        ...career,
+        service: { ...career.service, officerFrom: "2026-06-01" },
+        populationHistory: [
+          { effectiveFrom: "2025-01-01", population: "mandatory" },
+        ],
+      })
+    ).toEqual([
+      { from: null, population: "mandatory" },
+      { from: "2026-01-01", population: "career" },
+    ]);
+  });
+  it("treats an officer date after the career date as no move", () => {
+    expect(
+      populationMoves(career, {
+        ...career,
+        service: { ...career.service, officerFrom: "2026-06-01" },
+      })
+    ).toBe(false);
+  });
+  it("moves the population for an earlier officer date or a KAMA transition", () => {
+    expect(
+      populationMoves(career, {
+        ...career,
+        service: { ...career.service, officerFrom: "2025-12-31" },
+      })
+    ).toBe(true);
+    const kama = {
+      ...career,
+      populationHistory: [
+        { effectiveFrom: "2026-03-01", population: "academic" as const },
+      ],
+    };
+    expect(populationTimeline(kama)).toEqual([
+      { from: null, population: "mandatory" },
+      { from: "2026-01-01", population: "career" },
+      { from: "2026-03-01", population: "academic" },
+    ]);
+    expect(populationMoves(career, kama)).toBe(true);
   });
 });

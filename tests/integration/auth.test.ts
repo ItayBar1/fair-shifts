@@ -322,6 +322,27 @@ describe("first duty vertical slice", () => {
       actor
     );
   }
+  /** Saves a profile the way the UI does: preview, and confirm a population move. */
+  async function saveProfile(
+    payload: Record<string, unknown>,
+    expectedVersion?: number,
+    actor = manager
+  ) {
+    const preview = (await command(
+      "soldier.update.preview",
+      payload,
+      expectedVersion,
+      actor
+    )) as unknown as { populationMoves: boolean; previewToken?: string };
+    return command(
+      "soldier.update",
+      preview.populationMoves
+        ? { ...payload, confirmed: true, previewToken: preview.previewToken }
+        : payload,
+      expectedVersion,
+      actor
+    );
+  }
   async function fixtureDuty() {
     const type = await command("dutyType.save", {
       name: "שמירה סינתטית",
@@ -906,8 +927,7 @@ describe("first duty vertical slice", () => {
   });
   it("preserves historical population when editing a profile and can change back to its original population", async () => {
     const { actor } = await fixtureDuty();
-    await command(
-      "soldier.timeline",
+    await addPeriod(
       {
         soldierId: actor.soldierId,
         kind: "population",
@@ -935,7 +955,7 @@ describe("first duty vertical slice", () => {
     expect(populationAt(person.data, "2025-12-31T12:00:00+02:00")).toBe(
       "mandatory"
     );
-    await command("soldier.update", { ...payload, population: "mandatory" }, 3);
+    await saveProfile({ ...payload, population: "mandatory" }, 3);
     [person] = await db
       .select()
       .from(soldiers)
@@ -1379,8 +1399,7 @@ describe("first duty vertical slice", () => {
       .where(eq(soldiers.id, actor.soldierId!));
     expect(after.name).toBe("חייל חובה שנערך בידי אחראי קבע");
 
-    await command(
-      "soldier.update",
+    await saveProfile(
       {
         id: career.soldierId,
         name: "אחראי קבע לבדיקה",
@@ -3112,6 +3131,365 @@ describe("first duty vertical slice", () => {
         (item) => item.status === "reserved"
       )[0].points
     ).toBe(9);
+  });
+  type PopulationPreview = PeriodPreview & {
+    populationMoves?: boolean;
+    population: {
+      before: { from: string | null; population: string }[];
+      after: { from: string | null; population: string }[];
+    };
+  };
+  /** An Israeli date some days ahead, so the duty is still in the future. */
+  const israeliDay = (days: number) =>
+    DateTime.now().setZone("Asia/Jerusalem").plus({ days }).toISODate()!;
+  /** Assigns the soldier to a duty open to mandatory soldiers only. */
+  async function mandatoryDuty(
+    soldierId: string,
+    start: DateTime,
+    end: DateTime,
+    name = "תורנות לחובה בלבד"
+  ) {
+    const type = await command("dutyType.save", {
+      name: `סוג ${name}`,
+      populations: ["mandatory"],
+      pricing: { mode: "fixed", base: 4 },
+      roles: [{ name: "תורן", count: 1 }],
+    });
+    const duty = await command("duty.create", {
+      typeId: type.id,
+      name,
+      start: start.toISO(),
+      end: end.toISO(),
+    });
+    const [row] = await db.select().from(duties).where(eq(duties.id, duty.id));
+    await command(
+      "duty.assign",
+      { dutyId: row.id, slotId: row.data.slots[0].id, soldierId },
+      1
+    );
+    return row;
+  }
+  async function stored(soldierId: string) {
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, soldierId));
+    return person;
+  }
+  async function attentionOf(soldierId: string) {
+    return (await db.select().from(assignments))
+      .filter((item) => item.soldierId === soldierId)
+      .map((item) => ({
+        status: item.status,
+        needsAttention: item.data.needsAttention ?? [],
+      }));
+  }
+  it("previews a population transition over a night duty that crosses it, keeps earlier transitions and saves one of two competing confirmations", async () => {
+    const { actor } = await fixtureDuty();
+    const soldierId = actor.soldierId!;
+    await addPeriod(
+      {
+        soldierId,
+        kind: "population",
+        startDate: "2025-01-01",
+        value: "mandatory",
+        reason: "מעבר קודם סינתטי",
+      },
+      1
+    );
+    const transition = israeliDay(10);
+    const midnight = DateTime.fromISO(transition, { zone: "Asia/Jerusalem" });
+    await mandatoryDuty(
+      soldierId,
+      midnight.minus({ hours: 2 }),
+      midnight.plus({ hours: 6 }),
+      "לילה שחוצה את המעבר"
+    );
+    await db
+      .update(balances)
+      .set({ current: 9 })
+      .where(eq(balances.soldierId, soldierId));
+    const constraintId = randomUUID();
+    const constraint = {
+      approved: { start: "2029-06-01", end: "2029-06-02", version: 1 },
+      status: "approved",
+    };
+    await db.insert(records).values({
+      id: constraintId,
+      kind: "constraint",
+      subjectId: soldierId,
+      data: constraint,
+    });
+    const input = {
+      soldierId,
+      kind: "population",
+      startDate: transition,
+      value: "career",
+      reason: "תחילת קבע סינתטית",
+    };
+    await expect(
+      command("soldier.timeline.preview", input, 2, actor)
+    ).rejects.toMatchObject({ code: "forbidden", status: 403 });
+    const preview = (await command(
+      "soldier.timeline.preview",
+      input,
+      2
+    )) as unknown as PopulationPreview;
+    expect(preview.population).toEqual({
+      before: [{ from: null, population: "mandatory" }],
+      after: [
+        { from: null, population: "mandatory" },
+        { from: transition, population: "career" },
+      ],
+    });
+    // The night starts as a mandatory soldier and continues as career.
+    expect(preview.impact).toHaveLength(1);
+    expect(preview.impact[0]).toMatchObject({
+      before: "eligible",
+      after: "blocked",
+      affected: true,
+    });
+    expect(preview.impact[0].reasons.map((reason) => reason.code)).toContain(
+      "population"
+    );
+    expect((await stored(soldierId)).version).toBe(2);
+    expect(await attentionOf(soldierId)).toEqual([
+      { status: "reserved", needsAttention: [] },
+    ]);
+    await expect(command("soldier.timeline", input, 2)).rejects.toThrow();
+    await expect(
+      command(
+        "soldier.timeline",
+        { ...input, confirmed: false, previewToken: preview.previewToken },
+        2
+      )
+    ).rejects.toThrow();
+    await fixtureDuty();
+    await expect(
+      command(
+        "soldier.timeline",
+        { ...input, confirmed: true, previewToken: preview.previewToken },
+        2
+      )
+    ).rejects.toMatchObject({ code: "stale_preview", status: 409 });
+    const current = (await command(
+      "soldier.timeline.preview",
+      input,
+      2
+    )) as unknown as PopulationPreview;
+    const outcomes = await Promise.allSettled(
+      [0, 1].map(() =>
+        command(
+          "soldier.timeline",
+          { ...input, confirmed: true, previewToken: current.previewToken },
+          2
+        )
+      )
+    );
+    expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1
+    );
+    const saved = await stored(soldierId);
+    expect(saved.version).toBe(3);
+    expect(saved.data.populationHistory).toEqual([
+      { effectiveFrom: "2025-01-01", population: "mandatory" },
+      { effectiveFrom: transition, population: "career" },
+    ]);
+    expect(await attentionOf(soldierId)).toEqual([
+      { status: "reserved", needsAttention: ["population"] },
+    ]);
+    expect(
+      (
+        await db
+          .select()
+          .from(balances)
+          .where(eq(balances.soldierId, soldierId))
+      )[0].current
+    ).toBe(9);
+    expect(await db.select().from(ledger)).toHaveLength(0);
+    expect(
+      (await db.select().from(records).where(eq(records.id, constraintId)))[0]
+        .data
+    ).toEqual(constraint);
+    expect(
+      (
+        await db
+          .select()
+          .from(records)
+          .where(eq(records.kind, "personnel_change"))
+      ).filter((item) => item.data.kind === "population")
+    ).toHaveLength(2);
+  });
+  it("requires a current impact preview when a profile edit sets an officer date on the duty day, and saves other edits directly", async () => {
+    const { actor } = await fixtureDuty();
+    const soldierId = actor.soldierId!;
+    const day = israeliDay(12);
+    const morning = DateTime.fromISO(`${day}T08:00`, {
+      zone: "Asia/Jerusalem",
+    });
+    await mandatoryDuty(soldierId, morning, morning.plus({ hours: 8 }));
+    const profile = {
+      id: soldierId,
+      name: "חייל לבדיקה",
+      personalNumber: "00001",
+      population: "mandatory",
+      serviceType: "mandatory",
+      graceEligible: false,
+    };
+    const renamed = { ...profile, name: "שם חדש בלי מעבר" };
+    expect(await command("soldier.update.preview", renamed, 1)).toMatchObject({
+      populationMoves: false,
+    });
+    await command("soldier.update", renamed, 1);
+    const officer = { ...renamed, officerDate: day };
+    await expect(
+      command("soldier.update.preview", officer, 2, actor)
+    ).rejects.toMatchObject({ code: "forbidden", status: 403 });
+    await expect(command("soldier.update", officer, 2)).rejects.toMatchObject({
+      code: "population_preview_required",
+    });
+    const preview = (await command(
+      "soldier.update.preview",
+      officer,
+      2
+    )) as unknown as PopulationPreview;
+    expect(preview.populationMoves).toBe(true);
+    expect(preview.population.after).toEqual([
+      { from: null, population: "mandatory" },
+      { from: day, population: "career" },
+    ]);
+    expect(preview.impact[0]).toMatchObject({
+      after: "blocked",
+      affected: true,
+    });
+    const unchanged = await stored(soldierId);
+    expect(unchanged.version).toBe(2);
+    expect(unchanged.data.service.officerFrom).toBeUndefined();
+    await mandatoryDuty(
+      soldierId,
+      morning.plus({ days: 2 }),
+      morning.plus({ days: 2, hours: 8 }),
+      "תורנות נוספת אחרי התצוגה"
+    );
+    await expect(
+      command(
+        "soldier.update",
+        { ...officer, confirmed: true, previewToken: preview.previewToken },
+        2
+      )
+    ).rejects.toMatchObject({ code: "stale_preview", status: 409 });
+    const current = (await command(
+      "soldier.update.preview",
+      officer,
+      2
+    )) as unknown as PopulationPreview;
+    expect(current.impact.filter((item) => item.affected)).toHaveLength(2);
+    await command(
+      "soldier.update",
+      { ...officer, confirmed: true, previewToken: current.previewToken },
+      2
+    );
+    const saved = await stored(soldierId);
+    expect(saved.data.service.officerFrom).toBe(day);
+    expect(saved.data.populationHistory).toEqual([]);
+    expect(await attentionOf(soldierId)).toEqual([
+      { status: "reserved", needsAttention: ["population"] },
+      { status: "reserved", needsAttention: ["population"] },
+    ]);
+    // The day before the officer date is still a mandatory day.
+    expect(populationAt(saved.data, morning.minus({ days: 1 }).toISO()!)).toBe(
+      "mandatory"
+    );
+  });
+  it("shows each imported population move with its assignments, requires its confirmation and a new preview after assignments change", async () => {
+    const { actor } = await fixtureDuty();
+    const soldierId = actor.soldierId!;
+    const day = israeliDay(14);
+    const morning = DateTime.fromISO(`${day}T08:00`, {
+      zone: "Asia/Jerusalem",
+    });
+    await mandatoryDuty(soldierId, morning, morning.plus({ hours: 8 }));
+    type ImportPreview = {
+      id: string;
+      populationMoves: number;
+      rows: {
+        populationImpact?: {
+          after: { from: string | null; population: string }[];
+          impact: { affected: boolean; reasons: { code: string }[] }[];
+        };
+      }[];
+    };
+    const rows = [
+      { rowNumber: 2, values: { personalNumber: "00001", permanentDate: day } },
+      {
+        rowNumber: 3,
+        values: { personalNumber: "00002", name: "אחראי לבדיקה" },
+      },
+    ];
+    const preview = (await command("import.preview", {
+      filename: "population.xlsx",
+      rows,
+    })) as unknown as ImportPreview;
+    expect(preview.populationMoves).toBe(1);
+    expect(preview.rows[1].populationImpact).toBeUndefined();
+    expect(preview.rows[0].populationImpact!.after).toEqual([
+      { from: null, population: "mandatory" },
+      { from: day, population: "career" },
+    ]);
+    expect(preview.rows[0].populationImpact!.impact).toMatchObject([
+      { affected: true, reasons: [{ code: "population" }] },
+    ]);
+    expect(
+      (await stored(soldierId)).data.service.permanentFrom
+    ).toBeUndefined();
+    const approval = {
+      id: preview.id,
+      confirmed: true,
+      overwriteConfirmed: true,
+      reason: "ייבוא תאריך קבע",
+    };
+    await expect(command("import.apply", approval, 1)).rejects.toMatchObject({
+      code: "population_impact_confirmation_required",
+    });
+    await mandatoryDuty(
+      soldierId,
+      morning.plus({ days: 1 }),
+      morning.plus({ days: 1, hours: 8 }),
+      "שיבוץ שנוסף אחרי התצוגה"
+    );
+    await expect(
+      command(
+        "import.apply",
+        { ...approval, populationImpactConfirmed: true },
+        1
+      )
+    ).rejects.toMatchObject({ code: "stale_import", status: 409 });
+    expect(
+      (await stored(soldierId)).data.service.permanentFrom
+    ).toBeUndefined();
+    expect(
+      (await attentionOf(soldierId)).every(
+        (item) => item.needsAttention.length === 0
+      )
+    ).toBe(true);
+    const fresh = (await command("import.preview", {
+      filename: "population.xlsx",
+      rows,
+    })) as unknown as ImportPreview;
+    expect(fresh.rows[0].populationImpact!.impact).toHaveLength(2);
+    await command(
+      "import.apply",
+      { ...approval, id: fresh.id, populationImpactConfirmed: true },
+      1
+    );
+    const saved = await stored(soldierId);
+    expect(saved.data.service.permanentFrom).toBe(day);
+    expect(saved.data.populationHistory).toEqual([]);
+    expect(await attentionOf(soldierId)).toEqual([
+      { status: "reserved", needsAttention: ["population"] },
+      { status: "reserved", needsAttention: ["population"] },
+    ]);
+    expect(await db.select().from(ledger)).toHaveLength(0);
   });
   it("imports a whole reviewed batch, preserving reservations and blank fields with documented balances", async () => {
     const { row, actor } = await fixtureDuty();

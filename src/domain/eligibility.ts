@@ -44,6 +44,37 @@ export function populationAt(soldier: Soldier, at: string): Population {
   );
 }
 
+/**
+ * The effective population over time, as merged segments. `from: null` is the
+ * base population before any dated change. Two soldiers with equal timelines
+ * are interchangeable for every population check, whatever the stored dates.
+ */
+export function populationTimeline(
+  soldier: Soldier
+): { from: string | null; population: Population }[] {
+  const dates = [
+    ...soldier.populationHistory.map((entry) => entry.effectiveFrom),
+    soldier.service.permanentFrom,
+    soldier.service.officerFrom,
+  ].filter((date): date is string => Boolean(date));
+  const segments: { from: string | null; population: Population }[] = [
+    { from: null, population: soldier.service.basePopulation },
+  ];
+  for (const date of [...new Set(dates)].sort()) {
+    const value = populationAt(soldier, localDate(date).toISO()!);
+    if (value !== segments[segments.length - 1].population)
+      segments.push({ from: date, population: value });
+  }
+  return segments;
+}
+
+export function populationMoves(before: Soldier, after: Soldier): boolean {
+  return (
+    JSON.stringify(populationTimeline(before)) !==
+    JSON.stringify(populationTimeline(after))
+  );
+}
+
 export function rankAt(
   soldier: Soldier,
   at: string
