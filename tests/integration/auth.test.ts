@@ -1250,6 +1250,146 @@ describe("first duty vertical slice", () => {
     });
     expect((await readState(actor)).rankRules).toEqual([]);
   });
+  it("keeps responsibility a versioned screen default set by the technical account or the manager, never a permission", async () => {
+    const { actor, lower } = await rankFixture();
+    await command("rank.catalog.save", {
+      name: "דרגה א לבדיקה",
+      track: "מסלול אחר",
+      order: 1,
+      source: "נתוני בדיקה בלבד",
+    });
+    const invited = await invite(
+      "אחראי קבע לבדיקה",
+      "manager",
+      "career-manager@example.invalid",
+      "00003"
+    );
+    const career: Actor = {
+      id: invited.id,
+      name: invited.name,
+      role: "manager",
+      soldierId: invited.soldierId!,
+      securityEpoch: 1,
+    };
+    expect((await readState(career)).actor).toMatchObject({
+      responsibilityVersion: 1,
+    });
+    expect((await readState(career)).actor.responsibility).toBeUndefined();
+    const set = (
+      id: string,
+      responsibility: string | null,
+      version: number,
+      by: Actor
+    ) => command("account.responsibility", { id, responsibility }, version, by);
+    await expect(set(career.id, "career", 1, manager)).rejects.toThrow(
+      "האחראי עצמו"
+    );
+    await expect(set(memberId, "career", 1, technical)).rejects.toThrow(
+      "לאחראי"
+    );
+    await expect(set(career.id, "academic", 1, technical)).rejects.toThrow();
+    const race = await Promise.allSettled([
+      set(career.id, "career", 1, technical),
+      set(career.id, "mandatory", 1, technical),
+    ]);
+    expect(race.filter((row) => row.status === "fulfilled")).toHaveLength(1);
+    await expect(set(career.id, "career", 1, technical)).rejects.toThrow(
+      "השתנה"
+    );
+    await set(career.id, "career", 2, technical);
+    await set(manager.id, "mandatory", 1, manager);
+    const [account] = await db
+      .select()
+      .from(user)
+      .where(eq(user.id, career.id));
+    expect(account).toMatchObject({
+      responsibility: "career",
+      responsibilityVersion: 3,
+      securityEpoch: 1,
+    });
+    const [own] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, career.soldierId!));
+    expect(own.data.populationHistory).toEqual([]);
+    expect(own.data.service.basePopulation).toBe("mandatory");
+    expect(
+      (await readState(technical)).accounts.find((row) => row.id === career.id)
+    ).toMatchObject({ responsibility: "career", responsibilityVersion: 3 });
+
+    const mandatoryView = await readState(manager);
+    const careerView = await readState(career);
+    expect(mandatoryView.actor.responsibility).toBe("mandatory");
+    expect(careerView.actor.responsibility).toBe("career");
+    const ids = (view: typeof careerView) =>
+      view.soldiers.map((row) => row.id).sort();
+    expect(ids(careerView)).toEqual(ids(mandatoryView));
+    expect(careerView.soldiers).toHaveLength(3);
+    expect(
+      careerView.soldiers.find((row) => row.id === actor.soldierId)
+    ).toMatchObject({
+      population: "mandatory",
+      rankId: lower.id,
+      rankTrack: "מסלול סינתטי",
+      rankName: "דרגה א לבדיקה",
+    });
+    expect(
+      careerView.soldiers.find((row) => row.id === career.soldierId)
+    ).toMatchObject({ rankId: undefined });
+
+    const [before] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    await command(
+      "soldier.update",
+      {
+        id: actor.soldierId,
+        name: "חייל חובה שנערך בידי אחראי קבע",
+        personalNumber: "00001",
+        population: "mandatory",
+        serviceType: "mandatory",
+        graceEligible: false,
+      },
+      before.version,
+      career
+    );
+    const [after] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, actor.soldierId!));
+    expect(after.name).toBe("חייל חובה שנערך בידי אחראי קבע");
+
+    await command(
+      "soldier.update",
+      {
+        id: career.soldierId,
+        name: "אחראי קבע לבדיקה",
+        personalNumber: "00003",
+        population: "academic",
+        serviceType: "mandatory",
+        graceEligible: false,
+      },
+      own.version
+    );
+    expect((await readState(career)).actor.responsibility).toBe("career");
+    await set(career.id, null, 3, career);
+    expect((await readState(career)).actor).toMatchObject({
+      responsibilityVersion: 4,
+    });
+    expect((await readState(career)).actor.responsibility).toBeUndefined();
+
+    const soldierView = await readState(actor);
+    expect(soldierView.actor).not.toHaveProperty("responsibility");
+    const visible = soldierView.soldiers.find(
+      (row) => row.id === actor.soldierId
+    )!;
+    expect(visible.rankName).toBe("דרגה א לבדיקה");
+    for (const row of soldierView.soldiers)
+      for (const key of ["rankId", "rankTrack", "email", "rankHistory"])
+        expect(row).not.toHaveProperty(key);
+    await expect(set(career.id, "career", 4, actor)).rejects.toThrow();
+  });
   it("snapshots duty and role rank requirements and checks the confirmed rank at the start", async () => {
     const { actor, lower, upper } = await rankFixture();
     const type = await command("dutyType.save", {

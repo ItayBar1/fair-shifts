@@ -706,6 +706,53 @@ select {
   color: var(--muted);
   margin-bottom: 20px;
 }
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 8px;
+}
+.toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.toggle-group legend {
+  float: inline-start;
+  margin-inline-end: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.toggle:has(input:checked) {
+  border-color: var(--teal);
+  background: #eef7f6;
+}
+.toggle input {
+  accent-color: var(--teal);
+}
+.toggle:has(input:focus-visible) {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+.filter-note {
+  font-size: 12px;
+  margin: 0 0 12px;
+}
 .search {
   display: flex;
   align-items: center;

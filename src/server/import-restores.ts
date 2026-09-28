@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Soldier } from "../domain/types";
-import { populationAt } from "../domain/eligibility";
 import { balances, records, soldierContacts, soldiers } from "./schema";
 import { user } from "./auth-schema";
 import type { DbTransaction } from "./db";
@@ -394,10 +393,7 @@ export async function applyImportRestore(
           .where(eq(soldiers.id, person.id));
         await tx
           .update(user)
-          .set({
-            name: data.name,
-            population: populationAt(data, new Date().toISOString()),
-          })
+          .set({ name: data.name })
           .where(eq(user.soldierId, person.id));
         await reassessAssignments(tx, person.id);
       }

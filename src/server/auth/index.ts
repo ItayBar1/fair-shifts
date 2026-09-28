@@ -180,7 +180,6 @@ export async function getActor(headers: Headers): Promise<Actor | null> {
     name: person.name,
     role: person.role as Role,
     soldierId: person.soldierId ?? undefined,
-    population: person.population ?? undefined,
     securityEpoch: person.securityEpoch,
   };
 }

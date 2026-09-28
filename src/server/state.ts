@@ -8,13 +8,23 @@ import { populationAt, rankAt } from "../domain/eligibility";
 
 export async function readState(actor: Actor) {
   return db.transaction(async (tx) => {
-    await assertActorCurrent(actor, tx);
-    const publicActor = {
+    const current = await assertActorCurrent(actor, tx);
+    const publicActor: {
+      id: string;
+      name: string;
+      role: Actor["role"];
+      soldierId?: string;
+      responsibility?: string;
+      responsibilityVersion?: number;
+    } = {
       id: actor.id,
       name: actor.name,
       role: actor.role,
       soldierId: actor.soldierId,
-      population: actor.population,
+      ...(actor.role === "manager" && {
+        responsibility: current.responsibility ?? undefined,
+        responsibilityVersion: current.responsibilityVersion,
+      }),
     };
     const base = {
       actor: publicActor,
@@ -43,6 +53,8 @@ export async function readState(actor: Actor) {
           id: user.id,
           name: user.name,
           role: user.role,
+          responsibility: user.responsibility,
+          responsibilityVersion: user.responsibilityVersion,
           lockedAt: user.lockedAt,
           version: user.securityEpoch,
         })
@@ -94,6 +106,8 @@ export async function readState(actor: Actor) {
         ...person,
         ...summary,
         ...contact,
+        rankId: rank?.rankId,
+        rankTrack: rank?.trackId,
         serviceType: person.service.type,
         arrivalDate: person.service.arrivalDate,
         enlistmentDate: person.service.enlistmentDate,
