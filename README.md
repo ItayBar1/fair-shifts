@@ -7,10 +7,11 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.5](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.6](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [מצב השלבים, חלוקת עבודה בצוות ושער השחרור](docs/team-roadmap.md).
+- [כרטיס המעקב ב־GitHub](https://github.com/ItayBar1/fair-shifts/issues/2) ו[אינדקס 37 ה־Stories והתלויות](docs/github-backlog.md).
 - [זיכרון בין סשנים](config/memory/README.md) ו[יומן סשנים](config/memory/session-log.md). הזיכרון מתועד ב־Git, אינו נטען אוטומטית ואינו מחליף את האפיון.
 
 ## הרצה ובדיקות — Docker בלבד
@@ -47,7 +48,7 @@ sh scripts/install-hooks.sh
 
 מסד הבדיקות והקונטיינרים של ה־commit נפרדים מסביבת הפיתוח ומנוקים בסיום. CI מריץ את אותן בדיקות גם ב־push. לפי הוראת המשתמש, שומרים נקודות התקדמות שעברו בדיקות באמצעות commit ו־push למאגר הקיים.
 
-מעתה עובדים בענף ייעודי לכל משימה, עם קידומת `codex/`, ומשלבים ב־main דרך PR. מגבים את ענף העבודה באופן שוטף. מומלץ לתאם בעלות ותלויות ב־Issues ולהגן על main עם ביקורת ובדיקות נדרשות; הגדרות ההגנה ולוח המשימות טרם הוקמו. ההפעלה המתוכננת היא Ubuntu/Docker/Cloudflare Tunnel, עם פריסה אוטומטית של גרסה שנכנסה ל־main לאחר CI. כיום ה־workflow בודק בלבד ואינו פורס. פירוט ב[מפת הדרך לצוות](docs/team-roadmap.md).
+מעתה עובדים בענף ייעודי לכל משימה, עם קידומת `codex/`, ומשלבים ב־main דרך PR. מגבים את ענף העבודה באופן שוטף. נוצרו 37 Stories עם תלויות ותנאי קבלה; לפני עבודה בוחרים בעלים ומעדכנים את הכרטיס. הגנת main לתיאום ב[כרטיס הצוות #29](https://github.com/ItayBar1/fair-shifts/issues/29); Project טרם הוקם. ההפעלה המתוכננת היא Ubuntu/Docker/Cloudflare Tunnel, עם פריסה אוטומטית של גרסה שנכנסה ל־main לאחר CI. כיום ה־workflow בודק בלבד ואינו פורס. פירוט ב[מפת הדרך לצוות](docs/team-roadmap.md).
 
 ## הקמה וכלי תחזוקה
 
