@@ -6,6 +6,17 @@
 
 **אומת:** כל בדיקות ה־hook עברו ב־Docker על תוצאת המיזוג: כללים, אינטגרציה ו־E2E.
 
+## 29.09.2026 — hook לפני commit מתוך git worktree
+
+**מקור:** המשתמש דיווח ש־`scripts/pre-commit.sh` נכשל ב־commit מתוך worktree (למשל `.claude/worktrees/<name>`). שם `.git` הוא קובץ שמפנה ל־`.git/worktrees/<name>` בתיקיית המאגר הראשית, שלא חוברה לקונטיינר, ולכן lint-staged נכשל בשגיאה `not a git repository` ‏(husky, קוד 128) עוד לפני הבדיקות.
+
+**בוצע:** ענף `codex/pre-commit-worktree`. הסקריפט `scripts/git-mounts.sh` בודק את `git rev-parse --git-common-dir`. אם תיקיית ה־Git המשותפת נמצאת מחוץ לשורש העבודה, היא מחוברת לקונטיינר באותו נתיב מוחלט. גם `pre-commit.sh` וגם `install-hooks.sh` משתמשים בו. לא נדרש safe.directory נוסף מעבר ל־`/app`. ב־README נוסף הסבר על worktree.
+
+**ממצא נוסף:** `.husky/_` אינה נשמרת ב־Git, ולכן ב־worktree חדש אין hooks, ו־Git מדלג על הבדיקה בלי הודעה. ה־commit הראשון בסשן עבר כך בלי בדיקה. הוא בוטל מקומית לפני push. אחר כך הורץ `install-hooks.sh` ב־worktree וה־commit בוצע שוב. בכל worktree חדש יש להריץ `sh scripts/install-hooks.sh` לפני ה־commit הראשון.
+
+**אומת ב־Docker:** לפני התיקון, git בקונטיינר נכשל ב־worktree עם השגיאה המדווחת. אחרי התיקון `install-hooks.sh` הצליח מתוך worktree. commit מתוך worktree הריץ את כל ה־hook: lint-staged, ‏19 בדיקות כללים/קובץ, 54 בדיקות PostgreSQL, בנייה ו־E2E. גם ב־clone רגיל וזמני (לא worktree) ה־hook המלא עבר; ה־clone נמחק.
+
+**מגבלות:** לא נוספה התקנה אוטומטית של hooks ביצירת worktree. ב־Linux ללא Docker Desktop לא נבדקו הרשאות בעלות על תיקיית ה־Git המשותפת.
 ## 29.09.2026 — דף הבית לפי תפקיד אחרי כניסה
 
 **מקור:** המשתמש דיווח שחשבון טכני מגיע אחרי כניסה בקוד ל״לוח התורנויות״ ורואה ״המסך הזה אינו זמין לחשבון שלך״. התקלה נצפתה ב־E2E של ענף `codex/itaybar1/issue-30-soldier-filters`, בבדיקת מסנני האחריות.
