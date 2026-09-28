@@ -1200,3 +1200,170 @@ test("multi-day duties appear on every Israeli day and month, independent of the
   });
   await context.close();
 });
+test("a soldier offers a published duty to several replacements and the first consent transfers it", async ({
+  page,
+  browser,
+}) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
+  await account(
+    "העברה אחראי",
+    "transfer-manager@example.invalid",
+    "300001",
+    "manager"
+  );
+  const ownerId = await account(
+    "העברה מציע",
+    "transfer-owner@example.invalid",
+    "300002",
+    "soldier"
+  );
+  await account(
+    "העברה מחליף",
+    "transfer-first@example.invalid",
+    "300003",
+    "soldier"
+  );
+  await account(
+    "העברה נוסף",
+    "transfer-second@example.invalid",
+    "300004",
+    "soldier"
+  );
+  await login(page, "transfer-manager@example.invalid");
+  const api = async (
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number
+  ) => {
+    const response = await page.request.post("/api/v1/actions", {
+      headers: { origin: "http://127.0.0.1:3000" },
+      data: { type, payload, expectedVersion, idempotencyKey: randomUUID() },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+    return (await response.json()).result as { id: string; version: number };
+  };
+  const type = await api("dutyType.save", {
+    name: "העברה לבדיקה",
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: 1 }],
+  });
+  const start = DateTime.now()
+    .setZone("Asia/Jerusalem")
+    .plus({ days: 5 })
+    .set({ hour: 8, minute: 0, second: 0, millisecond: 0 });
+  const created = await api("duty.create", {
+    typeId: type.id,
+    name: "שמירה להעברה",
+    start: start.toISO(),
+    end: start.plus({ hours: 8 }).toISO(),
+    location: "שער סינתטי",
+  });
+  const state = await (await page.request.get("/api/v1/state")).json();
+  const row = state.duties.find((d: { id: string }) => d.id === created.id);
+  await api(
+    "duty.assign",
+    {
+      dutyId: row.id,
+      slotId: row.slots[0].id,
+      soldierId: ownerId,
+      callUpBonus: 3,
+    },
+    1
+  );
+  await api("duty.publish", { id: row.id, confirmed: true }, 2);
+
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await login(owner, "transfer-owner@example.invalid");
+  await owner.goto(`/duties/${row.id}`);
+  await owner.getByRole("button", { name: "הצעה להעברה" }).click();
+  const offer = owner.getByRole("dialog");
+  await expect(offer.getByText("7 נקודות")).toBeVisible();
+  await offer
+    .getByLabel("למי להציע")
+    .selectOption([{ label: "העברה מחליף" }, { label: "העברה נוסף" }]);
+  await offer.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(offer).not.toBeVisible();
+  await expect(owner.getByText("הצעת ההעברה שלך ממתינה להסכמה")).toBeVisible();
+
+  const firstContext = await browser.newContext();
+  const first = await firstContext.newPage();
+  await login(first, "transfer-first@example.invalid");
+  await first.goto("/requests");
+  const incoming = first
+    .locator(".task-item")
+    .filter({ hasText: "שמירה להעברה — מאת העברה מציע" });
+  await expect(incoming).toContainText("7 נקודות");
+  await expect(first.getByText("העברה נוסף")).toHaveCount(0);
+  await incoming.getByRole("button", { name: "הסכמה" }).click();
+  const consent = first.getByRole("dialog");
+  await consent.getByLabel("אני מסכים לקבל את התורנות").check();
+  await consent.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(consent).not.toBeVisible();
+  await expect(incoming.getByText("הושלמה")).toBeVisible();
+  await first.goto(`/duties/${row.id}`);
+  await expect(
+    first.locator(".slot-row").filter({ hasText: "העברה מחליף" })
+  ).toContainText("7 נקודות");
+
+  await owner.goto("/requests");
+  const outgoing = owner
+    .locator(".task-item")
+    .filter({ hasText: "שמירה להעברה" });
+  await expect(outgoing.getByText("הושלמה")).toBeVisible();
+  await expect(outgoing).toContainText("העברה מחליף: הסכים");
+  await expect(outgoing).toContainText("העברה נוסף: נסגר");
+  await owner.goto("/notifications");
+  await expect(owner.getByText("ההעברה הושלמה")).toBeVisible();
+  await owner.goto(`/duties/${row.id}`);
+  await expect(owner.getByRole("button", { name: "הצעה להעברה" })).toHaveCount(
+    0
+  );
+
+  const secondContext = await browser.newContext();
+  const second = await secondContext.newPage();
+  await login(second, "transfer-second@example.invalid");
+  await second.setViewportSize({ width: 390, height: 844 });
+  await second.goto("/requests");
+  await expect(
+    second.locator(".task-item").filter({ hasText: "שמירה להעברה" })
+  ).toContainText("נסגרה");
+  await expect(second.getByRole("button", { name: "הסכמה" })).toHaveCount(0);
+  expect(
+    await second.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await second.screenshot({
+    path: "test-results/transfer-requests-mobile.png",
+    fullPage: true,
+  });
+
+  await page.goto("/requests");
+  await expect(
+    page
+      .locator(".task-item")
+      .filter({ hasText: "שמירה להעברה: העברה מציע ← העברה מחליף" })
+  ).toContainText("הושלמה");
+  await page.screenshot({
+    path: "test-results/transfer-requests-manager.png",
+    fullPage: true,
+  });
+  await Promise.all([
+    ownerContext.close(),
+    firstContext.close(),
+    secondContext.close(),
+  ]);
+});

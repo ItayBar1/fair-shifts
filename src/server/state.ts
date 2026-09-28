@@ -5,6 +5,7 @@ import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
 import { populationAt, rankAt } from "../domain/eligibility";
+import { projectRequests } from "./transfers";
 
 export async function readState(actor: Actor) {
   return db.transaction(async (tx) => {
@@ -183,6 +184,7 @@ export async function readState(actor: Actor) {
                 soldierId: row.soldierId,
                 status: row.status,
                 points: row.points,
+                version: row.version,
               }
         ),
       dutyTypes: managing
@@ -196,7 +198,7 @@ export async function readState(actor: Actor) {
         : [],
       rounds: workflow("round"),
       constraints: managing ? workflow("constraint") : own("constraint"),
-      requests: managing ? workflow("request") : own("request"),
+      requests: projectRequests(workflows, actor, managing),
       notifications: own("notification"),
       settings: own("settings")[0] ?? {},
       ledger: managing

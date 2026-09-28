@@ -230,7 +230,7 @@ export function evaluateEligibility(
         )
       )
         continue;
-      if (context.mode === "manual") {
+      if (context.mode !== "automatic") {
         if (!hasApproval("exemption", exemptionId))
           requireApproval(
             "exemption",
@@ -247,7 +247,7 @@ export function evaluateEligibility(
     if (requirements.ranks?.length) {
       const rank = rankAt(soldier, duty.start);
       if (!rank || !matchesRank(rank, requirements.ranks)) {
-        if (context.mode === "manual") {
+        if (context.mode !== "automatic") {
           if (!hasApproval("rank", reference))
             requireApproval(
               "rank",
@@ -275,14 +275,17 @@ export function evaluateEligibility(
     )
   )
     block("allowed_hours", "התורנות חורגת מטווח השעות המותר");
+  // A consenting volunteer's own pending constraints never route a transfer to a manager (decision 159).
+  const volunteer = context.mode === "volunteer";
   const pending = soldier.constraints.filter(
     (constraint) => constraint.status === "pending"
   );
-  if (pending.length && !context.pendingReviewConfirmed)
+  if (pending.length && !context.pendingReviewConfirmed && !volunteer)
     requireApproval("pending_review", "יש לאשר המשך לפני סיום סקירת האילוצים");
   for (const constraint of soldier.constraints) {
     if (
       constraint.status === "rejected" ||
+      (constraint.status === "pending" && volunteer) ||
       !overlaps(target, datesToInstants(constraint))
     )
       continue;

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ManualAssignment } from "./manual-assignment";
 import { LotteryButton, LotteryHistory } from "./planning";
+import { TransferOffer } from "./transfers";
 import {
   CalendarDays,
   UsersRound,
@@ -468,7 +469,10 @@ export function Dashboard({
   const drafts = state.duties.filter((d) => dutyStatus(d) === "draft");
   const pending = state.constraints.filter((c) => c.status === "pending");
   const requests = state.requests.filter(
-    (r) => !["completed", "rejected", "cancelled"].includes(str(r.status))
+    (r) =>
+      !["completed", "rejected", "cancelled", "declined", "expired"].includes(
+        str(r.status)
+      )
   );
   const concerns = state.assignments.filter(
     (a) =>
@@ -683,6 +687,7 @@ export function DutyDetail({
             ניתן לבטל אותה או לטפל בתיעוד הביצוע.
           </Notice>
         )}
+        <TransferOffer state={state} action={action} duty={duty} />
         {manager && (
           <div className="panel-actions">
             {dutyStatus(duty) === "draft" && future && (

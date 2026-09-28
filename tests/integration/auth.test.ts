@@ -3477,4 +3477,468 @@ describe("first duty vertical slice", () => {
     const viewed = await command("import.get", { id: batch.id });
     expect(JSON.stringify(viewed)).not.toContain("0500000007");
   });
+  describe("consensual transfer before start", () => {
+    async function soldierActor(name: string, email: string, number: string) {
+      const account = await invite(name, "soldier", email, number);
+      return {
+        id: account.id,
+        name: account.name,
+        role: "soldier",
+        soldierId: account.soldierId!,
+        securityEpoch: 1,
+      } satisfies Actor;
+    }
+    async function seatFixture(callUpBonus = 0) {
+      const { row, actor } = await fixtureDuty();
+      await command(
+        "duty.assign",
+        {
+          dutyId: row.id,
+          slotId: row.data.slots[0].id,
+          soldierId: actor.soldierId,
+          callUpBonus,
+        },
+        1
+      );
+      await command("duty.publish", { id: row.id, confirmed: true }, 2);
+      const [seat] = await db
+        .select()
+        .from(assignments)
+        .where(eq(assignments.dutyId, row.id));
+      const first = await soldierActor(
+        "מחליף ראשון",
+        "first@example.invalid",
+        "00011"
+      );
+      const second = await soldierActor(
+        "מחליף שני",
+        "second@example.invalid",
+        "00012"
+      );
+      return { row, actor, seat, first, second };
+    }
+    async function request(id: string) {
+      const [row] = await db.select().from(records).where(eq(records.id, id));
+      return row;
+    }
+    async function reservedIn(dutyId: string) {
+      return (
+        await db
+          .select()
+          .from(assignments)
+          .where(eq(assignments.dutyId, dutyId))
+      ).filter((item) => item.status === "reserved");
+    }
+    async function setService(soldierId: string, releaseDate: string) {
+      const [person] = await db
+        .select()
+        .from(soldiers)
+        .where(eq(soldiers.id, soldierId));
+      await db
+        .update(soldiers)
+        .set({
+          data: {
+            ...person.data,
+            service: { ...person.data.service, releaseDate },
+          },
+        })
+        .where(eq(soldiers.id, soldierId));
+    }
+    it("keeps the original until consent, moves the full value without a score check and completes once when candidates race", async () => {
+      const { row, actor, seat, first, second } = await seatFixture(3);
+      expect(seat.points).toBe(7);
+      await db
+        .update(balances)
+        .set({ current: 90 })
+        .where(eq(balances.soldierId, first.soldierId));
+      await db
+        .update(balances)
+        .set({ current: 90 })
+        .where(eq(balances.soldierId, second.soldierId));
+      const offerInput = {
+        assignmentId: seat.id,
+        candidateIds: [first.soldierId, second.soldierId],
+      };
+      await expect(
+        command("transfer.offer", offerInput, 1, first)
+      ).rejects.toThrow("בעל השיבוץ");
+      await expect(
+        command("transfer.offer", offerInput, 1, manager)
+      ).rejects.toThrow("בעל השיבוץ");
+      const offer = await command("transfer.offer", offerInput, 1, actor);
+      await expect(
+        command("transfer.offer", offerInput, 1, actor)
+      ).rejects.toThrow("כבר קיימת");
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+      const firstView = (await readState(first)).requests;
+      expect(firstView).toHaveLength(1);
+      expect(firstView[0]).toMatchObject({
+        status: "awaiting_consent",
+        candidates: [{ soldierId: first.soldierId, status: "pending" }],
+      });
+      expect(JSON.stringify(firstView)).not.toContain(second.soldierId);
+      expect((await readState(actor)).requests[0].candidates).toHaveLength(2);
+      const outsider = await soldierActor(
+        "חייל אחר",
+        "outsider@example.invalid",
+        "00013"
+      );
+      expect((await readState(outsider)).requests).toHaveLength(0);
+      await expect(
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          outsider
+        )
+      ).rejects.toThrow("אינה מיועדת");
+      const key = randomUUID();
+      const outcomes = await Promise.allSettled([
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          first,
+          key
+        ),
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          second
+        ),
+      ]);
+      expect(
+        outcomes.filter((item) => item.status === "fulfilled")
+      ).toHaveLength(1);
+      const closed = await request(offer.id);
+      expect(closed.data.status).toBe("completed");
+      const winner = [first, second].find(
+        (item) => item.soldierId === closed.data.acceptedBy
+      )!;
+      const loser = winner === first ? second : first;
+      const active = await reservedIn(row.id);
+      expect(active).toHaveLength(1);
+      expect(active[0]).toMatchObject({
+        soldierId: winner.soldierId,
+        points: 7,
+        slotId: seat.slotId,
+      });
+      const [original] = await db
+        .select()
+        .from(assignments)
+        .where(eq(assignments.id, seat.id));
+      expect(original.status).toBe("cancelled");
+      expect(original.data).toMatchObject({
+        endedBy: { kind: "transfer", toSoldierId: winner.soldierId },
+      });
+      if (winner === first)
+        expect(
+          await command(
+            "transfer.respond",
+            { id: offer.id, decision: "accept", confirmed: true },
+            1,
+            first,
+            key
+          )
+        ).toMatchObject({ status: "completed" });
+      expect((await readState(loser)).requests[0].status).toBe("closed");
+      const titles = async (who: Actor) =>
+        (await readState(who)).notifications.map(
+          (item) => (item as { title?: string }).title
+        );
+      expect(await titles(actor)).toContain("ההעברה הושלמה");
+      expect(await titles(winner)).toContain("קיבלת תורנות");
+      expect(await titles(loser)).toContain("הצעת ההעברה נסגרה");
+      expect(await titles(manager)).toContain("הושלמה העברת תורנות");
+      const mail = (await db.select().from(emailOutbox)).filter(
+        (item) => item.kind === "transfer"
+      );
+      expect(mail.map((item) => item.recipientAccountId).sort()).toEqual(
+        [first.id, second.id, actor.id, winner.id].sort()
+      );
+      expect((await readState(actor)).assignments).toEqual(
+        expect.not.arrayContaining([
+          expect.objectContaining({ soldierId: actor.soldierId }),
+        ])
+      );
+      await unitTransaction((tx) => settleDue(tx, new Date(row.data.end)));
+      const scores = await db.select().from(balances);
+      expect(
+        scores.find((item) => item.soldierId === winner.soldierId)?.current
+      ).toBe(97);
+      expect(
+        scores.find((item) => item.soldierId === actor.soldierId)?.current
+      ).toBe(0);
+    });
+    it("rejects an unsuitable candidate without revealing why and rechecks at acceptance", async () => {
+      const { row, actor, seat, first, second } = await seatFixture();
+      async function overlapping(name: string, soldierId: string) {
+        const created = await command("duty.create", {
+          typeId: row.typeId,
+          name,
+          start: row.data.start,
+          end: row.data.end,
+        });
+        const [draft] = await db
+          .select()
+          .from(duties)
+          .where(eq(duties.id, created.id));
+        await command(
+          "duty.assign",
+          { dutyId: created.id, slotId: draft.data.slots[0].id, soldierId },
+          1
+        );
+      }
+      await overlapping("תורנות חופפת", first.soldierId);
+      const refused = command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [first.soldierId] },
+        1,
+        actor
+      );
+      await expect(refused).rejects.toThrow("מחליף ראשון אינו מתאים");
+      await expect(refused).rejects.not.toThrow("התנגשות");
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [second.soldierId] },
+        1,
+        actor
+      );
+      await overlapping("תורנות חופפת נוספת", second.soldierId);
+      await expect(
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          second
+        )
+      ).rejects.toThrow("אינך עומד");
+      expect((await request(offer.id)).data.status).toBe("awaiting_consent");
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+    });
+    it("lets a volunteer near release take over automatically but never past the release boundary", async () => {
+      const { row, actor, seat, first, second } = await seatFixture();
+      const day = (offset: number) =>
+        new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+      await setService(first.soldierId, day(10));
+      await setService(second.soldierId, day(1));
+      await expect(
+        command(
+          "transfer.offer",
+          { assignmentId: seat.id, candidateIds: [second.soldierId] },
+          1,
+          actor
+        )
+      ).rejects.toThrow("אינו מתאים");
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [first.soldierId] },
+        1,
+        actor
+      );
+      expect(
+        await command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          first
+        )
+      ).toMatchObject({ status: "completed" });
+      expect((await reservedIn(row.id))[0].soldierId).toBe(first.soldierId);
+    });
+    it("hands an acceptance after the start to a manager without moving the seat", async () => {
+      const { row, actor, seat, first } = await seatFixture();
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [first.soldierId] },
+        1,
+        actor
+      );
+      const [live] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await db
+        .update(duties)
+        .set({
+          data: {
+            ...live.data,
+            start: new Date(Date.now() - 60_000).toISOString(),
+          },
+        })
+        .where(eq(duties.id, row.id));
+      expect(
+        await command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          first
+        )
+      ).toMatchObject({ status: "awaiting_manager" });
+      expect((await request(offer.id)).data.managerReasons).toEqual([
+        expect.objectContaining({ code: "started" }),
+      ]);
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+      expect(
+        (await readState(manager)).notifications.map(
+          (item) => (item as { title?: string }).title
+        )
+      ).toContain("העברה ממתינה לטיפול");
+      await expect(
+        command(
+          "transfer.offer",
+          { assignmentId: seat.id, candidateIds: [first.soldierId] },
+          1,
+          actor
+        )
+      ).rejects.toThrow("התחילה");
+    });
+    it("closes offers on decline, withdrawal, a changed duty and cancellation", async () => {
+      const { row, actor, seat, first, second } = await seatFixture();
+      const offer = () =>
+        command(
+          "transfer.offer",
+          {
+            assignmentId: seat.id,
+            candidateIds: [first.soldierId, second.soldierId],
+          },
+          1,
+          actor
+        );
+      const declined = await offer();
+      await command(
+        "transfer.respond",
+        { id: declined.id, decision: "decline" },
+        1,
+        first
+      );
+      expect((await request(declined.id)).data.status).toBe("awaiting_consent");
+      await command(
+        "transfer.respond",
+        { id: declined.id, decision: "decline" },
+        2,
+        second
+      );
+      expect((await request(declined.id)).data.status).toBe("declined");
+      const withdrawn = await offer();
+      await command("transfer.withdraw", { id: withdrawn.id }, 1, actor);
+      await expect(
+        command(
+          "transfer.respond",
+          { id: withdrawn.id, decision: "accept", confirmed: true },
+          2,
+          first
+        )
+      ).rejects.toThrow("נסגרה");
+      const stale = await offer();
+      const [live] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await db
+        .update(duties)
+        .set({
+          data: {
+            ...live.data,
+            rulesVersion: (live.data.rulesVersion ?? live.version) + 1,
+          },
+        })
+        .where(eq(duties.id, row.id));
+      await expect(
+        command(
+          "transfer.respond",
+          { id: stale.id, decision: "accept", confirmed: true },
+          1,
+          first
+        )
+      ).rejects.toThrow("עודכנה");
+      expect((await request(stale.id)).data.status).toBe("expired");
+      await db
+        .update(duties)
+        .set({ data: live.data })
+        .where(eq(duties.id, row.id));
+      const open = await offer();
+      const [current] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await command(
+        "duty.cancel",
+        { id: row.id, reason: "ביטול לבדיקה", confirmed: true },
+        current.version
+      );
+      expect((await request(open.id)).data.status).toBe("expired");
+      expect(await reservedIn(row.id)).toHaveLength(0);
+    });
+    it("hands acceptance with an exemption to a manager and keeps the original seat", async () => {
+      const { row, actor, seat, second } = await seatFixture();
+      const exemption = await command("eligibility.catalog.save", {
+        kind: "exemption",
+        name: "פטור סינתטי",
+      });
+      await command(
+        "soldier.timeline",
+        {
+          soldierId: second.soldierId,
+          kind: "exemption",
+          value: exemption.id,
+          startDate: "2026-01-01",
+          endDate: "2030-12-31",
+        },
+        1
+      );
+      const [live] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await db
+        .update(duties)
+        .set({
+          data: {
+            ...live.data,
+            requirements: {
+              ...live.data.requirements,
+              blockingExemptionIds: [exemption.id],
+            },
+          },
+        })
+        .where(eq(duties.id, row.id));
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [second.soldierId] },
+        1,
+        actor
+      );
+      expect(
+        await command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          second
+        )
+      ).toMatchObject({ status: "awaiting_manager" });
+      expect((await request(offer.id)).data.managerReasons).toEqual([
+        expect.objectContaining({ code: "exemption" }),
+      ]);
+      expect(JSON.stringify((await readState(actor)).requests)).not.toContain(
+        "exemption"
+      );
+      expect((await readState(second)).requests[0].managerReasons).toHaveLength(
+        1
+      );
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+      await expect(
+        command("transfer.withdraw", { id: offer.id }, 2, actor)
+      ).rejects.toThrow("ממתינה להסכמה");
+    });
+  });
 });

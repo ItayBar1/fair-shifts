@@ -18,6 +18,7 @@ import {
   Notice,
   type Field,
 } from "./ui";
+import { TransferRequests } from "./transfers";
 type Props = { state: AppState; action: Action };
 const building = (
   <Notice>
@@ -25,22 +26,14 @@ const building = (
   </Notice>
 );
 export { ConstraintsView } from "./constraints";
-export function RequestsView({ state }: Props) {
+export function RequestsView({ state, action }: Props) {
   return (
     <>
-      {building}
-      <Panel title="החלפות ובקשות">
-        {state.requests.length ? (
-          state.requests.map((row) => (
-            <div className="task-item" key={row.id}>
-              <strong>{str(row.kind)}</strong>
-              <Status value={row.status} />
-            </div>
-          ))
-        ) : (
-          <Empty title="אין בקשות פתוחות" />
-        )}
-      </Panel>
+      <Notice>
+        העברת תורנות בהסכמה לפני התחלה זמינה. החלפה הדדית, בקשת ביטול או דחייה
+        והחלפה במהלך ביצוע נמצאות עדיין בבנייה.
+      </Notice>
+      <TransferRequests state={state} action={action} />
     </>
   );
 }

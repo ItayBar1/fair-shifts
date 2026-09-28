@@ -28,6 +28,7 @@ import type {
   SpecificApproval,
 } from "../domain/types";
 import { enqueueEmail } from "./operations/email";
+import { closeTransfersForDuty } from "./transfers";
 
 type SavedDuty = (typeof duties.$inferSelect)["data"];
 type Seat = { slotId: string; soldierId: string | null; extraPoints: string };
@@ -500,7 +501,10 @@ async function applyDutyChange(
     })
     .where(eq(duties.id, live.id));
   const href = `/duties/${live.id}`;
-  if (mode === "published") await cancelDutyEmails(tx, href);
+  if (mode === "published") {
+    await cancelDutyEmails(tx, href);
+    await closeTransfersForDuty(tx, live.id, "התורנות עודכנה אחרי ההצעה");
+  }
   for (const item of mode === "published" ? affected : []) {
     const [account] = await tx
       .select()
@@ -668,6 +672,7 @@ export async function cancelDuty(
     });
   const href = `/duties/${live.id}`;
   await cancelDutyEmails(tx, href);
+  await closeTransfersForDuty(tx, live.id, "התורנות בוטלה");
   if (live.data.status === "published") {
     for (const soldierId of new Set(original.map((item) => item.soldierId))) {
       const [account] = await tx
