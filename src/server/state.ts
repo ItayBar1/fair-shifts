@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
 import { loadDomain } from "./repository";
@@ -7,6 +7,7 @@ import { emailOutbox, operationsState, user } from "./auth-schema";
 import { populationAt, rankAt, serviceSummary } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
+import { backupState } from "./operations/backup";
 import { projectRequests } from "./transfers";
 import { projectCancellationRequests } from "./cancellation-requests";
 import { effectivePreferences } from "./notifications";
@@ -99,8 +100,23 @@ export async function readState(actor: Actor) {
         })
         .from(emailOutbox);
       const operations = await tx.select().from(operationsState);
+      // Operational alerts are addressed to each technical account (decision 173).
+      const notices = await tx
+        .select()
+        .from(records)
+        .where(
+          and(
+            eq(records.kind, "notification"),
+            sql`${records.data}->>'accountId' = ${actor.id}`
+          )
+        );
       return {
         ...base,
+        notifications: notices
+          .filter((row) => !row.data.hiddenAt)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .map((row) => ({ ...row.data, id: row.id, version: row.version })),
+        backups: await backupState(tx),
         settings: await preferencesState(tx, actor),
         accounts,
         // The worker heartbeat is presented through `health`.

@@ -75,6 +75,7 @@ const technicalLinks = [
   { path: "/technical/recovery", title: "שחזור גישה", icon: History },
   { path: "/technical/mail", title: "משלוחי מייל", icon: Bell },
   { path: "/technical/backups", title: "גיבוי ושחזור", icon: Upload },
+  { path: "/notifications", title: "הודעות", icon: Bell },
 ];
 const descriptions: Record<string, string> = {
   "/calendar": "כל התורנויות במקום אחד. תמונה משותפת, ברורה ועדכנית.",
@@ -210,7 +211,7 @@ export function Workspace({ path }: { path: string }) {
     (effectivePath.startsWith("/technical") && !technical) ||
     (technical &&
       !effectivePath.startsWith("/technical") &&
-      effectivePath != "/settings");
+      !["/settings", "/notifications"].includes(effectivePath));
   const navigation = (links: typeof commonLinks) =>
     links.map((item) => (
       <Link
