@@ -12,7 +12,7 @@ import {
   type Actor,
 } from "./repository";
 import { invariant } from "./errors";
-import { id, text, population } from "./validation";
+import { id, text, population, gender } from "./validation";
 import { evaluateEligibility } from "../domain/eligibility";
 import { calculatePrice } from "../domain/pricing";
 import { instant, resolveLocalTime, interval } from "../domain/time";
@@ -53,6 +53,8 @@ const requirementsInput = z.object({
   ranks: z.array(rankClause).optional(),
   qualificationIds: z.array(id).optional(),
   blockingExemptionIds: z.array(id).optional(),
+  genders: z.array(gender).max(3).optional(),
+  capabilityIds: z.array(id).max(50).optional(),
 });
 const catalogInput = z.object({
   id: id.optional(),
@@ -62,6 +64,8 @@ const catalogInput = z.object({
   ranks: z.array(rankClause).default([]),
   qualificationIds: z.array(id).default([]),
   exemptionIds: z.array(id).default([]),
+  genders: z.array(gender).max(3).default([]),
+  capabilityIds: z.array(id).max(50).default([]),
   restBeforeMinutes: z.number().int().nonnegative().default(0),
   restAfterMinutes: z.number().int().nonnegative().default(0),
   roles: z
@@ -129,6 +133,8 @@ export async function saveDutyType(
     ranks: input.ranks,
     qualificationIds: input.qualificationIds,
     blockingExemptionIds: input.exemptionIds,
+    genders: input.genders,
+    capabilityIds: input.capabilityIds,
   };
   const catalog = await tx.select().from(records);
   for (const condition of [
@@ -151,6 +157,7 @@ export async function saveDutyType(
     for (const [kind, ids] of [
       ["qualification", condition.qualificationIds],
       ["exemption", condition.blockingExemptionIds],
+      ["capability", condition.capabilityIds],
     ] as const)
       for (const id of ids ?? [])
         invariant(
@@ -161,7 +168,7 @@ export async function saveDutyType(
               row.data.kind === kind
           ),
           "invalid_requirement",
-          "תנאי הכשירות או הפטור אינו קיים בקטלוג"
+          "תנאי הכשירות, הפטור או היכולת אינו קיים בקטלוג"
         );
   }
   const data = { ...input, pricing, uiPricing: input.pricing, requirements };
@@ -430,9 +437,13 @@ export async function assignDuty(
         "נדרש אישור נפרד לכל חריג"
       );
       invariant(
-        ["exemption", "rank", "pending_constraint", "near_release"].includes(
-          reason.code
-        ),
+        [
+          "exemption",
+          "rank",
+          "allowed_hours",
+          "pending_constraint",
+          "near_release",
+        ].includes(reason.code),
         "unknown_exception",
         "אין סמכות לחריגה מהתנאי הזה"
       );

@@ -4,6 +4,7 @@ export const text = z.string().trim().min(1).max(500);
 export const date = z.iso.date();
 export const instant = z.iso.datetime({ offset: true });
 export const population = z.enum(["mandatory", "career", "academic"]);
+export const gender = z.enum(["male", "female", "other"]);
 const optionalDate = z.preprocess(
   (value) => (value === "" ? undefined : value),
   date.optional()
