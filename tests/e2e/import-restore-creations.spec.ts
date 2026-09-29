@@ -160,11 +160,12 @@ test("cancels a new soldier without activity and waits for a decision on one who
   await page
     .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
     .click();
-  await expect(
-    page
-      .getByRole("region", { name: "קליטות חדשות באצווה" })
-      .getByRole("row", { name: /קליטה ללא פעילות/ })
-  ).toHaveCount(0);
+  // Wait for the new check itself; only then is a later change stale.
+  const rest = page.getByRole("region", { name: "קליטות חדשות באצווה" });
+  await expect(rest.getByRole("row", { name: /קליטה שנכנסה/ })).toBeVisible();
+  await expect(rest.getByRole("row", { name: /קליטה ללא פעילות/ })).toHaveCount(
+    0
+  );
   const keep = async () => {
     await page.getByLabel("החלטה עבור קליטת קליטה שנכנסה").selectOption("keep");
     await page.getByLabel("סיבת השחזור וההכרעות").fill("החייל כבר פעיל");

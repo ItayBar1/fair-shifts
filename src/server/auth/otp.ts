@@ -12,7 +12,7 @@ import {
   OTP_RESEND_MS,
   OTP_TTL_MS,
 } from "./policy";
-import { enqueueEmail } from "../operations/email";
+import { codeDeliveryDelayed, enqueueEmail } from "../operations/email";
 
 // A soldier is released by a manager, a manager by the technical account, and
 // the technical account by its own recovery codes.
@@ -29,13 +29,17 @@ function remainingWarning(remaining: number | undefined) {
 
 export async function requestCode(email: string, now = new Date()) {
   return db.transaction(async (tx) => {
+    // The same answer for every address, registered or not (decision 177).
+    const result = {
+      success: true,
+      ...((await codeDeliveryDelayed(tx, now)) && { mailDelayed: true }),
+    };
     const [person] = await tx
       .select()
       .from(user)
       .where(eq(user.email, normalizeEmail(email)))
       .for("update");
-    if (!person || !(await accountAvailable(person, tx)))
-      return { success: true };
+    if (!person || !(await accountAvailable(person, tx))) return result;
     const [old] = await tx
       .select()
       .from(loginCode)
@@ -66,7 +70,7 @@ export async function requestCode(email: string, now = new Date()) {
       expiresAt,
       eventKey: `login:${person.id}:${now.toISOString()}`,
     });
-    return { success: true };
+    return result;
   });
 }
 
