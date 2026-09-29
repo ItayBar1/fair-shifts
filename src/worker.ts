@@ -5,6 +5,7 @@ import { deliverNextEmail } from "./server/operations/email";
 import { operationsState } from "./server/auth-schema";
 import { eq } from "drizzle-orm";
 import { refreshRankReminders } from "./server/ranks";
+import { refreshRoundNotices } from "./server/round-notices";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 const boss = new PgBoss(process.env.DATABASE_URL);
@@ -22,6 +23,7 @@ await boss.work("unit-maintenance", async () => {
       return;
     const credited = await settleDue(tx);
     await refreshRankReminders(tx);
+    await refreshRoundNotices(tx);
     await tx
       .insert(operationsState)
       .values({

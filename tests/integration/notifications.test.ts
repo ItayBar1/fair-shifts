@@ -23,6 +23,7 @@ import {
   enqueueEmail,
 } from "../../src/server/operations/email";
 import type { EmailKind } from "../../src/domain/notification-preferences";
+import { roundEventKey } from "../../src/domain/round-notices";
 import { soldier } from "../fixtures";
 
 if (
@@ -318,7 +319,16 @@ describe("notification preferences and defaults", () => {
   it("rechecks type and timing preferences after scheduling and before delivery", async () => {
     await queue(member, "duty-reminder", "reminder-24", 24);
     await queue(member, "duty-reminder", "reminder-2", 2);
-    await queue(member, "round-opening", "round-opening");
+    // A round email is delivered only for a real, still-open round.
+    const round = await command(manager, "round.create", {
+      name: "סבב סינתטי",
+      opensAt: new Date(Date.now() - 60_000).toISOString(),
+      closesAt: new Date(Date.now() + 86_400_000).toISOString(),
+      targetStart: "2026-01-01",
+      targetEnd: "2026-01-31",
+    });
+    const roundKey = roundEventKey(round.id, 0, "opening", member.id);
+    await queue(member, "round-opening", roundKey);
     await queue(member, "invitation", "invitation");
     const saved = await command(member, "settings.save", {
       reminderHours: [2],
@@ -340,7 +350,7 @@ describe("notification preferences and defaults", () => {
       "publication-later",
       "reminder-2",
     ]);
-    for (const key of ["reminder-24", "round-opening"])
+    for (const key of ["reminder-24", roundKey])
       expect(await outbox(key)).toMatchObject({
         status: "cancelled",
         error: "preference_disabled",

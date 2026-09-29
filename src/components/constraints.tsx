@@ -10,7 +10,11 @@ import {
   displayDate,
   personName,
 } from "@/client/types";
-import { constraintDisplay, roundPhase } from "@/client/constraints";
+import {
+  constraintDisplay,
+  roundNoticeSummary,
+  roundPhase,
+} from "@/client/constraints";
 import {
   Panel,
   Empty,
@@ -313,6 +317,12 @@ export function ConstraintsView({
                       {declared ? ` · מתוכם ״אין לי אילוצים״: ${declared}` : ""}
                     </p>
                   )}
+                  {manage &&
+                    roundNoticeSummary(
+                      round,
+                      rows(state.roundNotices),
+                      now
+                    ).map((line) => <small key={line}>{line}</small>)}
                 </div>
                 <Status value={phase} />
                 {manage && (
