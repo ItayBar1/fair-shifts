@@ -59,7 +59,56 @@ const labels: Record<string, string> = {
   stale: "התיישן — נדרשת הגרלה חדשה",
   unfilled: "אין מועמדים מתאימים",
   manual_only: "שווי אפס — שיבוץ ידני",
+  filled: "אויש בפעולה אחרת",
 };
+/** Why a seat stayed empty: the draw outcome and how many candidates each check excluded. */
+function missingReason(state: AppState, run: Row, slotId: string) {
+  const result = rows(run.results).find((row) => row.slotId === slotId);
+  const attempt = rows(state.lotteryAttempts).find(
+    (row) => row.id === result?.proposalId
+  );
+  if (!attempt) return "לא הוגרל בריצה זו";
+  const counts = new Map<string, number>();
+  for (const candidate of rows(attempt.candidates))
+    if (candidate.status === "blocked")
+      for (const blocker of rows(candidate.blockers))
+        counts.set(
+          str(blocker.message),
+          (counts.get(str(blocker.message)) ?? 0) + 1
+        );
+  const reasons = [...counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([message, count]) => `${message} (${count})`)
+    .join(" · ");
+  const label = labels[str(attempt.status)] ?? str(attempt.status);
+  return reasons ? `${label}: ${reasons}` : label;
+}
+function MissingSeats({ state, run }: { state: AppState; run: Row }) {
+  const missing = rows(run.missing);
+  if (!missing.length) return null;
+  return (
+    <details>
+      <summary>מקומות לא מאוישים וסיבות הפסילה</summary>
+      <ul>
+        {missing.map((seat) => {
+          const duty = state.duties.find((row) => row.id === seat.dutyId);
+          const role = rows(duty?.slots).find(
+            (slot) => slot.id === seat.slotId
+          );
+          return (
+            <li key={str(seat.slotId)}>
+              <Link className="text-link" href={`/duties/${str(seat.dutyId)}`}>
+                {str(duty?.name)} · {displayDate(duty?.start)}
+                {role ? ` · ${str(role.role ?? role.name)}` : ""}
+              </Link>
+              <p>{missingReason(state, run, str(seat.slotId))}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
 export function LotteryHistory({
   state,
   action,
@@ -306,6 +355,15 @@ export function PeriodPlanning({
                 }{" "}
                 בחירות נשמרו
               </p>
+              {run.reviewConfirmedAt ? (
+                <p>
+                  אישור המשך לפני סקירה ניתן ב־
+                  {displayDate(run.reviewConfirmedAt, true)} וחל על{" "}
+                  {rows(run.reviewCovers).length} אילוצים שהמתינו אז. אילוץ
+                  ממתין חדש יעצור את הריצה עד אישור חדש.
+                </p>
+              ) : null}
+              <MissingSeats state={state} run={run} />
               {running === run.id ? (
                 <button
                   className="btn secondary"
