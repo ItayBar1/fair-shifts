@@ -93,6 +93,9 @@ const labels: Record<string, string> = {
   "transfer.accept.pending": "הסכמה להעברה שממתינה לאחראי",
   "transfer.complete": "השלמת העברת תורנות",
   "transfer.withdraw": "משיכת הצעת העברה",
+  "transfer.retract": "ביטול הסכמה להעברה",
+  "transfer.approve": "אישור אחראי להעברת תורנות",
+  "transfer.reject": "דחיית העברה בידי אחראי",
   "cancellation.submit": "בקשת ביטול או דחייה",
   "cancellation.withdraw": "משיכת בקשת ביטול או דחייה",
   "cancellation.prepare": "הכנת שינוי לבקשת ביטול או דחייה",
@@ -576,15 +579,26 @@ export function projectAudit(
               : undefined
           );
           break;
-        case "transfer.complete": {
+        case "transfer.complete":
+        case "transfer.approve": {
           const from = assignment.get(String(envelope.fromAssignmentId));
           const to = assignment.get(String(envelope.toAssignmentId));
           change("משובץ", person(from?.soldierId), person(to?.soldierId));
           add("נקודות", envelope.points);
           for (const id of [from?.soldierId, to?.soldierId])
             if (id) refs.add(id);
+          // The approval reason lives on the request record, not in the audit envelope (decision 178).
+          if (action === "transfer.approve" && Array.isArray(target.approvals))
+            reason = text(data(target.approvals[0]).reason);
           break;
         }
+        case "transfer.reject":
+          reason = text(target.decisionReason);
+          break;
+        case "transfer.withdraw":
+        case "transfer.retract":
+          reason = text(target.closedReason);
+          break;
         case "transfer.accept.pending":
           add(
             "סיבות לאישור",

@@ -5866,9 +5866,463 @@ describe("first duty vertical slice", () => {
       expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
         actor.soldierId,
       ]);
-      await expect(
-        command("transfer.withdraw", { id: offer.id }, 2, actor)
-      ).rejects.toThrow("ממתינה להסכמה");
+    });
+    describe("manager decision on a transfer awaiting approval", () => {
+      /** A published seat whose second candidate has a blocking exemption and has consented. */
+      async function awaitingExemption(rankRequired = false) {
+        const fixture = await seatFixture();
+        const exemption = await command("eligibility.catalog.save", {
+          kind: "exemption",
+          name: "פטור סינתטי",
+        });
+        await addPeriod(
+          {
+            soldierId: fixture.second.soldierId,
+            kind: "exemption",
+            value: exemption.id,
+            startDate: "2026-01-01",
+            endDate: "2030-12-31",
+          },
+          1
+        );
+        const [live] = await db
+          .select()
+          .from(duties)
+          .where(eq(duties.id, fixture.row.id));
+        await db
+          .update(duties)
+          .set({
+            data: {
+              ...live.data,
+              requirements: {
+                ...live.data.requirements,
+                blockingExemptionIds: [exemption.id],
+                ...(rankRequired && {
+                  ranks: [{ trackId: "מסלול סינתטי", rankIds: [randomUUID()] }],
+                }),
+              },
+            },
+          })
+          .where(eq(duties.id, fixture.row.id));
+        const offer = await command(
+          "transfer.offer",
+          {
+            assignmentId: fixture.seat.id,
+            candidateIds: [fixture.first.soldierId, fixture.second.soldierId],
+          },
+          1,
+          fixture.actor
+        );
+        await command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          fixture.second
+        );
+        return { ...fixture, offer, exemption };
+      }
+      type Review = {
+        valid: boolean;
+        started?: boolean;
+        status?: string;
+        blockers?: { code: string }[];
+        requirements?: { code: string; key: string }[];
+        previewToken?: string;
+        message?: string;
+      };
+      const review = async (id: string, version: number, who = manager) =>
+        (await command(
+          "transfer.review",
+          { id },
+          version,
+          who
+        )) as unknown as Review;
+      const approve = (
+        id: string,
+        version: number,
+        preview: Review,
+        who = manager,
+        overrides: Record<string, unknown> = {}
+      ) =>
+        command(
+          "transfer.decide",
+          {
+            id,
+            decision: "approve",
+            confirmed: true,
+            previewToken: preview.previewToken,
+            approvalReason: "חריג סינתטי מאושר",
+            approvalKeys: preview.requirements?.map((item) => item.key),
+            ...overrides,
+          },
+          version,
+          who
+        );
+      const titles = async (who: Actor) =>
+        (await readState(who)).notifications.map(
+          (item) => (item as { title?: string }).title
+        );
+      async function secondManager() {
+        const account = await invite(
+          "אחראי שני",
+          "manager",
+          "manager-two@example.invalid",
+          "00021"
+        );
+        return {
+          id: account.id,
+          name: account.name,
+          role: "manager",
+          soldierId: account.soldierId!,
+          securityEpoch: 1,
+        } satisfies Actor;
+      }
+
+      it("approves each exception with a reason, completes once when two managers race and keeps the reason from the offerer", async () => {
+        const { row, actor, seat, first, second, offer } =
+          await awaitingExemption();
+        const version = (await request(offer.id)).version;
+        await expect(review(offer.id, version, second)).rejects.toThrow(
+          "לאחראי תורנויות בלבד"
+        );
+        const preview = await review(offer.id, version);
+        expect(preview).toMatchObject({
+          valid: true,
+          started: false,
+          status: "approval_required",
+        });
+        expect(preview.requirements?.map((item) => item.code)).toEqual([
+          "exemption",
+        ]);
+        await expect(
+          approve(offer.id, version, preview, second)
+        ).rejects.toThrow("לאחראי תורנויות בלבד");
+        await expect(
+          approve(offer.id, version, preview, manager, { approvalKeys: [] })
+        ).rejects.toThrow("נדרש אישור נפרד לכל חריג");
+        await expect(
+          approve(offer.id, version, preview, manager, {
+            approvalReason: undefined,
+          })
+        ).rejects.toThrow("נדרשת סיבה");
+        // While the decision waits, the original seat and its saved points stay binding.
+        expect(
+          (await reservedIn(row.id)).map((item) => item.soldierId)
+        ).toEqual([actor.soldierId]);
+        const other = await secondManager();
+        const outcomes = await Promise.allSettled([
+          approve(offer.id, version, preview),
+          approve(offer.id, version, preview, other),
+        ]);
+        expect(
+          outcomes.filter((item) => item.status === "fulfilled")
+        ).toHaveLength(1);
+        const active = await reservedIn(row.id);
+        expect(active).toHaveLength(1);
+        expect(active[0]).toMatchObject({
+          soldierId: second.soldierId,
+          points: seat.points,
+        });
+        expect(active[0].data.approvals).toEqual([
+          expect.objectContaining({
+            kind: "exemption",
+            soldierId: second.soldierId,
+            reason: "חריג סינתטי מאושר",
+          }),
+        ]);
+        const [original] = await db
+          .select()
+          .from(assignments)
+          .where(eq(assignments.id, seat.id));
+        expect(original.status).toBe("cancelled");
+        const done = await request(offer.id);
+        expect(done.data).toMatchObject({
+          status: "completed",
+          acceptedBy: second.soldierId,
+          resultAssignmentId: active[0].id,
+        });
+        expect([manager.id, other.id]).toContain(done.data.decidedBy);
+        expect(
+          (await db.select().from(records)).filter(
+            (item) =>
+              item.kind === "assignment_approval" &&
+              item.data.assignmentId === active[0].id
+          )
+        ).toHaveLength(1);
+        const offererView = JSON.stringify((await readState(actor)).requests);
+        expect(offererView).not.toContain("חריג סינתטי");
+        expect(offererView).not.toContain("exemption");
+        expect(JSON.stringify((await readState(first)).requests)).not.toContain(
+          "decidedByName"
+        );
+        expect(
+          (
+            (await readState(manager)).audit as {
+              label: string;
+              reason?: string;
+            }[]
+          ).find((item) => item.label === "אישור אחראי להעברת תורנות")?.reason
+        ).toBe("חריג סינתטי מאושר");
+        expect(await titles(actor)).toContain("האחראי אישר את ההעברה");
+        expect(await titles(second)).toContain("קיבלת תורנות");
+        expect(await titles(manager)).toContain("אחראי אישר העברת תורנות");
+        expect(await titles(other)).toContain("אחראי אישר העברת תורנות");
+        const mail = (await db.select().from(emailOutbox)).filter(
+          (item) =>
+            item.kind === "transfer" && item.eventKey.includes(":completed:")
+        );
+        expect(mail.map((item) => item.recipientAccountId).sort()).toEqual(
+          [actor.id, second.id].sort()
+        );
+        await expect(approve(offer.id, done.version, preview)).rejects.toThrow(
+          "אינה ממתינה"
+        );
+        await unitTransaction((tx) => settleDue(tx, new Date(row.data.end)));
+        const scores = await db.select().from(balances);
+        expect(
+          scores.find((item) => item.soldierId === second.soldierId)?.current
+        ).toBe(seat.points);
+        expect(
+          scores.find((item) => item.soldierId === actor.soldierId)?.current
+        ).toBe(0);
+      });
+
+      it("requires a separate approval for an exemption and a missing rank together", async () => {
+        const { row, second, offer } = await awaitingExemption(true);
+        expect((await request(offer.id)).data.managerReasons).toEqual([
+          expect.objectContaining({ code: "exemption" }),
+          expect.objectContaining({ code: "rank" }),
+        ]);
+        const version = (await request(offer.id)).version;
+        const preview = await review(offer.id, version);
+        expect(preview.requirements?.map((item) => item.code)).toEqual([
+          "exemption",
+          "rank",
+        ]);
+        await expect(
+          approve(offer.id, version, preview, manager, {
+            approvalKeys: [preview.requirements![0].key],
+          })
+        ).rejects.toThrow("נדרש אישור נפרד לכל חריג");
+        expect((await request(offer.id)).data.status).toBe("awaiting_manager");
+        await approve(offer.id, version, preview);
+        const [seat] = await reservedIn(row.id);
+        expect(seat.soldierId).toBe(second.soldierId);
+        expect(
+          seat.data.approvals?.map((item: { kind: string }) => item.kind)
+        ).toEqual(["exemption", "rank"]);
+      });
+
+      it("rechecks at decision time and rejects with a reason both sides see", async () => {
+        const { row, actor, first, second, offer } = await awaitingExemption();
+        const version = (await request(offer.id)).version;
+        const stale = await review(offer.id, version);
+        // A new overlapping seat for the replacement after the review.
+        const created = await command("duty.create", {
+          typeId: row.typeId,
+          name: "תורנות חופפת",
+          start: row.data.start,
+          end: row.data.end,
+        });
+        const [draft] = await db
+          .select()
+          .from(duties)
+          .where(eq(duties.id, created.id));
+        await command(
+          "duty.assign",
+          {
+            dutyId: created.id,
+            slotId: draft.data.slots[0].id,
+            soldierId: second.soldierId,
+          },
+          1
+        );
+        await expect(approve(offer.id, version, stale)).rejects.toThrow(
+          "יש לבדוק שוב"
+        );
+        const fresh = await review(offer.id, version);
+        expect(fresh.status).toBe("blocked");
+        expect(fresh.blockers?.map((item) => item.code)).toContain(
+          "overlap_or_rest"
+        );
+        await expect(approve(offer.id, version, fresh)).rejects.toThrow(
+          "אינו עומד כעת"
+        );
+        expect((await request(offer.id)).data.status).toBe("awaiting_manager");
+        await expect(
+          command(
+            "transfer.decide",
+            { id: offer.id, decision: "reject", reason: "" },
+            version
+          )
+        ).rejects.toThrow();
+        expect(
+          await command(
+            "transfer.decide",
+            {
+              id: offer.id,
+              decision: "reject",
+              reason: "המחליף משובץ לתורנות חופפת",
+            },
+            version
+          )
+        ).toMatchObject({ status: "manager_rejected" });
+        expect(
+          (await reservedIn(row.id)).map((item) => item.soldierId)
+        ).toEqual([actor.soldierId]);
+        const [offererView] = (await readState(actor)).requests;
+        expect(offererView).toMatchObject({
+          status: "manager_rejected",
+          decisionReason: "המחליף משובץ לתורנות חופפת",
+        });
+        const [replacementView] = (await readState(second)).requests;
+        expect(replacementView).toMatchObject({
+          status: "manager_rejected",
+          decisionReason: "המחליף משובץ לתורנות חופפת",
+        });
+        const [closedView] = (await readState(first)).requests;
+        expect(closedView.status).toBe("closed");
+        expect(JSON.stringify(closedView)).not.toContain("תורנות חופפת");
+        expect(await titles(actor)).toContain("האחראי דחה את ההעברה");
+        expect(await titles(second)).toContain("האחראי דחה את ההעברה");
+        // The audit log labels the decision and reads its reason from the request record.
+        const audit = (await readState(manager)).audit as {
+          label: string;
+          targetId: string;
+          reason?: string;
+        }[];
+        expect(
+          audit.find(
+            (item) =>
+              item.targetId === offer.id &&
+              item.label === "דחיית העברה בידי אחראי"
+          )?.reason
+        ).toBe("המחליף משובץ לתורנות חופפת");
+        expect(
+          (await db.select().from(records)).some(
+            (item) =>
+              item.kind === "audit" &&
+              item.data.action === "transfer.reject" &&
+              JSON.stringify(item.data).includes("תורנות חופפת")
+          )
+        ).toBe(false);
+        // A new offer is possible after the rejection.
+        await command(
+          "transfer.offer",
+          {
+            assignmentId: offererView.assignmentId,
+            candidateIds: [first.soldierId],
+          },
+          1,
+          actor
+        );
+      });
+
+      it("never moves a started duty and leaves it for performance periods", async () => {
+        const { row, actor, offer } = await awaitingExemption();
+        const version = (await request(offer.id)).version;
+        const preview = await review(offer.id, version);
+        const [live] = await db
+          .select()
+          .from(duties)
+          .where(eq(duties.id, row.id));
+        await db
+          .update(duties)
+          .set({
+            data: {
+              ...live.data,
+              start: new Date(Date.now() - 60_000).toISOString(),
+            },
+          })
+          .where(eq(duties.id, row.id));
+        expect(await review(offer.id, version)).toMatchObject({
+          valid: true,
+          started: true,
+        });
+        await expect(approve(offer.id, version, preview)).rejects.toThrow(
+          "תקופות הביצוע"
+        );
+        expect((await request(offer.id)).data.status).toBe("awaiting_manager");
+        expect(
+          (await reservedIn(row.id)).map((item) => item.soldierId)
+        ).toEqual([actor.soldierId]);
+        expect(
+          await command(
+            "transfer.decide",
+            { id: offer.id, decision: "reject", reason: "טיפול במסלול הביצוע" },
+            version
+          )
+        ).toMatchObject({ status: "manager_rejected" });
+      });
+
+      it("lets either side back out before the decision, but not an outsider or after it", async () => {
+        const { row, actor, first, second, offer } = await awaitingExemption();
+        const version = (await request(offer.id)).version;
+        await expect(
+          command("transfer.withdraw", { id: offer.id }, version, first)
+        ).rejects.toThrow("רק מי שהציע");
+        await command("transfer.withdraw", { id: offer.id }, version, second);
+        expect((await request(offer.id)).data).toMatchObject({
+          status: "cancelled",
+          closedReason: "המחליף חזר בו מהסכמתו לפני החלטת האחראי",
+        });
+        expect(await titles(actor)).toContain("ההעברה בוטלה");
+        expect(await titles(manager)).toContain("העברה בוטלה לפני החלטה");
+        await expect(
+          command(
+            "transfer.decide",
+            { id: offer.id, decision: "reject", reason: "מאוחר" },
+            version + 1
+          )
+        ).rejects.toThrow("אינה ממתינה");
+
+        const again = await command(
+          "transfer.offer",
+          {
+            assignmentId: (await reservedIn(row.id))[0].id,
+            candidateIds: [second.soldierId],
+          },
+          1,
+          actor
+        );
+        await command(
+          "transfer.respond",
+          { id: again.id, decision: "accept", confirmed: true },
+          1,
+          second
+        );
+        const waiting = await request(again.id);
+        const preview = await review(again.id, waiting.version);
+        // The offerer backing out races the manager's approval: exactly one wins.
+        const outcomes = await Promise.allSettled([
+          command(
+            "transfer.withdraw",
+            { id: again.id },
+            waiting.version,
+            actor
+          ),
+          approve(again.id, waiting.version, preview),
+        ]);
+        expect(
+          outcomes.filter((item) => item.status === "fulfilled")
+        ).toHaveLength(1);
+        const settled = await request(again.id);
+        const active = await reservedIn(row.id);
+        expect(active).toHaveLength(1);
+        if (settled.data.status === "cancelled") {
+          expect(settled.data.closedReason).toBe(
+            "המציע ביטל את ההעברה לפני החלטת האחראי"
+          );
+          expect(active[0].soldierId).toBe(actor.soldierId);
+          expect(await titles(second)).toContain("ההעברה בוטלה");
+        } else {
+          expect(settled.data.status).toBe("completed");
+          expect(active[0].soldierId).toBe(second.soldierId);
+        }
+        await expect(
+          command("transfer.withdraw", { id: again.id }, settled.version, actor)
+        ).rejects.toThrow();
+      });
     });
   });
 });

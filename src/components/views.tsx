@@ -479,18 +479,21 @@ export function Dashboard({
 }) {
   const drafts = state.duties.filter((d) => dutyStatus(d) === "draft");
   const pending = state.constraints.filter((c) => c.status === "pending");
-  const requests = state.requests.filter(
-    (r) =>
-      ![
-        "completed",
-        "rejected",
-        "cancelled",
-        "declined",
-        "expired",
-        "referred",
-        "closed",
-      ].includes(str(r.status))
+  // A transfer counts only once it waits for a manager; before that it waits for a soldier's consent.
+  const requests = state.requests.filter((r) =>
+    r.type === "transfer"
+      ? r.status === "awaiting_manager"
+      : ![
+          "completed",
+          "rejected",
+          "cancelled",
+          "declined",
+          "expired",
+          "referred",
+          "closed",
+        ].includes(str(r.status))
   );
+  const transfers = requests.filter((r) => r.type === "transfer");
   const decisions = rows(state.scoreDecisions).filter(
     (row) => row.status === "pending"
   );
@@ -567,6 +570,22 @@ export function Dashboard({
             </span>
             <ArrowLeft size={18} />
           </Link>
+          {transfers.map((r) => (
+            <Link className="task-item" href="/requests" key={r.id}>
+              <span className="task-symbol amber">
+                <Clock3 size={20} />
+              </span>
+              <span>
+                <strong>העברה ממתינה להחלטה: {str(r.dutyName)}</strong>
+                <small>
+                  {personName(state, r.fromSoldierId)} ←{" "}
+                  {personName(state, r.acceptedBy)}. עד ההחלטה השיבוץ המקורי
+                  בתוקף
+                </small>
+              </span>
+              <ChevronLeft size={18} />
+            </Link>
+          ))}
           {departed.map((s) => {
             const notice = rows(state.departures).find(
               (row) =>
