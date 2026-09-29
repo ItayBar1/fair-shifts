@@ -63,6 +63,7 @@ const labels: Record<string, string> = {
   "duty.publish": "פרסום תורנות",
   "duty.change.create": "פתיחת הצעת שינוי",
   "duty.change.save": "שמירת הצעת שינוי",
+  "duty.change.rules": "עריכת הרכב ותמחור בהצעת שינוי",
   "duty.change.discard": "ביטול הצעת שינוי",
   "duty.update.publish": "עדכון ופרסום תורנות",
   "duty.update.draft": "החלת שינוי בטיוטה",
@@ -322,6 +323,7 @@ export function projectAudit(
           add("נקודות", envelope.points);
           break;
         case "duty.change.save":
+        case "duty.change.rules":
         case "duty.change.create":
           reason = text(target.reason);
           break;

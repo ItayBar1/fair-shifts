@@ -486,6 +486,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     .click();
   await page.getByLabel("שם סוג התורנות").fill("תורנות עם דרגה מוגדרת");
   await page.getByLabel("ניקוד בסיס").fill("4");
+  await page.getByLabel("סכום הזנקה שמור (רשות)").fill("3");
   await page
     .getByRole("button", { name: "הוספת תנאי דרגה", exact: true })
     .first()
@@ -515,7 +516,10 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page.getByRole("link").filter({ hasText: "בדיקת חריג ידני" }).click();
   await page.getByRole("button", { name: "שיבוץ ידני", exact: true }).click();
   await page.getByLabel("בחירת חייל").selectOption({ label: "חייל סינתטי" });
-  await page.getByLabel("תוספת הזנקה אישית").fill("3");
+  // The saved amount is only suggested: no call-up until the manager marks one.
+  await expect(page.getByLabel("הזנקה", { exact: true })).toHaveValue("no");
+  await expect(page.getByLabel("הזנקה: סכום")).toHaveValue("3");
+  await page.getByLabel("הזנקה", { exact: true }).selectOption("yes");
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "שמירה", exact: true })

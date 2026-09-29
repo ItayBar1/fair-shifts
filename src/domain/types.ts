@@ -102,6 +102,11 @@ export interface Pricing {
   mode: "fixed" | "daily";
   basePoints: string;
   surcharges: TimeSurcharge[];
+  /**
+   * A saved call-up amount the system suggests. It never applies by itself:
+   * the manager marks a call-up and approves or changes the amount per seat.
+   */
+  callUpPoints?: string;
 }
 export interface DutySlot {
   id: string;
