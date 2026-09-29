@@ -3,6 +3,8 @@ import { calculatePrice, priceSplitExecution } from "../../src/domain/pricing";
 import {
   evaluateEligibility,
   canAccessAfterService,
+  populationMoves,
+  populationTimeline,
 } from "../../src/domain/eligibility";
 import { drawCandidate } from "../../src/domain/scheduling";
 import {
@@ -118,6 +120,67 @@ describe("eligibility", () => {
         mode: "volunteer",
       }).status
     ).toBe("blocked");
+  });
+  it("lets a consenting volunteer bypass pending constraints but not approved ones or release", () => {
+    const volunteer = { ...context, mode: "volunteer" as const };
+    const person = soldier({
+      constraints: [
+        {
+          id: "c1",
+          version: 1,
+          status: "pending",
+          start: "2026-09-27",
+          end: "2026-09-27",
+        },
+      ],
+    });
+    expect(
+      evaluateEligibility(person, target, target.slots[0], context).status
+    ).toBe("approval_required");
+    expect(
+      evaluateEligibility(person, target, target.slots[0], volunteer).status
+    ).toBe("eligible");
+    person.constraints[0].status = "approved";
+    expect(
+      evaluateEligibility(person, target, target.slots[0], volunteer).blockers
+    ).toEqual([expect.objectContaining({ code: "approved_constraint" })]);
+    const leaving = soldier({
+      service: { ...soldier().service, releaseDate: "2026-09-26" },
+    });
+    expect(
+      evaluateEligibility(leaving, target, target.slots[0], volunteer).blockers
+    ).toEqual([expect.objectContaining({ code: "released" })]);
+  });
+  it("routes a volunteer's exemption or rank exception to a manager instead of blocking", () => {
+    const volunteer = { ...context, mode: "volunteer" as const };
+    const guarded = duty({
+      requirements: {
+        blockingExemptionIds: ["e"],
+        ranks: [{ trackId: "t", minOrder: 3 }],
+      },
+    });
+    const person = soldier({
+      exemptions: [
+        { exemptionId: "e", start: "2026-09-01", end: "2026-09-30" },
+      ],
+      rankHistory: [
+        { effectiveFrom: "2026-01-01", rankId: "r", trackId: "t", order: 1 },
+      ],
+    });
+    expect(
+      evaluateEligibility(person, guarded, guarded.slots[0], context).status
+    ).toBe("blocked");
+    const result = evaluateEligibility(
+      person,
+      guarded,
+      guarded.slots[0],
+      volunteer
+    );
+    expect(result.status).toBe("approval_required");
+    expect(result.approvalsRequired.map((item) => item.code).sort()).toEqual([
+      "exemption",
+      "rank",
+    ]);
   });
   it("checks qualification throughout the execution", () => {
     const long = duty({
@@ -403,5 +466,57 @@ describe("Israel time boundaries", () => {
     expect(resolveLocalTime("2026-10-25", "01:30", 180)).not.toBe(
       resolveLocalTime("2026-10-25", "01:30", 120)
     );
+  });
+});
+describe("population timeline", () => {
+  const career = soldier({
+    service: {
+      type: "career",
+      basePopulation: "mandatory",
+      graceEligible: false,
+      permanentFrom: "2026-01-01",
+    },
+  });
+  it("merges dates that do not change the effective population", () => {
+    expect(
+      populationTimeline({
+        ...career,
+        service: { ...career.service, officerFrom: "2026-06-01" },
+        populationHistory: [
+          { effectiveFrom: "2025-01-01", population: "mandatory" },
+        ],
+      })
+    ).toEqual([
+      { from: null, population: "mandatory" },
+      { from: "2026-01-01", population: "career" },
+    ]);
+  });
+  it("treats an officer date after the career date as no move", () => {
+    expect(
+      populationMoves(career, {
+        ...career,
+        service: { ...career.service, officerFrom: "2026-06-01" },
+      })
+    ).toBe(false);
+  });
+  it("moves the population for an earlier officer date or a KAMA transition", () => {
+    expect(
+      populationMoves(career, {
+        ...career,
+        service: { ...career.service, officerFrom: "2025-12-31" },
+      })
+    ).toBe(true);
+    const kama = {
+      ...career,
+      populationHistory: [
+        { effectiveFrom: "2026-03-01", population: "academic" as const },
+      ],
+    };
+    expect(populationTimeline(kama)).toEqual([
+      { from: null, population: "mandatory" },
+      { from: "2026-01-01", population: "career" },
+      { from: "2026-03-01", population: "academic" },
+    ]);
+    expect(populationMoves(career, kama)).toBe(true);
   });
 });

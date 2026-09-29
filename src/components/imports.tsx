@@ -13,6 +13,7 @@ import {
 import { Empty, Notice, Panel, Status } from "./ui";
 import { importValue } from "@/client/import-values";
 import { ImportRestore } from "./import-restores";
+import { AffectedAssignments, PopulationChange } from "./personnel-history";
 export function ImportsView({
   state,
   action,
@@ -28,6 +29,7 @@ export function ImportsView({
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [overwrite, setOverwrite] = useState(false);
+  const [populationConfirmed, setPopulationConfirmed] = useState(false);
   const [reason, setReason] = useState("");
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,6 +39,7 @@ export function ImportsView({
     setBatch(undefined);
     setConfirmed(false);
     setOverwrite(false);
+    setPopulationConfirmed(false);
     setReason("");
     const form = new FormData(event.currentTarget);
     form.set("idempotencyKey", crypto.randomUUID());
@@ -64,6 +67,7 @@ export function ImportsView({
     setProblems([]);
     setConfirmed(false);
     setOverwrite(false);
+    setPopulationConfirmed(false);
     setReason("");
     try {
       setBatch(await action("import.get", { id }));
@@ -84,7 +88,13 @@ export function ImportsView({
       setBatch(
         await action(
           "import.apply",
-          { id: batch.id, confirmed, overwriteConfirmed: overwrite, reason },
+          {
+            id: batch.id,
+            confirmed,
+            overwriteConfirmed: overwrite,
+            populationImpactConfirmed: populationConfirmed,
+            reason,
+          },
           num(batch.version)
         )
       );
@@ -98,6 +108,7 @@ export function ImportsView({
   const hasOverwrite = details.some(
     (row) => row.mode === "update" && rows(row.changes).length > 0
   );
+  const hasPopulationMove = details.some((row) => row.populationImpact);
   return (
     <>
       <Panel
@@ -217,6 +228,20 @@ export function ImportsView({
                 ) : (
                   <p className="muted">אין שינויים בשורה הזאת</p>
                 )}
+                {batch.status === "preview" && row.populationImpact ? (
+                  <div
+                    className="stack"
+                    role="region"
+                    aria-label={`מעבר אוכלוסייה — ${str(row.name)}`}
+                  >
+                    <h4>השורה מזיזה את אוכלוסיית השיבוץ</h4>
+                    <PopulationChange change={row.populationImpact} />
+                    <AffectedAssignments
+                      impact={rows(obj(row.populationImpact).impact)}
+                      empty="המעבר אינו משנה את ההתאמה של שיבוצים קיימים."
+                    />
+                  </div>
+                ) : null}
               </div>
             </section>
           ))}
@@ -243,6 +268,19 @@ export function ImportsView({
                   אני מאשר/ת דריסת השדות והיתרות הקיימים המוצגים
                 </label>
               )}
+              {hasPopulationMove && (
+                <label className="check-field full">
+                  <input
+                    type="checkbox"
+                    checked={populationConfirmed}
+                    onChange={(event) =>
+                      setPopulationConfirmed(event.target.checked)
+                    }
+                    disabled={busy}
+                  />
+                  בדקתי את מעברי האוכלוסייה ואת השיבוצים שיסומנו לטיפול
+                </label>
+              )}
               <label className="check-field full">
                 <input
                   type="checkbox"
@@ -255,7 +293,12 @@ export function ImportsView({
               <div className="form-actions full">
                 <button
                   className="btn primary"
-                  disabled={busy || !confirmed || (hasOverwrite && !overwrite)}
+                  disabled={
+                    busy ||
+                    !confirmed ||
+                    (hasOverwrite && !overwrite) ||
+                    (hasPopulationMove && !populationConfirmed)
+                  }
                 >
                   אישור ושמירת הייבוא
                 </button>

@@ -44,6 +44,37 @@ export function populationAt(soldier: Soldier, at: string): Population {
   );
 }
 
+/**
+ * The effective population over time, as merged segments. `from: null` is the
+ * base population before any dated change. Two soldiers with equal timelines
+ * are interchangeable for every population check, whatever the stored dates.
+ */
+export function populationTimeline(
+  soldier: Soldier
+): { from: string | null; population: Population }[] {
+  const dates = [
+    ...soldier.populationHistory.map((entry) => entry.effectiveFrom),
+    soldier.service.permanentFrom,
+    soldier.service.officerFrom,
+  ].filter((date): date is string => Boolean(date));
+  const segments: { from: string | null; population: Population }[] = [
+    { from: null, population: soldier.service.basePopulation },
+  ];
+  for (const date of [...new Set(dates)].sort()) {
+    const value = populationAt(soldier, localDate(date).toISO()!);
+    if (value !== segments[segments.length - 1].population)
+      segments.push({ from: date, population: value });
+  }
+  return segments;
+}
+
+export function populationMoves(before: Soldier, after: Soldier): boolean {
+  return (
+    JSON.stringify(populationTimeline(before)) !==
+    JSON.stringify(populationTimeline(after))
+  );
+}
+
 export function rankAt(
   soldier: Soldier,
   at: string
@@ -230,7 +261,7 @@ export function evaluateEligibility(
         )
       )
         continue;
-      if (context.mode === "manual") {
+      if (context.mode !== "automatic") {
         if (!hasApproval("exemption", exemptionId))
           requireApproval(
             "exemption",
@@ -247,7 +278,7 @@ export function evaluateEligibility(
     if (requirements.ranks?.length) {
       const rank = rankAt(soldier, duty.start);
       if (!rank || !matchesRank(rank, requirements.ranks)) {
-        if (context.mode === "manual") {
+        if (context.mode !== "automatic") {
           if (!hasApproval("rank", reference))
             requireApproval(
               "rank",
@@ -275,14 +306,17 @@ export function evaluateEligibility(
     )
   )
     block("allowed_hours", "התורנות חורגת מטווח השעות המותר");
+  // A consenting volunteer's own pending constraints never route a transfer to a manager (decision 163).
+  const volunteer = context.mode === "volunteer";
   const pending = soldier.constraints.filter(
     (constraint) => constraint.status === "pending"
   );
-  if (pending.length && !context.pendingReviewConfirmed)
+  if (pending.length && !context.pendingReviewConfirmed && !volunteer)
     requireApproval("pending_review", "יש לאשר המשך לפני סיום סקירת האילוצים");
   for (const constraint of soldier.constraints) {
     if (
       constraint.status === "rejected" ||
+      (constraint.status === "pending" && volunteer) ||
       !overlaps(target, datesToInstants(constraint))
     )
       continue;

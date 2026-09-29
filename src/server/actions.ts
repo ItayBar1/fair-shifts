@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { unitTransaction } from "./db";
-import { commandResults, records } from "./schema";
+import { commandResults } from "./schema";
 import { commandSchema, id } from "./validation";
 import {
   assertActorCurrent,
@@ -11,14 +11,9 @@ import {
   unlockAccount,
   type Actor,
 } from "./auth/accounts";
-import {
-  createRecord,
-  currentVersion,
-  findRecord,
-  updateRecord,
-} from "./repository";
+import { currentVersion } from "./repository";
 import { invariant, AppError } from "./errors";
-import { saveSoldier } from "./people";
+import { previewSoldierUpdate, saveSoldier } from "./people";
 import {
   saveDutyType,
   createDuty,
@@ -69,6 +64,13 @@ import {
 } from "./duty-changes";
 import { previewImport, applyImport, getImport } from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
+import { offerTransfer, respondTransfer, withdrawTransfer } from "./transfers";
+import {
+  markNotification,
+  resetPreferences,
+  saveDefaults,
+  savePreferences,
+} from "./notifications";
 
 export async function executeAction(actor: Actor, value: unknown) {
   const command = commandSchema.parse(value);
@@ -131,6 +133,15 @@ export async function executeAction(actor: Actor, value: unknown) {
           "יצירת חייל אינה כוללת מזהה קיים"
         );
         result = await saveSoldier(tx, actor, payload);
+        break;
+      case "soldier.update.preview":
+        id.parse(payload.id);
+        result = await previewSoldierUpdate(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
         break;
       case "soldier.update":
         id.parse(payload.id);
@@ -250,6 +261,15 @@ export async function executeAction(actor: Actor, value: unknown) {
       case "duty.change.discard":
         result = await discardDutyChange(tx, actor, payload, expectedVersion);
         break;
+      case "transfer.offer":
+        result = await offerTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.respond":
+        result = await respondTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.withdraw":
+        result = await withdrawTransfer(tx, actor, payload, expectedVersion);
+        break;
       case "score.preview":
         result = await previewScore(tx, actor, payload);
         break;
@@ -335,53 +355,20 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await confirmEmailChange(tx, actor, payload, expectedVersion);
         break;
       case "notification.read":
-      case "notification.hide": {
-        const row = await findRecord(tx, "notification", id.parse(payload.id));
-        currentVersion(row.version, expectedVersion);
-        invariant(
-          row.data.accountId === actor.id ||
-            (actor.soldierId && row.subjectId === actor.soldierId),
-          "forbidden",
-          "אין הרשאה להודעה",
-          403
-        );
-        result = await updateRecord(tx, row, {
-          ...row.data,
-          [command.type.endsWith("read") ? "readAt" : "hiddenAt"]:
-            new Date().toISOString(),
-        });
+        result = await markNotification(tx, actor, payload, "readAt");
         break;
-      }
-      case "settings.save": {
-        const input = z
-          .object({
-            emailEnabled: z.boolean(),
-            reminderHours: z.array(z.number().positive().max(168)),
-            roundOpening: z.boolean(),
-            roundClosing: z.boolean(),
-            publishedChanges: z.boolean(),
-          })
-          .parse(payload);
-        const rows = await tx
-          .select()
-          .from(records)
-          .where(eq(records.kind, "settings"));
-        const existing = rows.find((row) => row.data.accountId === actor.id);
-        if (existing) {
-          currentVersion(existing.version, expectedVersion);
-          result = await updateRecord(tx, existing, {
-            ...input,
-            accountId: actor.id,
-          });
-        } else
-          result = await createRecord(
-            tx,
-            "settings",
-            { ...input, accountId: actor.id },
-            actor.soldierId
-          );
+      case "notification.hide":
+        result = await markNotification(tx, actor, payload, "hiddenAt");
         break;
-      }
+      case "settings.save":
+        result = await savePreferences(tx, actor, payload, expectedVersion);
+        break;
+      case "settings.reset":
+        result = await resetPreferences(tx, actor, expectedVersion);
+        break;
+      case "notification.defaults.save":
+        result = await saveDefaults(tx, actor, payload, expectedVersion);
+        break;
       default:
         throw new AppError(
           "not_implemented",

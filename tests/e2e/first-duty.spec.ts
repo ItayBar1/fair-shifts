@@ -67,21 +67,6 @@ async function login(page: Page, email: string) {
     })
   ).toBeVisible();
 }
-/** A synthetic soldier with a balance and an invited account. */
-async function account(
-  name: string,
-  email: string,
-  personalNumber: string,
-  role: "manager" | "soldier"
-) {
-  const id = randomUUID();
-  const data = soldier({ id, name, personalNumber });
-  await db.insert(soldiers).values({ id, name, personalNumber, data });
-  await db.insert(balances).values({ soldierId: id });
-  await createInvitedAccount({ name, email, role, soldierId: id });
-  return id;
-}
-
 test("technical account lands on its own overview after login", async ({
   page,
 }) => {
@@ -1120,6 +1105,19 @@ test("multi-day duties appear on every Israeli day and month, independent of the
   page,
   browser,
 }) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
   await account(
     "לוח אחראי",
     "calendar-manager@example.invalid",
@@ -1295,6 +1293,19 @@ test("manager corrects a finished duty with an impact preview while the draw val
   page,
   browser,
 }) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
   await account(
     "תיקון אחראי",
     "fix-manager@example.invalid",
@@ -1413,10 +1424,451 @@ test("manager corrects a finished duty with an impact preview while the draw val
   ).toBe(true);
   await context.close();
 });
+test("a soldier offers a published duty to several replacements and the first consent transfers it", async ({
+  page,
+  browser,
+}) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
+  await account(
+    "העברה אחראי",
+    "transfer-manager@example.invalid",
+    "400001",
+    "manager"
+  );
+  const ownerId = await account(
+    "העברה מציע",
+    "transfer-owner@example.invalid",
+    "400002",
+    "soldier"
+  );
+  await account(
+    "העברה מחליף",
+    "transfer-first@example.invalid",
+    "400003",
+    "soldier"
+  );
+  await account(
+    "העברה נוסף",
+    "transfer-second@example.invalid",
+    "400004",
+    "soldier"
+  );
+  await login(page, "transfer-manager@example.invalid");
+  const api = async (
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number
+  ) => {
+    const response = await page.request.post("/api/v1/actions", {
+      headers: { origin: "http://127.0.0.1:3000" },
+      data: { type, payload, expectedVersion, idempotencyKey: randomUUID() },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+    return (await response.json()).result as { id: string; version: number };
+  };
+  const type = await api("dutyType.save", {
+    name: "העברה לבדיקה",
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: 1 }],
+  });
+  const start = DateTime.now()
+    .setZone("Asia/Jerusalem")
+    .plus({ days: 5 })
+    .set({ hour: 8, minute: 0, second: 0, millisecond: 0 });
+  const created = await api("duty.create", {
+    typeId: type.id,
+    name: "שמירה להעברה",
+    start: start.toISO(),
+    end: start.plus({ hours: 8 }).toISO(),
+    location: "שער סינתטי",
+  });
+  const state = await (await page.request.get("/api/v1/state")).json();
+  const row = state.duties.find((d: { id: string }) => d.id === created.id);
+  await api(
+    "duty.assign",
+    {
+      dutyId: row.id,
+      slotId: row.slots[0].id,
+      soldierId: ownerId,
+      callUpBonus: 3,
+    },
+    1
+  );
+  await api("duty.publish", { id: row.id, confirmed: true }, 2);
 
+  const ownerContext = await browser.newContext();
+  const owner = await ownerContext.newPage();
+  await login(owner, "transfer-owner@example.invalid");
+  await owner.goto(`/duties/${row.id}`);
+  await owner.getByRole("button", { name: "הצעה להעברה" }).click();
+  const offer = owner.getByRole("dialog");
+  await expect(offer.getByText("7 נקודות")).toBeVisible();
+  await offer
+    .getByLabel("למי להציע")
+    .selectOption([{ label: "העברה מחליף" }, { label: "העברה נוסף" }]);
+  await offer.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(offer).not.toBeVisible();
+  await expect(owner.getByText("הצעת ההעברה שלך ממתינה להסכמה")).toBeVisible();
+
+  const firstContext = await browser.newContext();
+  const first = await firstContext.newPage();
+  await login(first, "transfer-first@example.invalid");
+  await first.goto("/requests");
+  const incoming = first
+    .locator(".task-item")
+    .filter({ hasText: "שמירה להעברה — מאת העברה מציע" });
+  await expect(incoming).toContainText("7 נקודות");
+  await expect(first.getByText("העברה נוסף")).toHaveCount(0);
+  await incoming.getByRole("button", { name: "הסכמה" }).click();
+  const consent = first.getByRole("dialog");
+  await consent.getByLabel("אני מסכים לקבל את התורנות").check();
+  await consent.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(consent).not.toBeVisible();
+  await expect(incoming.getByText("הושלמה")).toBeVisible();
+  await first.goto(`/duties/${row.id}`);
+  await expect(
+    first.locator(".slot-row").filter({ hasText: "העברה מחליף" })
+  ).toContainText("7 נקודות");
+
+  await owner.goto("/requests");
+  const outgoing = owner
+    .locator(".task-item")
+    .filter({ hasText: "שמירה להעברה" });
+  await expect(outgoing.getByText("הושלמה")).toBeVisible();
+  await expect(outgoing).toContainText("העברה מחליף: הסכים");
+  await expect(outgoing).toContainText("העברה נוסף: נסגר");
+  await owner.goto("/notifications");
+  await expect(owner.getByText("ההעברה הושלמה")).toBeVisible();
+  await owner.goto(`/duties/${row.id}`);
+  await expect(owner.getByRole("button", { name: "הצעה להעברה" })).toHaveCount(
+    0
+  );
+
+  const secondContext = await browser.newContext();
+  const second = await secondContext.newPage();
+  await login(second, "transfer-second@example.invalid");
+  await second.setViewportSize({ width: 390, height: 844 });
+  await second.goto("/requests");
+  await expect(
+    second.locator(".task-item").filter({ hasText: "שמירה להעברה" })
+  ).toContainText("נסגר");
+  await expect(second.getByRole("button", { name: "הסכמה" })).toHaveCount(0);
+  expect(
+    await second.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await second.screenshot({
+    path: "test-results/transfer-requests-mobile.png",
+    fullPage: true,
+  });
+
+  await page.goto("/requests");
+  await expect(
+    page
+      .locator(".task-item")
+      .filter({ hasText: "שמירה להעברה: העברה מציע ← העברה מחליף" })
+  ).toContainText("הושלמה");
+  await page.screenshot({
+    path: "test-results/transfer-requests-manager.png",
+    fullPage: true,
+  });
+  await Promise.all([
+    ownerContext.close(),
+    firstContext.close(),
+    secondContext.close(),
+  ]);
+});
+test("population moves preview their impact before saving in the transition, the profile and the import", async ({
+  page,
+  browser,
+}) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
+  await account(
+    "אחראי מעברים",
+    "population-manager@example.invalid",
+    "460001",
+    "manager"
+  );
+  const people = {
+    transition: await account(
+      "חייל מעבר מפורש",
+      "population-transition@example.invalid",
+      "460002",
+      "soldier"
+    ),
+    profile: await account(
+      "חייל עריכת קצונה",
+      "population-profile@example.invalid",
+      "460003",
+      "soldier"
+    ),
+    imported: await account(
+      "חייל קבע מייבוא",
+      "population-import@example.invalid",
+      "460004",
+      "soldier"
+    ),
+  };
+  await login(page, "population-manager@example.invalid");
+  const api = async (
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number
+  ) => {
+    const response = await page.request.post("/api/v1/actions", {
+      headers: { origin: "http://127.0.0.1:3000" },
+      data: { type, payload, expectedVersion, idempotencyKey: randomUUID() },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+    return (await response.json()).result as { id: string; version: number };
+  };
+  const type = await api("dutyType.save", {
+    name: "שמירה לחובה בלבד",
+    populations: ["mandatory"],
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: 1 }],
+  });
+  const zone = "Asia/Jerusalem";
+  const day = (days: number) =>
+    DateTime.now().setZone(zone).plus({ days }).startOf("day");
+  async function assignedDuty(name: string, start: DateTime, end: DateTime) {
+    const created = await api("duty.create", {
+      typeId: type.id,
+      name,
+      start: start.toISO(),
+      end: end.toISO(),
+      location: "אתר מעבר",
+    });
+    const state = await (await page.request.get("/api/v1/state")).json();
+    const row = state.duties.find((d: { id: string }) => d.id === created.id);
+    return row as { id: string; slots: { id: string }[] };
+  }
+  async function assign(
+    row: { id: string; slots: { id: string }[] },
+    soldierId: string
+  ) {
+    await api(
+      "duty.assign",
+      { dutyId: row.id, slotId: row.slots[0].id, soldierId },
+      1
+    );
+  }
+  // A night that starts on the eve of the transition and ends after it.
+  const transitionDay = day(20);
+  const night = await assignedDuty(
+    "לילה שחוצה את המעבר",
+    transitionDay.minus({ hours: 2 }),
+    transitionDay.plus({ hours: 6 })
+  );
+  await assign(night, people.transition);
+  const officerDay = day(22);
+  const onOfficerDay = await assignedDuty(
+    "תורנות ביום הקצונה",
+    officerDay.set({ hour: 8 }),
+    officerDay.set({ hour: 16 })
+  );
+  await assign(onOfficerDay, people.profile);
+  const careerDay = day(24);
+  const onCareerDay = await assignedDuty(
+    "תורנות אחרי תחילת הקבע",
+    careerDay.set({ hour: 8 }),
+    careerDay.set({ hour: 16 })
+  );
+  await assign(onCareerDay, people.imported);
+  async function stored(id: string) {
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, id));
+    return person;
+  }
+  const attention = page.locator(".badge", { hasText: "דורשת טיפול" });
+  async function openProfile(name: string) {
+    await page.goto("/manage/soldiers");
+    await page
+      .getByRole("row")
+      .filter({ hasText: name })
+      .getByRole("button", { name: "פרופיל ועריכה" })
+      .click();
+    return page.getByRole("dialog");
+  }
+
+  // 1. The explicit population transition.
+  let profile = await openProfile("חייל מעבר מפורש");
+  await profile.getByText("מועדי שירות, כשירות והיסטוריה").click();
+  await profile.getByLabel("אוכלוסייה חדשה").selectOption("career");
+  await profile
+    .getByLabel("בתוקף מתאריך", { exact: true })
+    .fill(transitionDay.toISODate()!);
+  await profile.getByLabel("סיבת המעבר").fill("תחילת קבע סינתטית");
+  await profile.getByRole("button", { name: "בדיקת השפעת המעבר" }).click();
+  const transition = profile.getByRole("region", {
+    name: "השפעת מעבר האוכלוסייה",
+  });
+  await expect(transition).toContainText("לילה שחוצה את המעבר");
+  await expect(transition).toContainText("דורש טיפול");
+  await expect(transition).toContainText("קבע / קצינים");
+  expect((await stored(people.transition)).data.populationHistory).toEqual([]);
+  await transition.screenshot({
+    path: "test-results/population-transition.png",
+  });
+  await transition
+    .getByLabel("בדקתי את ההשפעה ומאשר את מעבר האוכלוסייה")
+    .check();
+  await transition
+    .getByRole("button", { name: "אישור מעבר האוכלוסייה", exact: true })
+    .click();
+  await expect(transition).toHaveCount(0);
+  expect((await stored(people.transition)).data.populationHistory).toEqual([
+    { effectiveFrom: transitionDay.toISODate(), population: "career" },
+  ]);
+  await page.goto(`/duties/${night.id}`);
+  await expect(attention).toBeVisible();
+
+  // 2. Editing the profile: an unrelated field saves directly, the officer
+  // date only after reviewing its impact.
+  profile = await openProfile("חייל עריכת קצונה");
+  await profile.getByLabel("טלפון").fill("0500000463");
+  await profile.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(profile).not.toBeVisible();
+  profile = await openProfile("חייל עריכת קצונה");
+  await profile.getByLabel("תחילת קצונה רגילה").fill(officerDay.toISODate()!);
+  await profile.getByRole("button", { name: "שמירה", exact: true }).click();
+  const edit = profile.getByRole("region", { name: "השפעת עריכת הפרופיל" });
+  await expect(edit).toContainText("תורנות ביום הקצונה");
+  await expect(edit).toContainText("דורש טיפול");
+  expect(
+    (await stored(people.profile)).data.service.officerFrom
+  ).toBeUndefined();
+  await edit.screenshot({ path: "test-results/population-profile.png" });
+  await edit.getByLabel("בדקתי את ההשפעה ומאשר את שמירת הפרופיל").check();
+  await edit
+    .getByRole("button", { name: "אישור ושמירת הפרופיל", exact: true })
+    .click();
+  await expect(profile).not.toBeVisible();
+  expect((await stored(people.profile)).data.service.officerFrom).toBe(
+    officerDay.toISODate()
+  );
+  await page.goto(`/duties/${onOfficerDay.id}`);
+  await expect(attention).toBeVisible();
+
+  // 3. The import shows the move and its assignment for the row.
+  await page.goto("/manage/imports");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(new Uint8Array(await createImportTemplate()).buffer);
+  const sheet = workbook.getWorksheet("חיילים")!;
+  const row = sheet.addRow([]);
+  row.getCell(1).value = "460004";
+  row.getCell(13).value = careerDay.toISODate();
+  await page.getByLabel("קובץ XLSX").setInputFiles({
+    name: "population.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(new Uint8Array(await workbook.xlsx.writeBuffer())),
+  });
+  await page
+    .getByRole("button", { name: "הצגת תצוגה מקדימה", exact: true })
+    .click();
+  const imported = page.getByRole("region", {
+    name: "מעבר אוכלוסייה — חייל קבע מייבוא",
+  });
+  await expect(imported).toContainText("תורנות אחרי תחילת הקבע");
+  await expect(imported).toContainText("דורש טיפול");
+  await page.getByLabel("סיבת הייבוא").fill("תאריכי קבע סינתטיים");
+  await page
+    .getByLabel("אני מאשר/ת דריסת השדות והיתרות הקיימים המוצגים")
+    .check();
+  await page
+    .getByLabel("בדקתי את כל השורות ואת ברירות המחדל לקליטה חדשה")
+    .check();
+  const save = page.getByRole("button", {
+    name: "אישור ושמירת הייבוא",
+    exact: true,
+  });
+  await expect(save).toBeDisabled();
+  await page
+    .getByLabel("בדקתי את מעברי האוכלוסייה ואת השיבוצים שיסומנו לטיפול")
+    .check();
+  await page.screenshot({
+    path: "test-results/population-import.png",
+    fullPage: true,
+  });
+  expect(
+    (await stored(people.imported)).data.service.permanentFrom
+  ).toBeUndefined();
+  await save.click();
+  await expect(page.getByText(/הייבוא נשמר בשלמותו/)).toBeVisible();
+  expect((await stored(people.imported)).data.service.permanentFrom).toBe(
+    careerDay.toISODate()
+  );
+  await page.goto(`/duties/${onCareerDay.id}`);
+  await expect(attention).toBeVisible();
+
+  // A soldier can neither preview a move nor read others' personal history.
+  const context = await browser.newContext();
+  const member = await context.newPage();
+  await login(member, "population-transition@example.invalid");
+  const forbidden = await member.request.post("/api/v1/actions", {
+    headers: { origin: "http://127.0.0.1:3000" },
+    data: {
+      type: "soldier.update.preview",
+      payload: {
+        id: people.profile,
+        name: "חייל עריכת קצונה",
+        personalNumber: "460003",
+      },
+      idempotencyKey: randomUUID(),
+    },
+  });
+  expect(forbidden.status()).toBe(403);
+  const visible = JSON.stringify(
+    await (await member.request.get("/api/v1/state")).json()
+  );
+  for (const hidden of ["populationHistory", "officerDate", "460003"])
+    expect(visible).not.toContain(hidden);
+  await context.close();
+});
 test("manager resolves a pending balance decision from the handling center after a correction crosses a normalization", async ({
   page,
 }) => {
+  async function account(
+    name: string,
+    email: string,
+    personalNumber: string,
+    role: "manager" | "soldier"
+  ) {
+    const id = randomUUID();
+    const data = soldier({ id, name, personalNumber });
+    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db.insert(balances).values({ soldierId: id });
+    await createInvitedAccount({ name, email, role, soldierId: id });
+    return id;
+  }
   const managerSoldier = await account(
     "הכרעה אחראי",
     "decide-manager@example.invalid",

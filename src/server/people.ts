@@ -1,7 +1,14 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { profileInput } from "./validation";
-import { audit, currentVersion, manager, type Actor } from "./repository";
+import {
+  audit,
+  currentVersion,
+  loadDomain,
+  manager,
+  type Actor,
+} from "./repository";
 import { soldiers, soldierContacts, balances } from "./schema";
 import { user } from "./auth-schema";
 import type { DbTransaction } from "./db";
@@ -10,15 +17,22 @@ import { createInvitedAccount } from "./auth/accounts";
 import { enqueueEmail } from "./operations/email";
 import type { Soldier } from "../domain/types";
 import { postScore } from "./scoring";
-import { effectiveToday, reassessAssignments } from "./personnel";
-import { populationAt } from "../domain/eligibility";
+import {
+  effectiveToday,
+  impactOf,
+  populationChange,
+  reassessAssignments,
+} from "./personnel";
+import { populationAt, populationMoves } from "../domain/eligibility";
 import { refreshRankReminders } from "./ranks";
 
 export async function saveSoldier(
   tx: DbTransaction,
   actor: Actor,
   payload: unknown,
-  expectedVersion?: number
+  expectedVersion?: number,
+  /** Set only by a caller that already confirmed a current impact preview. */
+  options: { populationReviewed?: boolean } = {}
 ) {
   manager(actor);
   const input = profileInput.parse(payload);
@@ -56,40 +70,33 @@ export async function saveSoldier(
     );
   } else invariant(input.email, "email_required", "נדרשת כתובת מייל להזמנה");
   const id = existing?.id ?? randomUUID();
-  const data: Soldier = {
-    ...existing?.data,
-    id,
-    name: input.name,
-    personalNumber: input.personalNumber,
-    version: (existing?.version ?? 0) + 1,
-    currentScore: existing?.data.currentScore ?? 0,
-    populationHistory: existing?.data.populationHistory ?? [],
-    rankHistory: existing?.data.rankHistory ?? [],
-    qualifications: existing?.data.qualifications ?? [],
-    exemptions: existing?.data.exemptions ?? [],
-    inactivePeriods: existing?.data.inactivePeriods ?? [],
-    constraints: [],
-    service: {
-      type: input.serviceType,
-      basePopulation: existing?.data.service.basePopulation ?? input.population,
-      arrivalDate: input.arrivalDate,
-      enlistmentDate: input.enlistmentDate,
-      graceEligible: input.graceEligible,
-      permanentFrom: input.permanentDate,
-      officerFrom: input.officerDate,
-      releaseDate: input.releaseDate,
-    },
-  };
-  if (
-    existing &&
-    populationAt(existing.data, new Date().toISOString()) !== input.population
-  ) {
-    data.populationHistory = [
-      ...data.populationHistory.filter(
-        (row) => row.effectiveFrom !== effectiveToday()
-      ),
-      { effectiveFrom: effectiveToday(), population: input.population },
-    ];
+  const data = profileData(id, input, existing?.data, existing?.version);
+  if (existing && populationMoves(existing.data, data)) {
+    if (!options.populationReviewed) {
+      const confirmation = z
+        .object({
+          previewToken: z.string().length(64),
+          confirmed: z.literal(true),
+        })
+        .safeParse(payload);
+      invariant(
+        confirmation.success,
+        "population_preview_required",
+        "שינוי שמזיז את אוכלוסיית השיבוץ נשמר רק אחרי תצוגת השפעה ואישור"
+      );
+      const { previewToken } = await assessProfileImpact(
+        tx,
+        input,
+        existing,
+        data
+      );
+      invariant(
+        confirmation.data.previewToken === previewToken,
+        "stale_preview",
+        "נתוני החייל או השיבוצים השתנו. יש לבדוק שוב את השפעת מעבר האוכלוסייה",
+        409
+      );
+    }
   }
   if (existing) {
     await tx
@@ -162,4 +169,93 @@ export async function saveSoldier(
   if (existing) await reassessAssignments(tx, id);
   await refreshRankReminders(tx);
   return { id, version: data.version };
+}
+
+type Profile = z.infer<typeof profileInput>;
+/** The stored soldier a profile form produces, without saving it. */
+function profileData(
+  id: string,
+  input: Profile,
+  existing?: Soldier,
+  version?: number
+): Soldier {
+  const data: Soldier = {
+    ...existing,
+    id,
+    name: input.name,
+    personalNumber: input.personalNumber,
+    version: (version ?? 0) + 1,
+    currentScore: existing?.currentScore ?? 0,
+    populationHistory: existing?.populationHistory ?? [],
+    rankHistory: existing?.rankHistory ?? [],
+    qualifications: existing?.qualifications ?? [],
+    exemptions: existing?.exemptions ?? [],
+    inactivePeriods: existing?.inactivePeriods ?? [],
+    constraints: [],
+    service: {
+      type: input.serviceType,
+      basePopulation: existing?.service.basePopulation ?? input.population,
+      arrivalDate: input.arrivalDate,
+      enlistmentDate: input.enlistmentDate,
+      graceEligible: input.graceEligible,
+      permanentFrom: input.permanentDate,
+      officerFrom: input.officerDate,
+      releaseDate: input.releaseDate,
+    },
+  };
+  if (
+    existing &&
+    populationAt(existing, new Date().toISOString()) !== input.population
+  ) {
+    data.populationHistory = [
+      ...data.populationHistory.filter(
+        (row) => row.effectiveFrom !== effectiveToday()
+      ),
+      { effectiveFrom: effectiveToday(), population: input.population },
+    ];
+  }
+  return data;
+}
+type SoldierRow = typeof soldiers.$inferSelect;
+async function assessProfileImpact(
+  tx: DbTransaction,
+  input: Profile,
+  existing: SoldierRow,
+  data: Soldier
+) {
+  const state = await loadDomain(tx);
+  const change = populationChange(existing.data, data);
+  const { impact } = impactOf(state, existing.id, data);
+  const previewToken = createHash("sha256")
+    .update(JSON.stringify({ input, change, state }))
+    .digest("hex");
+  return { previewToken, impact, change };
+}
+/**
+ * Tells the profile form whether a save moves the soldier's population and,
+ * if so, which reserved assignments it affects. Nothing is saved here.
+ */
+export async function previewSoldierUpdate(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const input = profileInput.parse(payload);
+  const [existing] = await tx
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.id, z.string().uuid().parse(input.id)));
+  invariant(existing && !existing.deletedAt, "not_found", "חייל לא נמצא", 404);
+  currentVersion(existing.version, expectedVersion);
+  const data = profileData(existing.id, input, existing.data, existing.version);
+  if (!populationMoves(existing.data, data)) return { populationMoves: false };
+  const { previewToken, impact, change } = await assessProfileImpact(
+    tx,
+    input,
+    existing,
+    data
+  );
+  return { populationMoves: true, population: change, previewToken, impact };
 }

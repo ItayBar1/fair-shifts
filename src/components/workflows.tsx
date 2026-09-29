@@ -8,7 +8,14 @@ import {
   rows,
   displayDate,
   personName,
+  obj,
 } from "@/client/types";
+import {
+  emailTypeLabels,
+  preferencesPayload,
+  reminderHoursText,
+} from "@/client/notifications";
+import { preferenceTypes } from "@/domain/notification-preferences";
 import {
   Panel,
   Empty,
@@ -18,6 +25,7 @@ import {
   Notice,
   type Field,
 } from "./ui";
+import { TransferRequests } from "./transfers";
 type Props = { state: AppState; action: Action };
 const building = (
   <Notice>
@@ -25,27 +33,19 @@ const building = (
   </Notice>
 );
 export { ConstraintsView } from "./constraints";
-export function RequestsView({ state }: Props) {
+export function RequestsView({ state, action }: Props) {
   return (
     <>
-      {building}
-      <Panel title="החלפות ובקשות">
-        {state.requests.length ? (
-          state.requests.map((row) => (
-            <div className="task-item" key={row.id}>
-              <strong>{str(row.kind)}</strong>
-              <Status value={row.status} />
-            </div>
-          ))
-        ) : (
-          <Empty title="אין בקשות פתוחות" />
-        )}
-      </Panel>
+      <Notice>
+        העברת תורנות בהסכמה לפני התחלה זמינה. החלפה הדדית, בקשת ביטול או דחייה
+        והחלפה במהלך ביצוע נמצאות עדיין בבנייה.
+      </Notice>
+      <TransferRequests state={state} action={action} />
     </>
   );
 }
 export function NotificationsView({ state, action }: Props) {
-  const notifications = state.notifications.filter((row) => !row.hiddenAt);
+  const notifications = state.notifications;
   return (
     <Panel title="מרכז הודעות">
       {notifications.length ? (
@@ -88,6 +88,7 @@ export function NotificationsView({ state, action }: Props) {
 }
 export function SettingsView({ state, action }: Props) {
   const settings = state.settings;
+  const defaults = obj(state.notificationDefaults);
   return (
     <>
       {state.actor.role === "manager" && (
@@ -107,59 +108,95 @@ export function SettingsView({ state, action }: Props) {
         </Panel>
       )}
       <Panel title="העדפות הודעות">
-        <Notice>ההעדפות נשמרות; מנגנון התזכורות המלא יושלם בשלב 18.</Notice>
-        <Form
-          fields={[
-            {
-              name: "emailEnabled",
-              label: "קבלת הודעות במייל",
-              type: "checkbox",
-              value: settings.emailEnabled !== false,
-            },
-            {
-              name: "reminderHours",
-              label: "שעות לפני תורנות, מופרדות בפסיק",
-              value: Array.isArray(settings.reminderHours)
-                ? settings.reminderHours.join(", ")
-                : "24, 2",
-            },
-            {
-              name: "roundOpening",
-              label: "הודעה על פתיחת סבב",
-              type: "checkbox",
-              value: settings.roundOpening !== false,
-            },
-            {
-              name: "roundClosing",
-              label: "תזכורת לפני סגירת סבב",
-              type: "checkbox",
-              value: settings.roundClosing !== false,
-            },
-            {
-              name: "publishedChanges",
-              label: "עדכוני תורנות שפורסמה",
-              type: "checkbox",
-              value: settings.publishedChanges !== false,
-            },
-          ]}
-          onSubmit={(values) =>
+        <p className="muted">
+          הודעות האתר נשמרות תמיד. המתגים קובעים אילו הודעות יישלחו גם במייל.
+          שעות התזכורת חלות על תזכורות האתר והמייל. קוד כניסה, הזמנה ואימות מייל
+          נשלחים תמיד.
+        </p>
+        <Notice tone={settings.source === "personal" ? "info" : "success"}>
+          {settings.source === "personal"
+            ? "שמרת העדפות אישיות. שינוי בברירות המחדל של היחידה לא יחול עליך."
+            : "חלות עליך ברירות המחדל של היחידה. אם האחראי ישנה אותן, השינוי יחול גם עליך."}
+        </Notice>
+        <PreferencesForm
+          key={`${str(settings.source)}-${num(settings.version)}-${num(defaults.version)}`}
+          values={settings}
+          submitLabel="שמירת העדפות אישיות"
+          onSubmit={(payload) =>
             action(
               "settings.save",
-              {
-                ...values,
-                reminderHours: str(values.reminderHours)
-                  .split(",")
-                  .map((value) => Number(value.trim()))
-                  .filter((value) => value > 0),
-              },
+              payload,
               typeof settings.version === "number"
                 ? settings.version
                 : undefined
             )
           }
         />
+        {settings.source === "personal" && (
+          <QuickAction
+            action={action}
+            type="settings.reset"
+            payload={{}}
+            version={num(settings.version)}
+          >
+            חזרה לברירות המחדל של היחידה
+          </QuickAction>
+        )}
       </Panel>
+      {state.actor.role === "manager" && (
+        <Panel title="ברירות מחדל להודעות ביחידה">
+          <p className="muted">
+            חלות על כל מי שלא שמר העדפות אישיות. מי ששמר העדפות אישיות ממשיך
+            לקבל את מה שבחר.
+          </p>
+          <PreferencesForm
+            key={`defaults-${num(defaults.version)}`}
+            values={defaults}
+            submitLabel="שמירת ברירות המחדל"
+            onSubmit={(payload) =>
+              action(
+                "notification.defaults.save",
+                payload,
+                typeof defaults.version === "number"
+                  ? defaults.version
+                  : undefined
+              )
+            }
+          />
+        </Panel>
+      )}
     </>
+  );
+}
+function PreferencesForm({
+  values,
+  submitLabel,
+  onSubmit,
+}: {
+  values: Record<string, unknown>;
+  submitLabel: string;
+  onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
+}) {
+  const email = obj(values.email);
+  return (
+    <Form
+      submitLabel={submitLabel}
+      fields={[
+        {
+          name: "reminderHours",
+          label: "שעות לפני תורנות, מופרדות בפסיק",
+          hint: "עד שלוש תזכורות, בשעות שלמות בין 1 ל־168. שדה ריק: ללא תזכורות.",
+          value: reminderHoursText(values.reminderHours),
+        },
+        ...preferenceTypes.map((type): Field => ({
+          name: `email.${type}`,
+          label: `מייל: ${emailTypeLabels[type]}`,
+          type: "checkbox",
+          value: email[type] !== false,
+        })),
+      ]}
+      onSubmit={(form) => onSubmit(preferencesPayload(form))}
+    />
   );
 }
 export function ScoresView({ state, action }: Props) {
