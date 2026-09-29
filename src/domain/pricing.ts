@@ -55,7 +55,7 @@ export function calculatePerformedPrice(
   const surcharges = pricing.surcharges.map((surcharge) => {
     const windows = new Map<string, { start: number; end: number }>();
     for (const period of periods) {
-      for (const window of dailyWindows(period, surcharge.window))
+      for (const window of dailyWindows(period, surcharge.window, true))
         windows.set(window.date, window);
     }
     const matching: string[] = [];

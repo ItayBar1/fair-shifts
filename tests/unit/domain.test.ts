@@ -414,6 +414,48 @@ describe("Israel time boundaries", () => {
       resolveLocalTime("2026-10-25", "01:30", 120)
     );
   });
+  const nightSurcharge = (
+    startTime: string,
+    endTime: string,
+    hours: string
+  ): Pricing => ({
+    ...base,
+    surcharges: [
+      {
+        id: "night",
+        name: "לילה",
+        points: "1",
+        window: { startTime, endTime },
+        threshold: { kind: "minimum_hours", hours },
+        frequency: "per_window",
+      },
+    ],
+  });
+  it("starts a surcharge window at the moment summer time skips its start time", () =>
+    expect(
+      calculatePrice(
+        nightSurcharge("02:30", "06:00", "3"),
+        "2026-03-26T20:00:00+02:00",
+        "2026-03-27T10:00:00+03:00"
+      ).surcharges[0]!.windows
+    ).toEqual(["2026-03-27"]));
+  it("gives a surcharge window its widest meaning when winter time repeats its start time", () =>
+    expect(
+      calculatePrice(
+        nightSurcharge("01:30", "05:00", "4.5"),
+        "2026-10-24T22:00:00+03:00",
+        "2026-10-25T08:00:00+02:00"
+      ).surcharges[0]!.windows
+    ).toEqual(["2026-10-25"]));
+  it("prices a daytime duty on a clock-change date outside the changed hour", () => {
+    const price = calculatePrice(
+      nightSurcharge("02:30", "06:00", "1"),
+      "2026-03-27T10:00:00+03:00",
+      "2026-03-27T18:00:00+03:00"
+    );
+    expect(price.surcharges[0]!.count).toBe(0);
+    expect(price.points).toBe(1);
+  });
 });
 describe("population timeline", () => {
   const career = soldier({
