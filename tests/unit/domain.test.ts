@@ -7,6 +7,8 @@ import {
 import { drawCandidate } from "../../src/domain/scheduling";
 import {
   applyScoreOperation,
+  correctionBarriers,
+  correctionEffect,
   dueCredits,
   rankFairness,
   schedulingScore,
@@ -114,6 +116,67 @@ describe("eligibility", () => {
         mode: "volunteer",
       }).status
     ).toBe("blocked");
+  });
+  it("lets a consenting volunteer bypass pending constraints but not approved ones or release", () => {
+    const volunteer = { ...context, mode: "volunteer" as const };
+    const person = soldier({
+      constraints: [
+        {
+          id: "c1",
+          version: 1,
+          status: "pending",
+          start: "2026-09-27",
+          end: "2026-09-27",
+        },
+      ],
+    });
+    expect(
+      evaluateEligibility(person, target, target.slots[0], context).status
+    ).toBe("approval_required");
+    expect(
+      evaluateEligibility(person, target, target.slots[0], volunteer).status
+    ).toBe("eligible");
+    person.constraints[0].status = "approved";
+    expect(
+      evaluateEligibility(person, target, target.slots[0], volunteer).blockers
+    ).toEqual([expect.objectContaining({ code: "approved_constraint" })]);
+    const leaving = soldier({
+      service: { ...soldier().service, releaseDate: "2026-09-26" },
+    });
+    expect(
+      evaluateEligibility(leaving, target, target.slots[0], volunteer).blockers
+    ).toEqual([expect.objectContaining({ code: "released" })]);
+  });
+  it("routes a volunteer's exemption or rank exception to a manager instead of blocking", () => {
+    const volunteer = { ...context, mode: "volunteer" as const };
+    const guarded = duty({
+      requirements: {
+        blockingExemptionIds: ["e"],
+        ranks: [{ trackId: "t", minOrder: 3 }],
+      },
+    });
+    const person = soldier({
+      exemptions: [
+        { exemptionId: "e", start: "2026-09-01", end: "2026-09-30" },
+      ],
+      rankHistory: [
+        { effectiveFrom: "2026-01-01", rankId: "r", trackId: "t", order: 1 },
+      ],
+    });
+    expect(
+      evaluateEligibility(person, guarded, guarded.slots[0], context).status
+    ).toBe("blocked");
+    const result = evaluateEligibility(
+      person,
+      guarded,
+      guarded.slots[0],
+      volunteer
+    );
+    expect(result.status).toBe("approval_required");
+    expect(result.approvalsRequired.map((item) => item.code).sort()).toEqual([
+      "exemption",
+      "rank",
+    ]);
   });
   it("checks qualification throughout the execution", () => {
     const long = duty({
@@ -252,6 +315,91 @@ describe("fair selection and score ledger rules", () => {
         "2026-09-28T00:00:00Z"
       )
     ).toHaveLength(1);
+  });
+});
+describe("past performance corrections", () => {
+  const event = (
+    id: string,
+    effectiveAt: string,
+    barrier: boolean,
+    recordedAt = effectiveAt
+  ) => ({
+    id,
+    soldierId: "a",
+    kind: barrier ? "normalization" : "adjustment",
+    effectiveAt,
+    recordedAt,
+    barrier,
+  });
+  it("orders barriers by effective time, not by recording time", () => {
+    const events = [
+      event("late", "2026-09-20T10:00:00+03:00", true),
+      // Recorded after the correction target but effective before the performance: not a barrier.
+      event(
+        "before",
+        "2026-09-10T10:00:00+03:00",
+        true,
+        "2026-09-25T10:00:00Z"
+      ),
+      event("add", "2026-09-18T10:00:00+03:00", false),
+      event("same", "2026-09-15T16:00:00+03:00", true),
+      { ...event("other", "2026-09-20T10:00:00+03:00", true), soldierId: "b" },
+    ];
+    expect(
+      correctionBarriers("a", "2026-09-15T13:00:00Z", events).map(
+        (item) => item.id
+      )
+    ).toEqual(["same", "late"]);
+  });
+  it("applies the difference once with a zero floor when nothing intervenes", () => {
+    expect(
+      correctionEffect({
+        balance: 10,
+        reflected: 4,
+        corrected: 6,
+        barriers: [],
+        openDecision: false,
+      })
+    ).toEqual({ status: "automatic", delta: 2, after: 12, clamped: false });
+    expect(
+      correctionEffect({
+        balance: 3,
+        reflected: 8,
+        corrected: 0,
+        barriers: [],
+        openDecision: false,
+      })
+    ).toEqual({ status: "automatic", delta: -3, after: 0, clamped: true });
+  });
+  it("waits for a manager after a barrier or while a decision is open", () => {
+    const barrier = event("n", "2026-09-20T10:00:00+03:00", true);
+    expect(
+      correctionEffect({
+        balance: 10,
+        reflected: 4,
+        corrected: 6,
+        barriers: [barrier],
+        openDecision: false,
+      })
+    ).toEqual({ status: "decision_required", rawDelta: 2 });
+    expect(
+      correctionEffect({
+        balance: 10,
+        reflected: 4,
+        corrected: 6,
+        barriers: [],
+        openDecision: true,
+      }).status
+    ).toBe("decision_required");
+    expect(() =>
+      correctionEffect({
+        balance: 10,
+        reflected: 4,
+        corrected: 1.5,
+        barriers: [],
+        openDecision: false,
+      })
+    ).toThrow();
   });
 });
 describe("Israel time boundaries", () => {

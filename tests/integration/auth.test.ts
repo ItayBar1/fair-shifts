@@ -241,7 +241,8 @@ describe("durable email queue", () => {
       enqueueEmail(tx, {
         recipientAccountId: memberId,
         eventKey: "reminder",
-        kind: "reminder",
+        kind: "duty-reminder",
+        reminderHours: 24,
         title: "תזכורת",
         body: "בדיקה",
         priority: 2,
@@ -272,7 +273,8 @@ describe("durable email queue", () => {
         await enqueueEmail(tx, {
           recipientAccountId: memberId,
           eventKey,
-          kind: "reminder",
+          kind: "duty-reminder",
+          reminderHours: 24,
           title: "תזכורת",
           body: "בדיקה",
           expiresAt: new Date(now.getTime() + 3600_000),
@@ -4180,6 +4182,976 @@ describe("first duty vertical slice", () => {
     ).toHaveLength(0);
     const viewed = await command("import.get", { id: batch.id });
     expect(JSON.stringify(viewed)).not.toContain("0500000007");
+  });
+  describe("consensual transfer before start", () => {
+    async function soldierActor(name: string, email: string, number: string) {
+      const account = await invite(name, "soldier", email, number);
+      return {
+        id: account.id,
+        name: account.name,
+        role: "soldier",
+        soldierId: account.soldierId!,
+        securityEpoch: 1,
+      } satisfies Actor;
+    }
+    async function seatFixture(callUpBonus = 0) {
+      const { row, actor } = await fixtureDuty();
+      await command(
+        "duty.assign",
+        {
+          dutyId: row.id,
+          slotId: row.data.slots[0].id,
+          soldierId: actor.soldierId,
+          callUpBonus,
+        },
+        1
+      );
+      await command("duty.publish", { id: row.id, confirmed: true }, 2);
+      const [seat] = await db
+        .select()
+        .from(assignments)
+        .where(eq(assignments.dutyId, row.id));
+      const first = await soldierActor(
+        "מחליף ראשון",
+        "first@example.invalid",
+        "00011"
+      );
+      const second = await soldierActor(
+        "מחליף שני",
+        "second@example.invalid",
+        "00012"
+      );
+      return { row, actor, seat, first, second };
+    }
+    async function request(id: string) {
+      const [row] = await db.select().from(records).where(eq(records.id, id));
+      return row;
+    }
+    async function reservedIn(dutyId: string) {
+      return (
+        await db
+          .select()
+          .from(assignments)
+          .where(eq(assignments.dutyId, dutyId))
+      ).filter((item) => item.status === "reserved");
+    }
+    async function setService(soldierId: string, releaseDate: string) {
+      const [person] = await db
+        .select()
+        .from(soldiers)
+        .where(eq(soldiers.id, soldierId));
+      await db
+        .update(soldiers)
+        .set({
+          data: {
+            ...person.data,
+            service: { ...person.data.service, releaseDate },
+          },
+        })
+        .where(eq(soldiers.id, soldierId));
+    }
+    it("keeps the original until consent, moves the full value without a score check and completes once when candidates race", async () => {
+      const { row, actor, seat, first, second } = await seatFixture(3);
+      expect(seat.points).toBe(7);
+      await db
+        .update(balances)
+        .set({ current: 90 })
+        .where(eq(balances.soldierId, first.soldierId));
+      await db
+        .update(balances)
+        .set({ current: 90 })
+        .where(eq(balances.soldierId, second.soldierId));
+      const offerInput = {
+        assignmentId: seat.id,
+        candidateIds: [first.soldierId, second.soldierId],
+      };
+      await expect(
+        command("transfer.offer", offerInput, 1, first)
+      ).rejects.toThrow("בעל השיבוץ");
+      await expect(
+        command("transfer.offer", offerInput, 1, manager)
+      ).rejects.toThrow("בעל השיבוץ");
+      const offer = await command("transfer.offer", offerInput, 1, actor);
+      await expect(
+        command("transfer.offer", offerInput, 1, actor)
+      ).rejects.toThrow("כבר קיימת");
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+      const firstView = (await readState(first)).requests;
+      expect(firstView).toHaveLength(1);
+      expect(firstView[0]).toMatchObject({
+        status: "awaiting_consent",
+        candidates: [{ soldierId: first.soldierId, status: "pending" }],
+      });
+      expect(JSON.stringify(firstView)).not.toContain(second.soldierId);
+      expect((await readState(actor)).requests[0].candidates).toHaveLength(2);
+      const outsider = await soldierActor(
+        "חייל אחר",
+        "outsider@example.invalid",
+        "00013"
+      );
+      expect((await readState(outsider)).requests).toHaveLength(0);
+      await expect(
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          outsider
+        )
+      ).rejects.toThrow("אינה מיועדת");
+      const key = randomUUID();
+      const outcomes = await Promise.allSettled([
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          first,
+          key
+        ),
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          second
+        ),
+      ]);
+      expect(
+        outcomes.filter((item) => item.status === "fulfilled")
+      ).toHaveLength(1);
+      const closed = await request(offer.id);
+      expect(closed.data.status).toBe("completed");
+      const winner = [first, second].find(
+        (item) => item.soldierId === closed.data.acceptedBy
+      )!;
+      const loser = winner === first ? second : first;
+      const active = await reservedIn(row.id);
+      expect(active).toHaveLength(1);
+      expect(active[0]).toMatchObject({
+        soldierId: winner.soldierId,
+        points: 7,
+        slotId: seat.slotId,
+      });
+      const [original] = await db
+        .select()
+        .from(assignments)
+        .where(eq(assignments.id, seat.id));
+      expect(original.status).toBe("cancelled");
+      expect(original.data).toMatchObject({
+        endedBy: { kind: "transfer", toSoldierId: winner.soldierId },
+      });
+      if (winner === first)
+        expect(
+          await command(
+            "transfer.respond",
+            { id: offer.id, decision: "accept", confirmed: true },
+            1,
+            first,
+            key
+          )
+        ).toMatchObject({ status: "completed" });
+      expect((await readState(loser)).requests[0].status).toBe("closed");
+      const titles = async (who: Actor) =>
+        (await readState(who)).notifications.map(
+          (item) => (item as { title?: string }).title
+        );
+      expect(await titles(actor)).toContain("ההעברה הושלמה");
+      expect(await titles(winner)).toContain("קיבלת תורנות");
+      expect(await titles(loser)).toContain("הצעת ההעברה נסגרה");
+      expect(await titles(manager)).toContain("הושלמה העברת תורנות");
+      const mail = (await db.select().from(emailOutbox)).filter(
+        (item) => item.kind === "transfer"
+      );
+      expect(mail.map((item) => item.recipientAccountId).sort()).toEqual(
+        [first.id, second.id, actor.id, winner.id].sort()
+      );
+      expect((await readState(actor)).assignments).toEqual(
+        expect.not.arrayContaining([
+          expect.objectContaining({ soldierId: actor.soldierId }),
+        ])
+      );
+      await unitTransaction((tx) => settleDue(tx, new Date(row.data.end)));
+      const scores = await db.select().from(balances);
+      expect(
+        scores.find((item) => item.soldierId === winner.soldierId)?.current
+      ).toBe(97);
+      expect(
+        scores.find((item) => item.soldierId === actor.soldierId)?.current
+      ).toBe(0);
+    });
+    it("rejects an unsuitable candidate without revealing why and rechecks at acceptance", async () => {
+      const { row, actor, seat, first, second } = await seatFixture();
+      async function overlapping(name: string, soldierId: string) {
+        const created = await command("duty.create", {
+          typeId: row.typeId,
+          name,
+          start: row.data.start,
+          end: row.data.end,
+        });
+        const [draft] = await db
+          .select()
+          .from(duties)
+          .where(eq(duties.id, created.id));
+        await command(
+          "duty.assign",
+          { dutyId: created.id, slotId: draft.data.slots[0].id, soldierId },
+          1
+        );
+      }
+      await overlapping("תורנות חופפת", first.soldierId);
+      const refused = command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [first.soldierId] },
+        1,
+        actor
+      );
+      await expect(refused).rejects.toThrow("מחליף ראשון אינו מתאים");
+      await expect(refused).rejects.not.toThrow("התנגשות");
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [second.soldierId] },
+        1,
+        actor
+      );
+      await overlapping("תורנות חופפת נוספת", second.soldierId);
+      await expect(
+        command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          second
+        )
+      ).rejects.toThrow("אינך עומד");
+      expect((await request(offer.id)).data.status).toBe("awaiting_consent");
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+    });
+    it("lets a volunteer near release take over automatically but never past the release boundary", async () => {
+      const { row, actor, seat, first, second } = await seatFixture();
+      const day = (offset: number) =>
+        new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+      await setService(first.soldierId, day(10));
+      await setService(second.soldierId, day(1));
+      await expect(
+        command(
+          "transfer.offer",
+          { assignmentId: seat.id, candidateIds: [second.soldierId] },
+          1,
+          actor
+        )
+      ).rejects.toThrow("אינו מתאים");
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [first.soldierId] },
+        1,
+        actor
+      );
+      expect(
+        await command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          first
+        )
+      ).toMatchObject({ status: "completed" });
+      expect((await reservedIn(row.id))[0].soldierId).toBe(first.soldierId);
+    });
+    it("hands an acceptance after the start to a manager without moving the seat", async () => {
+      const { row, actor, seat, first } = await seatFixture();
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [first.soldierId] },
+        1,
+        actor
+      );
+      const [live] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await db
+        .update(duties)
+        .set({
+          data: {
+            ...live.data,
+            start: new Date(Date.now() - 60_000).toISOString(),
+          },
+        })
+        .where(eq(duties.id, row.id));
+      expect(
+        await command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          first
+        )
+      ).toMatchObject({ status: "awaiting_manager" });
+      expect((await request(offer.id)).data.managerReasons).toEqual([
+        expect.objectContaining({ code: "started" }),
+      ]);
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+      expect(
+        (await readState(manager)).notifications.map(
+          (item) => (item as { title?: string }).title
+        )
+      ).toContain("העברה ממתינה לטיפול");
+      await expect(
+        command(
+          "transfer.offer",
+          { assignmentId: seat.id, candidateIds: [first.soldierId] },
+          1,
+          actor
+        )
+      ).rejects.toThrow("התחילה");
+    });
+    it("closes offers on decline, withdrawal, a changed duty and cancellation", async () => {
+      const { row, actor, seat, first, second } = await seatFixture();
+      const offer = () =>
+        command(
+          "transfer.offer",
+          {
+            assignmentId: seat.id,
+            candidateIds: [first.soldierId, second.soldierId],
+          },
+          1,
+          actor
+        );
+      const declined = await offer();
+      await command(
+        "transfer.respond",
+        { id: declined.id, decision: "decline" },
+        1,
+        first
+      );
+      expect((await request(declined.id)).data.status).toBe("awaiting_consent");
+      await command(
+        "transfer.respond",
+        { id: declined.id, decision: "decline" },
+        2,
+        second
+      );
+      expect((await request(declined.id)).data.status).toBe("declined");
+      const withdrawn = await offer();
+      await command("transfer.withdraw", { id: withdrawn.id }, 1, actor);
+      await expect(
+        command(
+          "transfer.respond",
+          { id: withdrawn.id, decision: "accept", confirmed: true },
+          2,
+          first
+        )
+      ).rejects.toThrow("נסגרה");
+      const stale = await offer();
+      const [live] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await db
+        .update(duties)
+        .set({
+          data: {
+            ...live.data,
+            rulesVersion: (live.data.rulesVersion ?? live.version) + 1,
+          },
+        })
+        .where(eq(duties.id, row.id));
+      await expect(
+        command(
+          "transfer.respond",
+          { id: stale.id, decision: "accept", confirmed: true },
+          1,
+          first
+        )
+      ).rejects.toThrow("עודכנה");
+      expect((await request(stale.id)).data.status).toBe("expired");
+      await db
+        .update(duties)
+        .set({ data: live.data })
+        .where(eq(duties.id, row.id));
+      const open = await offer();
+      const [current] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await command(
+        "duty.cancel",
+        { id: row.id, reason: "ביטול לבדיקה", confirmed: true },
+        current.version
+      );
+      expect((await request(open.id)).data.status).toBe("expired");
+      expect(await reservedIn(row.id)).toHaveLength(0);
+    });
+    it("emails a transfer only to recipients who keep the transfer type enabled, while the site copy stays", async () => {
+      const { actor, seat, first, second } = await seatFixture();
+      await command(
+        "settings.save",
+        {
+          reminderHours: [24],
+          email: {
+            dutyReminder: true,
+            roundOpening: true,
+            roundClosing: true,
+            publication: true,
+            transfer: false,
+          },
+        },
+        undefined,
+        first
+      );
+      await command(
+        "transfer.offer",
+        {
+          assignmentId: seat.id,
+          candidateIds: [first.soldierId, second.soldierId],
+        },
+        1,
+        actor
+      );
+      const sent: string[] = [];
+      for (let index = 0; index < 20; index++) {
+        const result = await deliverNextEmail(
+          async (message) => {
+            sent.push(message.eventKey);
+            return `synthetic-${message.eventKey}`;
+          },
+          new Date(Date.now() + 1000)
+        );
+        if (result.status === "idle") break;
+      }
+      const offers = (await db.select().from(emailOutbox)).filter(
+        (item) => item.kind === "transfer"
+      );
+      expect(
+        offers.find((item) => item.recipientAccountId === first.id)
+      ).toMatchObject({ status: "cancelled", error: "preference_disabled" });
+      expect(
+        sent.some(
+          (key) => key.startsWith("transfer:") && key.endsWith(second.id)
+        )
+      ).toBe(true);
+      expect(
+        sent.some(
+          (key) => key.startsWith("transfer:") && key.endsWith(first.id)
+        )
+      ).toBe(false);
+      expect(
+        (await readState(first)).notifications.map(
+          (item) => (item as { title?: string }).title
+        )
+      ).toContain("הוצעה לך תורנות");
+    });
+    it("hands acceptance with an exemption to a manager and keeps the original seat", async () => {
+      const { row, actor, seat, second } = await seatFixture();
+      const exemption = await command("eligibility.catalog.save", {
+        kind: "exemption",
+        name: "פטור סינתטי",
+      });
+      await addPeriod(
+        {
+          soldierId: second.soldierId,
+          kind: "exemption",
+          value: exemption.id,
+          startDate: "2026-01-01",
+          endDate: "2030-12-31",
+        },
+        1
+      );
+      const [live] = await db
+        .select()
+        .from(duties)
+        .where(eq(duties.id, row.id));
+      await db
+        .update(duties)
+        .set({
+          data: {
+            ...live.data,
+            requirements: {
+              ...live.data.requirements,
+              blockingExemptionIds: [exemption.id],
+            },
+          },
+        })
+        .where(eq(duties.id, row.id));
+      const offer = await command(
+        "transfer.offer",
+        { assignmentId: seat.id, candidateIds: [second.soldierId] },
+        1,
+        actor
+      );
+      expect(
+        await command(
+          "transfer.respond",
+          { id: offer.id, decision: "accept", confirmed: true },
+          1,
+          second
+        )
+      ).toMatchObject({ status: "awaiting_manager" });
+      expect((await request(offer.id)).data.managerReasons).toEqual([
+        expect.objectContaining({ code: "exemption" }),
+      ]);
+      expect(JSON.stringify((await readState(actor)).requests)).not.toContain(
+        "exemption"
+      );
+      expect((await readState(second)).requests[0].managerReasons).toHaveLength(
+        1
+      );
+      expect((await reservedIn(row.id)).map((item) => item.soldierId)).toEqual([
+        actor.soldierId,
+      ]);
+      await expect(
+        command("transfer.withdraw", { id: offer.id }, 2, actor)
+      ).rejects.toThrow("ממתינה להסכמה");
+    });
+  });
+});
+
+describe("past performance corrections", () => {
+  async function run(
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number,
+    actor = manager,
+    key = randomUUID()
+  ) {
+    return (await executeAction(actor, {
+      type,
+      payload,
+      expectedVersion,
+      idempotencyKey: key,
+    })) as Record<string, unknown> & { id: string; version: number };
+  }
+  async function balance(soldierId: string) {
+    return (
+      await db.select().from(balances).where(eq(balances.soldierId, soldierId))
+    )[0].current;
+  }
+  async function member() {
+    const [row] = await db.select().from(user).where(eq(user.id, memberId));
+    return {
+      id: row.id,
+      name: row.name,
+      role: "soldier",
+      soldierId: row.soldierId!,
+      securityEpoch: row.securityEpoch,
+    } satisfies Actor;
+  }
+  async function adjust(
+    soldierIds: string[],
+    operation: string,
+    value: number,
+    reason: string
+  ) {
+    const input = { soldierIds, operation, value, reason };
+    const preview = await run("score.preview", input);
+    await run("score.apply", { ...input, token: preview.token });
+  }
+  /** A published four-point duty that ended yesterday and was credited to the soldier. */
+  async function credited(soldierId: string) {
+    const type = await run("dutyType.save", {
+      name: "שמירה סינתטית",
+      pricing: { mode: "fixed", base: 4 },
+      roles: [{ name: "תורן", count: 1 }],
+    });
+    const created = await run("duty.create", {
+      typeId: type.id,
+      name: "תורנות עבר לתיקון",
+      start: new Date(Date.now() + 86_400_000).toISOString(),
+      end: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+    });
+    const [row] = await db
+      .select()
+      .from(duties)
+      .where(eq(duties.id, created.id));
+    await run(
+      "duty.assign",
+      { dutyId: row.id, slotId: row.data.slots[0].id, soldierId },
+      1
+    );
+    await run("duty.publish", { id: row.id, confirmed: true }, 2);
+    const [published] = await db
+      .select()
+      .from(duties)
+      .where(eq(duties.id, row.id));
+    const start = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const end = new Date(Date.now() - 86_400_000).toISOString();
+    await db
+      .update(duties)
+      .set({ data: { ...published.data, start, end } })
+      .where(eq(duties.id, row.id));
+    await unitTransaction((tx) => settleDue(tx));
+    const [assignment] = await db
+      .select()
+      .from(assignments)
+      .where(eq(assignments.dutyId, row.id));
+    expect(assignment.status).toBe("credited");
+    return { dutyId: row.id, assignment, start, end };
+  }
+
+  it("previews and applies a value correction once, keeping the draw value and hiding reasons from soldiers", async () => {
+    const soldier = await member();
+    const { dutyId, assignment, start, end } = await credited(
+      soldier.soldierId
+    );
+    await adjust([soldier.soldierId], "add", 3, "תוספת שאינה משנה משמעות");
+    const input = {
+      assignmentId: assignment.id,
+      start,
+      end,
+      points: 6,
+      reason: "הביצוע נמשך יותר מהמתוכנן",
+    };
+    await expect(
+      run("performance.correction.preview", input, assignment.version, soldier)
+    ).rejects.toMatchObject({ status: 403 });
+    const preview = await run(
+      "performance.correction.preview",
+      input,
+      assignment.version
+    );
+    expect(preview).toMatchObject({
+      drawPoints: 4,
+      current: { performerId: soldier.soldierId, points: 4 },
+      proposed: { points: 6 },
+      computedPoints: 4,
+      manual: true,
+    });
+    expect(preview.effects).toMatchObject([
+      {
+        soldierId: soldier.soldierId,
+        historyBefore: 4,
+        historyAfter: 6,
+        balance: 7,
+        status: "automatic",
+        delta: 2,
+        after: 9,
+      },
+    ]);
+    const key = randomUUID();
+    const payload = { ...input, token: preview.token };
+    const first = await run(
+      "performance.correction.apply",
+      payload,
+      assignment.version,
+      manager,
+      key
+    );
+    expect(
+      await run(
+        "performance.correction.apply",
+        payload,
+        assignment.version,
+        manager,
+        key
+      )
+    ).toEqual(first);
+    await expect(
+      run("performance.correction.apply", payload, assignment.version)
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await balance(soldier.soldierId)).toBe(9);
+    const corrections = (await db.select().from(ledger)).filter(
+      (row) => row.kind === "correction"
+    );
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0]).toMatchObject({
+      amount: 2,
+      reason: input.reason,
+      data: { historyBefore: 4, historyAfter: 6, barrier: false },
+    });
+    expect(corrections[0].effectiveAt.getTime()).toBeGreaterThan(
+      new Date(end).getTime()
+    );
+    const [saved] = await db
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, assignment.id));
+    expect(saved.points).toBe(4);
+    expect(saved.data.performance).toMatchObject({
+      points: 6,
+      reflected: { [soldier.soldierId]: 6 },
+      corrections: 1,
+    });
+    await expect(
+      run(
+        "performance.correction.preview",
+        { ...input, points: 6 },
+        saved.version
+      )
+    ).rejects.toMatchObject({ code: "no_change" });
+    const visible = await readState(soldier);
+    const own = visible.assignments.find((row) => row.id === assignment.id);
+    expect(own).toMatchObject({ points: 4, performance: { points: 6 } });
+    expect(JSON.stringify(visible)).not.toContain(input.reason.slice(0, 10));
+    expect(visible.performanceCorrections).toEqual([]);
+    const managed = await readState(manager);
+    expect(managed.performanceCorrections).toHaveLength(1);
+    expect(
+      (await db.select().from(records)).filter(
+        (row) =>
+          row.kind === "audit" && row.data.action === "performance.correct"
+      )
+    ).toHaveLength(1);
+    const [duty] = await db.select().from(duties).where(eq(duties.id, dutyId));
+    expect(duty.data.end).toBe(end);
+  });
+
+  it("records the history but leaves the balance for a manager decision after a normalization, even when the corrected end moves past it", async () => {
+    const soldier = await member();
+    const { assignment, start, end } = await credited(soldier.soldierId);
+    await adjust(
+      [soldier.soldierId, manager.soldierId!],
+      "percent",
+      50,
+      "נרמול סינתטי"
+    );
+    expect(await balance(soldier.soldierId)).toBe(2);
+    const input = {
+      assignmentId: assignment.id,
+      start,
+      end: new Date(Date.now() - 60_000).toISOString(),
+      points: 8,
+      reason: "הביצוע הסתיים מאוחר מהרישום",
+    };
+    const preview = await run(
+      "performance.correction.preview",
+      input,
+      assignment.version
+    );
+    expect(preview.effects).toMatchObject([
+      { status: "decision_required", rawDelta: 4, balance: 2 },
+    ]);
+    expect(
+      (preview.effects as { barriers: { kind: string }[] }[])[0].barriers
+    ).toMatchObject([{ kind: "normalization" }]);
+    const applied = await run(
+      "performance.correction.apply",
+      { ...input, token: preview.token },
+      assignment.version
+    );
+    expect(applied.outcomes).toMatchObject([{ status: "decision_required" }]);
+    expect(await balance(soldier.soldierId)).toBe(2);
+    const second = {
+      ...input,
+      end,
+      points: 5,
+      reason: "תיקון נוסף לאותו ביצוע",
+    };
+    const again = await run(
+      "performance.correction.preview",
+      second,
+      applied.version
+    );
+    await run(
+      "performance.correction.apply",
+      { ...second, token: again.token },
+      applied.version
+    );
+    expect(await balance(soldier.soldierId)).toBe(2);
+    const decisions = (await db.select().from(records)).filter(
+      (row) => row.kind === "score_decision"
+    );
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0].data).toMatchObject({
+      status: "pending",
+      historyPoints: 5,
+      reflectedPoints: 4,
+      rawDelta: 1,
+    });
+    expect(decisions[0].data.correctionIds).toHaveLength(2);
+    expect(
+      (await db.select().from(ledger)).filter(
+        (row) => row.kind === "correction"
+      )
+    ).toHaveLength(0);
+    const notices = (await readState(manager)).notifications;
+    expect(notices).toHaveLength(2);
+    expect(notices[0]).toMatchObject({
+      title: "תיקון ביצוע ממתין להכרעת ניקוד",
+    });
+  });
+
+  it("checks each performer separately on a performer change and reports eligibility findings without blocking", async () => {
+    const soldier = await member();
+    const other = await invite(
+      "מבצע בפועל",
+      "soldier",
+      "performer@example.invalid",
+      "00003"
+    );
+    const { assignment, start, end } = await credited(soldier.soldierId);
+    await adjust([other.soldierId!], "set", 10, "קביעת יתרה לפני התיקון");
+    await db
+      .update(soldiers)
+      .set({
+        data: {
+          ...(
+            await db
+              .select()
+              .from(soldiers)
+              .where(eq(soldiers.id, other.soldierId!))
+          )[0].data,
+          inactivePeriods: [
+            {
+              start: new Date(Date.now() - 5 * 86_400_000)
+                .toISOString()
+                .slice(0, 10),
+              end: new Date(Date.now()).toISOString().slice(0, 10),
+            },
+          ],
+        },
+      })
+      .where(eq(soldiers.id, other.soldierId!));
+    const input = {
+      assignmentId: assignment.id,
+      performerId: other.soldierId,
+      start,
+      end,
+      reason: "בפועל ביצע חייל אחר",
+    };
+    const preview = await run(
+      "performance.correction.preview",
+      input,
+      assignment.version
+    );
+    expect(
+      (preview.findings as unknown[]).length,
+      JSON.stringify(preview.findings)
+    ).toBeGreaterThan(0);
+    const effects = preview.effects as {
+      soldierId: string;
+      status: string;
+      delta?: number;
+    }[];
+    expect(
+      effects.find((row) => row.soldierId === soldier.soldierId)
+    ).toMatchObject({ status: "automatic", delta: -4 });
+    expect(
+      effects.find((row) => row.soldierId === other.soldierId)
+    ).toMatchObject({ status: "decision_required" });
+    const applied = await run(
+      "performance.correction.apply",
+      { ...input, token: preview.token },
+      assignment.version
+    );
+    expect(await balance(soldier.soldierId)).toBe(0);
+    expect(await balance(other.soldierId!)).toBe(10);
+    const [saved] = await db
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, assignment.id));
+    expect(saved.soldierId).toBe(soldier.soldierId);
+    expect(saved.data.performance).toMatchObject({
+      performerId: other.soldierId,
+      points: 4,
+      reflected: {},
+    });
+    expect(applied.outcomes).toHaveLength(2);
+  });
+
+  it("applies a correction to zero with a floor, then treats that clamp as a barrier", async () => {
+    const soldier = await member();
+    const { assignment, start, end } = await credited(soldier.soldierId);
+    await adjust([soldier.soldierId], "subtract", 3, "הפחתה רגילה");
+    expect(await balance(soldier.soldierId)).toBe(1);
+    const zero = {
+      assignmentId: assignment.id,
+      start,
+      end,
+      points: 0,
+      reason: "התורנות לא בוצעה בפועל",
+    };
+    const preview = await run(
+      "performance.correction.preview",
+      zero,
+      assignment.version
+    );
+    expect(preview.effects).toMatchObject([
+      { status: "automatic", delta: -1, after: 0, clamped: true },
+    ]);
+    const applied = await run(
+      "performance.correction.apply",
+      { ...zero, token: preview.token },
+      assignment.version
+    );
+    expect(await balance(soldier.soldierId)).toBe(0);
+    const restore = { ...zero, points: 4, reason: "הביצוע אומת מחדש" };
+    const next = await run(
+      "performance.correction.preview",
+      restore,
+      applied.version
+    );
+    expect(next.effects).toMatchObject([
+      { status: "decision_required", rawDelta: 4 },
+    ]);
+  });
+
+  it("rejects future, uncredited and stale corrections and lets only one of two competing managers apply", async () => {
+    const soldier = await member();
+    const { assignment, start, end } = await credited(soldier.soldierId);
+    await expect(
+      run(
+        "performance.correction.preview",
+        {
+          assignmentId: assignment.id,
+          start,
+          end: new Date(Date.now() + 3_600_000).toISOString(),
+          reason: "סיום עתידי",
+        },
+        assignment.version
+      )
+    ).rejects.toMatchObject({ code: "future_performance" });
+    const base = { assignmentId: assignment.id, start, end };
+    const first = { ...base, points: 5, reason: "תיקון ראשון" };
+    const second = { ...base, points: 7, reason: "תיקון שני" };
+    const [a, b] = await Promise.all([
+      run("performance.correction.preview", first, assignment.version),
+      run("performance.correction.preview", second, assignment.version),
+    ]);
+    const results = await Promise.allSettled([
+      run(
+        "performance.correction.apply",
+        { ...first, token: a.token },
+        assignment.version
+      ),
+      run(
+        "performance.correction.apply",
+        { ...second, token: b.token },
+        assignment.version
+      ),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(
+      (await db.select().from(ledger)).filter(
+        (row) => row.kind === "correction"
+      )
+    ).toHaveLength(1);
+    expect([5, 7]).toContain(await balance(soldier.soldierId));
+    const [current] = await db
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, assignment.id));
+    const repeat = await run(
+      "performance.correction.preview",
+      { ...base, points: 1, reason: "בדיקת תצוגה מיושנת" },
+      current.version
+    );
+    await adjust([soldier.soldierId], "add", 1, "שינוי מקביל ביתרה");
+    await expect(
+      run(
+        "performance.correction.apply",
+        {
+          ...base,
+          points: 1,
+          reason: "בדיקת תצוגה מיושנת",
+          token: repeat.token,
+        },
+        current.version
+      )
+    ).rejects.toMatchObject({ code: "stale_preview" });
   });
 });
 

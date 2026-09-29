@@ -14,6 +14,8 @@ jobs:
         run: sh scripts/docker.sh --profile test run --build --rm tests
       - name: Browser flow and mobile layout
         run: sh scripts/docker.sh --profile test run --build --rm e2e
+      - name: Production configuration, health and restart
+        run: sh scripts/production-smoke.sh
       - name: Stop test services
         if: always()
         run: sh scripts/docker.sh --profile test down

@@ -10,7 +10,7 @@ import {
   index,
   check,
 } from "drizzle-orm/pg-core";
-import type { Soldier, Duty, Assignment } from "../domain/types";
+import type { Soldier, Duty, Assignment, Performance } from "../domain/types";
 export * from "./auth-schema";
 
 const dates = () => ({
@@ -102,6 +102,7 @@ export const assignments = pgTable(
           performedStart?: string;
           performedEnd?: string;
           fixedBonus?: number;
+          performance?: Performance;
         }
       >()
       .notNull(),

@@ -3,7 +3,12 @@ import { DutyChanges } from "./duty-changes";
 import Link from "next/link";
 import { useState } from "react";
 import { ManualAssignment } from "./manual-assignment";
+import {
+  PerformanceCorrections,
+  performanceOf,
+} from "./performance-corrections";
 import { LotteryButton, LotteryHistory } from "./planning";
+import { TransferOffer } from "./transfers";
 import {
   CalendarDays,
   UsersRound,
@@ -468,7 +473,10 @@ export function Dashboard({
   const drafts = state.duties.filter((d) => dutyStatus(d) === "draft");
   const pending = state.constraints.filter((c) => c.status === "pending");
   const requests = state.requests.filter(
-    (r) => !["completed", "rejected", "cancelled"].includes(str(r.status))
+    (r) =>
+      !["completed", "rejected", "cancelled", "declined", "expired"].includes(
+        str(r.status)
+      )
   );
   const concerns = state.assignments.filter(
     (a) =>
@@ -683,6 +691,7 @@ export function DutyDetail({
             ניתן לבטל אותה או לטפל בתיעוד הביצוע.
           </Notice>
         )}
+        <TransferOffer state={state} action={action} duty={duty} />
         {manager && (
           <div className="panel-actions">
             {dutyStatus(duty) === "draft" && future && (
@@ -761,6 +770,9 @@ export function DutyDetail({
                     {str(slot.name ?? slot.roleName, "תורן")}
                     {assignment
                       ? ` · ${num(assignment.points ?? assignment.reservedPoints ?? assignment.score)} נקודות`
+                      : ""}
+                    {assignment?.performance
+                      ? ` · בוצע בפועל: ${personName(state, performanceOf(assignment, duty).performerId)}, ${performanceOf(assignment, duty).points} נקודות`
                       : ""}
                   </small>
                 </span>
@@ -846,6 +858,9 @@ export function DutyDetail({
         ["published", "draft"].includes(str(dutyStatus(duty))) && (
           <DutyChanges state={state} action={action} duty={duty} />
         )}
+      {manager && dutyStatus(duty) === "published" && !future && (
+        <PerformanceCorrections state={state} action={action} duty={duty} />
+      )}
       {manager && <LotteryHistory state={state} action={action} dutyId={id} />}
     </>
   );
