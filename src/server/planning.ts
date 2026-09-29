@@ -59,7 +59,7 @@ function occupant(state: Unit, slotId: string) {
   );
 }
 /**
- * One seat's draw and its picture (decision 181): the seat and its value, every
+ * One seat's draw and its picture (decision 182): the seat and its value, every
  * candidate's check, the scores of the eligible, the minimum, the band and this
  * duty's exclusions. A pending proposal stays valid while this picture is
  * unchanged, whatever else changes in the unit.
@@ -146,7 +146,7 @@ function openSeat(state: Unit, seat: NonNullable<ReturnType<typeof seatDraw>>) {
     !occupant(state, seat.slot.id)
   );
 }
-/** A proposal awaiting approval that could still be approved as drawn (decision 181). */
+/** A proposal awaiting approval that could still be approved as drawn (decision 182). */
 function stillWaiting(
   state: Unit,
   exclusions: Exclusion[],
@@ -442,7 +442,7 @@ export async function decideLottery(
 
 /**
  * The confirmation to plan before review covers the constraints pending when it
- * was given (decision 181). A later pending request needs a new confirmation,
+ * was given (decision 182). A later pending request needs a new confirmation,
  * whichever manager continues the run.
  */
 function reviewConfirmation(state: Unit, actor: Actor, confirmed: boolean) {

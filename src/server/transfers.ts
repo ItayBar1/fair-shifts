@@ -1,9 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
-import { assignments, duties, records } from "./schema";
-import { user } from "./auth-schema";
+import { assignments, duties } from "./schema";
 import {
   audit,
   createRecord,
@@ -26,21 +25,25 @@ import type {
   Soldier,
   SpecificApproval,
 } from "../domain/types";
-import { enqueueEmail } from "./operations/email";
+import {
+  accountOf,
+  approvalKey,
+  closeSeatRequests,
+  nameOf as soldierName,
+  notifyManagers,
+  notifySoldier,
+  OPEN_CONSENT as OPEN,
+  openSeatRequests,
+  seatCommitted,
+  type ConsentStatus,
+} from "./seat-requests";
 import { closeRequestsOfTransferredSeat } from "./cancellation-requests";
 import { cancelStaleDutyReminders } from "./duty-reminder-checks";
 
 // Consensual transfer of a published seat before it starts (decisions 108-109, 149, 163),
 // and the manager's decision on a transfer that needs one (decision 178).
 type CandidateStatus = "pending" | "declined" | "accepted" | "closed";
-type TransferStatus =
-  | "awaiting_consent"
-  | "awaiting_manager"
-  | "completed"
-  | "declined"
-  | "manager_rejected"
-  | "cancelled"
-  | "expired";
+type TransferStatus = ConsentStatus;
 export type TransferData = {
   type: "transfer";
   status: TransferStatus;
@@ -71,7 +74,6 @@ export type TransferData = {
   closedAt?: string;
   closedReason?: string;
 };
-const OPEN: TransferStatus[] = ["awaiting_consent", "awaiting_manager"];
 type Domain = Awaited<ReturnType<typeof loadDomain>>;
 
 function candidateEligibility(
@@ -88,86 +90,10 @@ function candidateEligibility(
     mode: "volunteer",
   });
 }
-async function accountOf(tx: DbTransaction, soldierId: string) {
-  const [account] = await tx
-    .select()
-    .from(user)
-    .where(and(eq(user.soldierId, soldierId), isNull(user.deletedAt)));
-  return account;
-}
-async function notify(
-  tx: DbTransaction,
-  soldierId: string,
-  input: {
-    event: string;
-    requestId: string;
-    title: string;
-    body: string;
-    email: boolean;
-    expiresAt: number;
-  }
-) {
-  const account = await accountOf(tx, soldierId);
-  if (!account) return;
-  const href = "/requests";
-  await createRecord(
-    tx,
-    "notification",
-    {
-      accountId: account.id,
-      title: input.title,
-      body: input.body,
-      href,
-      requestId: input.requestId,
-    },
-    soldierId
-  );
-  if (input.email && input.expiresAt > Date.now())
-    await enqueueEmail(tx, {
-      recipientAccountId: account.id,
-      eventKey: `transfer:${input.requestId}:${input.event}:${account.id}`,
-      kind: "transfer",
-      title: input.title,
-      body: input.body,
-      href,
-      priority: 1,
-      expiresAt: new Date(Math.min(Date.now() + 86_400_000, input.expiresAt)),
-    });
-}
-async function notifyManagers(
-  tx: DbTransaction,
-  requestId: string,
-  title: string,
-  body: string
-) {
-  const managers = await tx
-    .select()
-    .from(user)
-    .where(and(eq(user.role, "manager"), isNull(user.deletedAt)));
-  // Site notifications only (decision 163); no subject so the soldier never receives the manager copy.
-  for (const account of managers)
-    await createRecord(tx, "notification", {
-      accountId: account.id,
-      title,
-      body,
-      href: "/requests",
-      requestId,
-    });
-}
 function nameOf(state: Domain, soldierId: string) {
-  return state.soldiers.find((row) => row.id === soldierId)?.name ?? "חייל";
+  return soldierName(state.soldiers, soldierId);
 }
-async function openTransfers(tx: DbTransaction) {
-  const rows = await tx
-    .select()
-    .from(records)
-    .where(eq(records.kind, "request"));
-  return rows.filter(
-    (row) =>
-      row.data.type === "transfer" &&
-      OPEN.includes(row.data.status as TransferStatus)
-  );
-}
+const notify = notifySoldier;
 
 export async function offerTransfer(
   tx: DbTransaction,
@@ -210,9 +136,9 @@ export async function offerTransfer(
     "התורנות כבר התחילה. בקשת החלפה במהלך ביצוע מטופלת בידי אחראי"
   );
   invariant(
-    !(await openTransfers(tx)).some((row) => row.data.assignmentId === seat.id),
+    !seatCommitted(await openSeatRequests(tx), seat.id),
     "transfer_open",
-    "כבר קיימת הצעת העברה פתוחה לשיבוץ הזה",
+    "כבר קיימת הצעת העברה או החלפה פתוחה לשיבוץ הזה",
     409
   );
   const candidateIds = [...new Set(input.candidateIds)];
@@ -597,6 +523,12 @@ async function completeTransfer(
     })
     .where(eq(duties.id, duty.id));
   await closeRequestsOfTransferredSeat(tx, duty.id, data.fromSoldierId);
+  // Swaps and other offers that rested on the released seat can no longer complete.
+  await closeSeatRequests(
+    tx,
+    { assignmentIds: [seat.id], exceptId: row.id },
+    "השיבוץ הועבר לחייל אחר"
+  );
   // The original soldier's queued reminders end here; the replacement gets their own.
   await cancelStaleDutyReminders(tx, duty.id);
   const updated = await updateRecord(tx, row, {
@@ -767,9 +699,6 @@ export async function withdrawTransfer(
   return { id: updated.id, version: updated.version };
 }
 
-function approvalKey(reason: EligibilityReason) {
-  return `${reason.code}:${reason.referenceId ?? ""}:${reason.referenceVersion ?? ""}`;
-}
 /** Everything a manager's decision rests on; any change requires a fresh review. */
 function reviewToken(
   state: Domain,
@@ -1029,25 +958,13 @@ export async function decideTransfer(
   });
 }
 
-/** Closes open transfer offers when their duty is cancelled or republished with new details. */
+/** Closes open transfer and swap offers when their duty is cancelled or republished with new details. */
 export async function closeTransfersForDuty(
   tx: DbTransaction,
   dutyId: string,
   reason: string
 ) {
-  for (const row of await openTransfers(tx)) {
-    if (row.data.dutyId !== dutyId) continue;
-    const data = row.data as TransferData;
-    await updateRecord(tx, row, {
-      ...data,
-      status: "expired",
-      candidates: data.candidates.map((item) =>
-        item.status === "pending" ? { ...item, status: "closed" } : item
-      ),
-      closedAt: new Date().toISOString(),
-      closedReason: reason,
-    });
-  }
+  await closeSeatRequests(tx, { dutyId }, reason);
 }
 
 /** Soldiers see their own offers and offers addressed to them, without other candidates' outcomes or reasons. */

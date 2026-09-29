@@ -28,6 +28,7 @@ import {
   type Field,
 } from "./ui";
 import { TransferRequests } from "./transfers";
+import { SwapRequests } from "./swaps";
 import { AuditLink, ledgerSource } from "./audit";
 import { effectiveDiffers } from "@/domain/time";
 import { CancellationRequests } from "./cancellation-requests";
@@ -39,11 +40,12 @@ export function RequestsView({ state, action }: Props) {
   return (
     <>
       <Notice>
-        העברת תורנות בהסכמה ובקשות ביטול או דחייה לפני התחלה זמינות. החלפה הדדית
-        והחלפה במהלך ביצוע נמצאות עדיין בבנייה.
+        העברת תורנות, החלפה הדדית בהסכמה ובקשות ביטול או דחייה לפני התחלה
+        זמינות. החלפה במהלך ביצוע נמצאת עדיין בבנייה.
       </Notice>
       <CancellationRequests state={state} action={action} />
       <TransferRequests state={state} action={action} />
+      <SwapRequests state={state} action={action} />
     </>
   );
 }

@@ -58,15 +58,20 @@ export function TransferOffer({
       new Date(str(state.serverNow)).getTime()
   )
     return null;
-  const open = transfers(state).find(
-    (row) => row.assignmentId === seat.id && OPEN.includes(str(row.status))
+  // One open offer per seat, whether a transfer or a swap.
+  const open = state.requests.find(
+    (row) =>
+      ["transfer", "swap"].includes(str(row.type)) &&
+      row.assignmentId === seat.id &&
+      OPEN.includes(str(row.status))
   );
+  const kind = open?.type === "swap" ? "ההחלפה" : "ההעברה";
   if (open)
     return (
       <Notice>
         {open.status === "awaiting_manager"
-          ? "ההעברה ממתינה לטיפול אחראי. עד אז השיבוץ שלך בתוקף."
-          : "הצעת ההעברה שלך ממתינה להסכמה. עד להשלמתה השיבוץ שלך בתוקף."}{" "}
+          ? `${kind} ממתינה לטיפול אחראי. עד אז השיבוץ שלך בתוקף.`
+          : `הצעת ${kind} שלך ממתינה להסכמה. עד להשלמתה השיבוץ שלך בתוקף.`}{" "}
         <Link className="text-link" href="/requests">
           למסך ההחלפות
         </Link>
