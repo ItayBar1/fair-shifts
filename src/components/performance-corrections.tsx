@@ -49,21 +49,11 @@ export function PerformanceCorrections({
   const corrections = rows(state.performanceCorrections).filter(
     (row) => row.dutyId === duty.id
   );
-  const decisions = rows(state.scoreDecisions).filter(
-    (row) => row.dutyId === duty.id && row.status === "pending"
-  );
   return (
     <Panel
       title="תיקון ביצוע עבר"
       subtitle="תיקון מועדים, מבצע או שווי של תורנות שהסתיימה. השווי ששימש בהגרלה נשמר כפי שהיה."
     >
-      {decisions.map((row) => (
-        <Notice tone="warning" key={row.id}>
-          ההיסטוריה של {personName(state, row.soldierId)} תוקנה ל־
-          {num(row.historyPoints)} נקודות, והיתרה כיום משקפת{" "}
-          {num(row.reflectedPoints)}. ההשפעה על היתרה ממתינה להכרעת אחראי.
-        </Notice>
-      ))}
       {credited.length ? (
         credited.map((assignment) => {
           const performance = performanceOf(assignment, duty);

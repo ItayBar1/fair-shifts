@@ -10,6 +10,7 @@ import {
   soldierContacts,
   records,
   duties,
+  assignments,
 } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
@@ -66,6 +67,21 @@ async function login(page: Page, email: string) {
     })
   ).toBeVisible();
 }
+/** A synthetic soldier with a balance and an invited account. */
+async function account(
+  name: string,
+  email: string,
+  personalNumber: string,
+  role: "manager" | "soldier"
+) {
+  const id = randomUUID();
+  const data = soldier({ id, name, personalNumber });
+  await db.insert(soldiers).values({ id, name, personalNumber, data });
+  await db.insert(balances).values({ soldierId: id });
+  await createInvitedAccount({ name, email, role, soldierId: id });
+  return id;
+}
+
 test("technical account lands on its own overview after login", async ({
   page,
 }) => {
@@ -1104,19 +1120,6 @@ test("multi-day duties appear on every Israeli day and month, independent of the
   page,
   browser,
 }) => {
-  async function account(
-    name: string,
-    email: string,
-    personalNumber: string,
-    role: "manager" | "soldier"
-  ) {
-    const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
-    await db.insert(balances).values({ soldierId: id });
-    await createInvitedAccount({ name, email, role, soldierId: id });
-    return id;
-  }
   await account(
     "לוח אחראי",
     "calendar-manager@example.invalid",
@@ -1292,19 +1295,6 @@ test("manager corrects a finished duty with an impact preview while the draw val
   page,
   browser,
 }) => {
-  async function account(
-    name: string,
-    email: string,
-    personalNumber: string,
-    role: "manager" | "soldier"
-  ) {
-    const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
-    await db.insert(balances).values({ soldierId: id });
-    await createInvitedAccount({ name, email, role, soldierId: id });
-    return id;
-  }
   await account(
     "תיקון אחראי",
     "fix-manager@example.invalid",
@@ -1422,4 +1412,145 @@ test("manager corrects a finished duty with an impact preview while the draw val
     )
   ).toBe(true);
   await context.close();
+});
+
+test("manager resolves a pending balance decision from the handling center after a correction crosses a normalization", async ({
+  page,
+}) => {
+  const managerSoldier = await account(
+    "הכרעה אחראי",
+    "decide-manager@example.invalid",
+    "310001",
+    "manager"
+  );
+  const memberId = await account(
+    "הכרעה חייל",
+    "decide-soldier@example.invalid",
+    "310002",
+    "soldier"
+  );
+  await login(page, "decide-manager@example.invalid");
+  const api = async (
+    type: string,
+    payload: Record<string, unknown>,
+    expectedVersion?: number
+  ) => {
+    const response = await page.request.post("/api/v1/actions", {
+      headers: { origin: "http://127.0.0.1:3000" },
+      data: { type, payload, expectedVersion, idempotencyKey: randomUUID() },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+    return (await response.json()).result as Record<string, unknown> & {
+      id: string;
+      version: number;
+      token: string;
+    };
+  };
+  const type = await api("dutyType.save", {
+    name: "הכרעת ניקוד",
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: 1 }],
+  });
+  const created = await api("duty.create", {
+    typeId: type.id,
+    name: "שמירה לפני נרמול",
+    start: DateTime.now().plus({ days: 1 }).toISO(),
+    end: DateTime.now().plus({ days: 2 }).toISO(),
+  });
+  const state = await (await page.request.get("/api/v1/state")).json();
+  const row = state.duties.find((d: { id: string }) => d.id === created.id);
+  await api(
+    "duty.assign",
+    { dutyId: row.id, slotId: row.slots[0].id, soldierId: memberId },
+    1
+  );
+  await api("duty.publish", { id: row.id, confirmed: true }, 2);
+  const [published] = await db
+    .select()
+    .from(duties)
+    .where(eq(duties.id, row.id));
+  const day = DateTime.now()
+    .setZone("Asia/Jerusalem")
+    .minus({ days: 3 })
+    .startOf("day");
+  const start = day.set({ hour: 8 }).toISO()!;
+  const end = day.set({ hour: 16 }).toISO()!;
+  await db
+    .update(duties)
+    .set({ data: { ...published.data, start, end } })
+    .where(eq(duties.id, row.id));
+  await unitTransaction((tx) => settleDue(tx));
+  const normalization = {
+    soldierIds: [memberId, managerSoldier],
+    operation: "percent",
+    value: 50,
+    reason: "נרמול רבעוני סינתטי",
+  };
+  const scored = await api("score.preview", normalization);
+  await api("score.apply", { ...normalization, token: scored.token });
+  const [assignment] = await db
+    .select()
+    .from(assignments)
+    .where(eq(assignments.dutyId, row.id));
+  const correction = {
+    assignmentId: assignment.id,
+    start,
+    end,
+    points: 7,
+    reason: "הביצוע כלל משמרת נוספת",
+  };
+  const preview = await api(
+    "performance.correction.preview",
+    correction,
+    assignment.version
+  );
+  await api(
+    "performance.correction.apply",
+    { ...correction, token: preview.token },
+    assignment.version
+  );
+
+  await page.goto("/manage");
+  const panel = page
+    .locator(".panel")
+    .filter({ hasText: "תיקוני יתרה ממתינים להכרעה" });
+  const card = panel.getByTestId("score-decision");
+  await expect(card).toHaveCount(1);
+  await expect(card.getByText("7 נקודות (היתרה משקפת 4)")).toBeVisible();
+  await expect(card.getByText("נרמול", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "הכרעה" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("ההכרעה", { exact: true }).selectOption("adjust");
+  await dialog.getByLabel("נקודות", { exact: true }).fill("3");
+  await dialog.getByLabel("סיבת ההכרעה").fill("המשמרת הנוספת לא נכללה בנרמול");
+  await dialog.getByRole("button", { name: "תצוגת השפעה" }).click();
+  await expect(dialog.getByText("יתרה כיום: 2 ← 5")).toBeVisible();
+  await page.screenshot({
+    path: "test-results/score-decision-preview.png",
+    fullPage: true,
+  });
+  await dialog.getByLabel("בדקתי את ההכרעה ואת השפעתה").check();
+  await dialog.getByRole("button", { name: "שמירת ההכרעה" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
+  const [saved] = await db
+    .select()
+    .from(balances)
+    .where(eq(balances.soldierId, memberId));
+  expect(saved.current).toBe(5);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/duties/${row.id}`);
+  const history = page.locator(".panel").filter({ hasText: "הכרעות שנסגרו" });
+  await expect(
+    history.getByRole("cell", { name: "המשמרת הנוספת לא נכללה בנרמול" })
+  ).toBeVisible();
+  await expect(
+    history.getByRole("cell", { name: "הכרעה אחראי" })
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
 });
