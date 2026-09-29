@@ -273,8 +273,7 @@ describe("durable email queue", () => {
         await enqueueEmail(tx, {
           recipientAccountId: memberId,
           eventKey,
-          kind: "duty-reminder",
-          reminderHours: 24,
+          kind: "publication",
           title: "תזכורת",
           body: "בדיקה",
           expiresAt: new Date(now.getTime() + 3600_000),
@@ -5226,6 +5225,7 @@ describe("first duty vertical slice", () => {
             roundClosing: true,
             publication: true,
             transfer: false,
+            departure: true,
           },
         },
         undefined,

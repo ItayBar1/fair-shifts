@@ -1,13 +1,16 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { projectAudit, technicalScope, type AuditAccount } from "./audit-log";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
 import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
-import { populationAt, rankAt } from "../domain/eligibility";
+import { populationAt, rankAt, serviceSummary } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
+import { backupState } from "./operations/backup";
 import { projectRequests } from "./transfers";
+import { projectCancellationRequests } from "./cancellation-requests";
 import { effectivePreferences } from "./notifications";
 import { resolvePreferences } from "../domain/notification-preferences";
 import type { DbTransaction } from "./db";
@@ -26,6 +29,17 @@ function unitDefaults(workflows: (typeof records.$inferSelect)[]) {
     ...resolvePreferences(null, row?.data).preferences,
     version: row?.version,
   };
+}
+
+async function auditAccountsOf(tx: DbTransaction): Promise<AuditAccount[]> {
+  return tx
+    .select({
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      soldierId: user.soldierId,
+    })
+    .from(user);
 }
 
 export async function readState(actor: Actor) {
@@ -56,6 +70,7 @@ export async function readState(actor: Actor) {
       duties: [],
       assignments: [],
       rounds: [],
+      roundNotices: [],
       constraints: [],
       requests: [],
       ledger: [],
@@ -69,6 +84,7 @@ export async function readState(actor: Actor) {
       operations: [],
       rankRules: [],
       rankReminders: [],
+      departures: [],
       rankCatalog: [],
       performanceCorrections: [],
       scoreDecisions: [],
@@ -96,10 +112,41 @@ export async function readState(actor: Actor) {
         })
         .from(emailOutbox);
       const operations = await tx.select().from(operationsState);
+      const auditAccounts = await auditAccountsOf(tx);
+      // Operational alerts are addressed to each technical account (decision 173).
+      const notices = await tx
+        .select()
+        .from(records)
+        .where(
+          and(
+            eq(records.kind, "notification"),
+            sql`${records.data}->>'accountId' = ${actor.id}`
+          )
+        );
       return {
         ...base,
+        notifications: notices
+          .filter((row) => !row.data.hiddenAt)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .map((row) => ({ ...row.data, id: row.id, version: row.version })),
+        backups: await backupState(tx),
         settings: await preferencesState(tx, actor),
         accounts,
+        // Account operations within technical authority; no soldier data is resolved.
+        audit: projectAudit(
+          {
+            workflows: await tx
+              .select()
+              .from(records)
+              .where(eq(records.kind, "audit")),
+            soldiers: [],
+            duties: [],
+            dutyTypes: [],
+            assignments: [],
+            accounts: auditAccounts,
+          },
+          technicalScope(auditAccounts)
+        ),
         // The worker heartbeat is presented through `health`.
         operations: [
           ...mail,
@@ -133,10 +180,14 @@ export async function readState(actor: Actor) {
       };
       if (!managing) return summary;
       const contact = contacts.find((row) => row.soldierId === person.id);
+      const service = serviceSummary(person, now);
       return {
         ...person,
         ...summary,
         ...contact,
+        serviceStatus: service.status,
+        graceUntil: service.graceUntil,
+        preReleaseFrom: service.preReleaseFrom,
         rankId: rank?.rankId,
         rankTrack: rank?.trackId,
         serviceType: person.service.type,
@@ -235,8 +286,17 @@ export async function readState(actor: Actor) {
           }))
         : [],
       rounds: workflow("round"),
+      // Delivery bookkeeping (who was reached) is operational: managers only.
+      roundNotices: managing ? workflow("round_notice") : [],
       constraints: managing ? workflow("constraint") : own("constraint"),
-      requests: projectRequests(workflows, actor, managing),
+      requests: [
+        ...projectRequests(
+          workflows.filter((row) => row.data.type !== "cancellation"),
+          actor,
+          managing
+        ),
+        ...projectCancellationRequests(workflows, actor, managing),
+      ],
       // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
       notifications: workflows
         .filter(
@@ -262,7 +322,16 @@ export async function readState(actor: Actor) {
               effectiveAt: row.effectiveAt,
               kind: row.kind,
             })),
-      audit: managing ? workflow("audit") : [],
+      audit: managing
+        ? projectAudit({
+            workflows,
+            soldiers: state.soldiers,
+            duties: state.duties,
+            dutyTypes: catalog,
+            assignments: state.assignments,
+            accounts: await auditAccountsOf(tx),
+          })
+        : [],
       imports: managing ? workflow("import") : [],
       accounts: managing
         ? await tx
@@ -280,6 +349,7 @@ export async function readState(actor: Actor) {
       rankCatalog: managing ? workflow("rank_catalog") : [],
       rankRules: managing ? workflow("rank_rule") : [],
       rankReminders: managing ? workflow("rank_reminder") : [],
+      departures: managing ? workflow("departure") : [],
       lotteryAttempts: managing ? workflow("lottery_attempt") : [],
       planningRuns: managing ? workflow("planning_run") : [],
       dutyChanges: managing ? workflow("duty_change") : [],

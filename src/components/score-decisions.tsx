@@ -14,6 +14,7 @@ import {
 } from "@/client/types";
 import { Badge, Empty, Form, Modal, Panel, type Field } from "./ui";
 import { performanceOf } from "./performance-corrections";
+import { AuditLink } from "./audit";
 
 const choiceLabels: Record<string, string> = {
   keep: "לא לשנות את היתרה",
@@ -172,6 +173,7 @@ export function ScoreDecisions({
                 <th>הכרעה</th>
                 <th>יתרה</th>
                 <th>סיבה</th>
+                <th>תיעוד</th>
               </tr>
             </thead>
             <tbody>
@@ -193,6 +195,9 @@ export function ScoreDecisions({
                       {num(resolution.balanceAfter)}
                     </td>
                     <td>{str(resolution.reason)}</td>
+                    <td>
+                      <AuditLink id={row.id} />
+                    </td>
                   </tr>
                 );
               })}
