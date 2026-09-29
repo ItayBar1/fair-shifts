@@ -634,6 +634,10 @@ export async function applyImport(
       ...detail.data,
       changes: appliedChanges,
       appliedVersion: version,
+      // Restore compares against these to find any edit made after the import.
+      appliedFieldVersions: person.fieldVersions,
+      appliedContactVersions: contact?.fieldVersions ?? {},
+      appliedBalanceVersion: balance?.version,
       appliedAt: new Date().toISOString(),
     });
   }

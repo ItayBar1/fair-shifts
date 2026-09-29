@@ -1,0 +1,1 @@
+ALTER TABLE "auth_user" ADD COLUMN "first_sign_in_at" timestamp with time zone;

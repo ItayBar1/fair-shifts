@@ -88,7 +88,10 @@ function configureAuth() {
                 return false;
               await tx
                 .update(tables.user)
-                .set({ failedAttempts: 0 })
+                .set({
+                  failedAttempts: 0,
+                  firstSignInAt: person.firstSignInAt ?? new Date(),
+                })
                 .where(eq(tables.user.id, person.id));
               return {
                 data: {
