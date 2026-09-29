@@ -4,7 +4,7 @@ import { assertActorCurrent, type Actor } from "./auth/accounts";
 import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
-import { populationAt, rankAt } from "../domain/eligibility";
+import { populationAt, rankAt, serviceSummary } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
 import { projectRequests } from "./transfers";
@@ -71,6 +71,7 @@ export async function readState(actor: Actor) {
       operations: [],
       rankRules: [],
       rankReminders: [],
+      departures: [],
       rankCatalog: [],
       performanceCorrections: [],
       scoreDecisions: [],
@@ -135,10 +136,14 @@ export async function readState(actor: Actor) {
       };
       if (!managing) return summary;
       const contact = contacts.find((row) => row.soldierId === person.id);
+      const service = serviceSummary(person, now);
       return {
         ...person,
         ...summary,
         ...contact,
+        serviceStatus: service.status,
+        graceUntil: service.graceUntil,
+        preReleaseFrom: service.preReleaseFrom,
         rankId: rank?.rankId,
         rankTrack: rank?.trackId,
         serviceType: person.service.type,
@@ -291,6 +296,7 @@ export async function readState(actor: Actor) {
       rankCatalog: managing ? workflow("rank_catalog") : [],
       rankRules: managing ? workflow("rank_rule") : [],
       rankReminders: managing ? workflow("rank_reminder") : [],
+      departures: managing ? workflow("departure") : [],
       lotteryAttempts: managing ? workflow("lottery_attempt") : [],
       planningRuns: managing ? workflow("planning_run") : [],
       dutyChanges: managing ? workflow("duty_change") : [],

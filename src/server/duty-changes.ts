@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
 import { assignments, duties, dutySlots, dutyTypes, records } from "./schema";
@@ -34,6 +34,7 @@ import {
   settleAfterCancelledDuty,
   settleAfterPublishedChange,
 } from "./cancellation-requests";
+import { cancelStaleDutyReminders } from "./duty-reminder-checks";
 
 type SavedDuty = (typeof duties.$inferSelect)["data"];
 type Seat = { slotId: string; soldierId: string | null; extraPoints: string };
@@ -509,6 +510,7 @@ async function applyDutyChange(
   const href = `/duties/${live.id}`;
   if (mode === "published") {
     await cancelDutyEmails(tx, href);
+    await cancelStaleDutyReminders(tx, live.id);
     await closeTransfersForDuty(tx, live.id, "התורנות עודכנה אחרי ההצעה");
   }
   for (const item of mode === "published" ? affected : []) {
@@ -609,6 +611,7 @@ async function releaseReservations(tx: DbTransaction, original: Assignment[]) {
       })
       .where(eq(assignments.id, item.id));
 }
+/** Reminders are cancelled separately, only when their start or recipient changed. */
 async function cancelDutyEmails(tx: DbTransaction, href: string) {
   await tx
     .update(emailOutbox)
@@ -616,6 +619,7 @@ async function cancelDutyEmails(tx: DbTransaction, href: string) {
     .where(
       and(
         eq(emailOutbox.href, href),
+        ne(emailOutbox.kind, "duty-reminder"),
         inArray(emailOutbox.status, ["pending", "sending"])
       )
     );
@@ -703,6 +707,7 @@ export async function cancelDuty(
     });
   const href = `/duties/${live.id}`;
   await cancelDutyEmails(tx, href);
+  await cancelStaleDutyReminders(tx, live.id);
   await closeTransfersForDuty(tx, live.id, "התורנות בוטלה");
   if (live.data.status === "published") {
     for (const soldierId of new Set(original.map((item) => item.soldierId))) {

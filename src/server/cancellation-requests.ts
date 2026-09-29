@@ -20,7 +20,7 @@ import { instant } from "../domain/time";
 import { enqueueEmail } from "./operations/email";
 import { createDutyChange } from "./duty-changes";
 
-// A soldier's cancellation or postponement request (decision 170). Submitting changes nothing;
+// A soldier's cancellation or postponement request (decision 172). Submitting changes nothing;
 // the manager rejects it or completes it through "update and publish" or cancelling the duty.
 type RequestStatus =
   "pending" | "rejected" | "completed" | "referred" | "cancelled" | "closed";
@@ -121,7 +121,7 @@ async function notifySoldier(
     .from(duties)
     .where(eq(duties.id, data.dutyId));
   const endsAt = instant(duty?.data.end ?? data.dutyEnd).toMillis();
-  // Decision mail follows the "swaps and transfers" preference (decision 170).
+  // Decision mail follows the "swaps and transfers" preference (decision 172).
   if (input.email && endsAt > Date.now())
     await enqueueEmail(tx, {
       recipientAccountId: account.id,
@@ -229,7 +229,7 @@ export async function submitCancellationRequest(
     "not_requestable",
     "אפשר לבקש ביטול או דחייה רק לשיבוץ בתורנות שפורסמה"
   );
-  // Requests are accepted only before the start (decision 170).
+  // Requests are accepted only before the start (decision 172).
   invariant(
     instant(duty.start).toMillis() > Date.now(),
     "performance_started",

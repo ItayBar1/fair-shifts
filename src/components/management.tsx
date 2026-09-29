@@ -137,6 +137,30 @@ const soldierFields = (s?: Row): Field[] => [
     value: num(s?.currentScore ?? s?.score),
   },
 ];
+/** Service dates derived by the server, shown so a manager sees them before planning. */
+function ServiceDates({ person }: { person: Row }) {
+  const facts = [
+    person.serviceStatus === "service_ended" &&
+      "השירות הסתיים והגישה לחשבון חסומה. הרשומה וההיסטוריה נשמרות; מחיקה היא החלטה נפרדת של אחראי.",
+    person.graceUntil &&
+      `חודש חסד: הזמינות לשיבוץ חוזרת ב־${displayDate(person.graceUntil)}. בסיומו אין איזון יתרה אוטומטי.`,
+    person.releaseDate &&
+      person.serviceStatus !== "service_ended" &&
+      `יום אחרון בשירות ${displayDate(person.releaseDate)}; הגישה נחסמת בחצות שאחריו. תורנות שמתחילה מ־${displayDate(person.preReleaseFrom)} מחייבת אישור נקודתי.`,
+  ].filter((fact): fact is string => Boolean(fact));
+  if (!facts.length) return null;
+  return (
+    <Notice
+      tone={person.serviceStatus === "service_ended" ? "warning" : "info"}
+    >
+      {facts.map((fact) => (
+        <span className="service-fact" key={fact}>
+          {fact}
+        </span>
+      ))}
+    </Notice>
+  );
+}
 export function SoldiersView({
   state,
   action,
@@ -286,7 +310,7 @@ export function SoldiersView({
                     </td>
                     <td>{displayDate(s.releaseDate)}</td>
                     <td>
-                      <Status value={s.status || "active"} />
+                      <Status value={s.serviceStatus || "active"} />
                     </td>
                     <td>
                       <button
@@ -321,10 +345,12 @@ export function SoldiersView({
         >
           <div className="tabs-heading">
             <Badge>{population(selected.population)}</Badge>
+            <Status value={selected.serviceStatus || "active"} />
             <span className="muted">
               מספר אישי {str(selected.personalNumber)}
             </span>
           </div>
+          <ServiceDates person={selected} />
           <ProfileEdit
             person={selected}
             fields={soldierFields(selected).filter(

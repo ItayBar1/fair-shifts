@@ -45,6 +45,10 @@ const statusLabels: Record<string, string> = {
   open: "פתוח להגשה",
   closed: "נסגר",
   referred: "הופנתה לטיפול בביצוע",
+  service_ended: "השירות הסתיים",
+  inactive_period: "באי־פעילות",
+  grace: "בחודש חסד",
+  pre_release: "חודש לפני שחרור",
 };
 export function Status({ value }: { value: unknown }) {
   const status = str(value, "pending");
@@ -63,11 +67,15 @@ export function Status({ value }: { value: unknown }) {
           "open",
         ].includes(status)
           ? "success"
-          : ["failed", "cancelled", "locked"].includes(status)
+          : ["failed", "cancelled", "locked", "service_ended"].includes(status)
             ? "danger"
-            : ["draft", "pending", "awaiting_manager", "needs_review"].includes(
-                  status
-                )
+            : [
+                  "draft",
+                  "pending",
+                  "awaiting_manager",
+                  "needs_review",
+                  "pre_release",
+                ].includes(status)
               ? "warning"
               : "neutral"
       }
