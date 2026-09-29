@@ -144,6 +144,62 @@ export function correctionEffect(input: {
   };
 }
 
+export type CorrectionChoice = "keep" | "adjust" | "set";
+
+/**
+ * A manager's resolution of a pending correction: keep the balance, change it by a whole amount
+ * (zero floor) or set it. A set or a clamped change alters the meaning of later deltas, like any barrier.
+ */
+export function correctionDecision(input: {
+  balance: number;
+  choice: CorrectionChoice;
+  value?: number;
+}): { after: number; delta: number; clamped: boolean; barrier: boolean } {
+  const { balance, choice, value } = input;
+  if (!Number.isSafeInteger(balance) || balance < 0)
+    throw new Error("היתרה חייבת להיות שלמה ולא שלילית");
+  if (choice === "keep")
+    return { after: balance, delta: 0, clamped: false, barrier: false };
+  if (value === undefined || !Number.isSafeInteger(value))
+    throw new Error("יש להזין מספר נקודות שלם");
+  if (choice === "set") {
+    if (value < 0) throw new Error("יתרה אינה יכולה להיות שלילית");
+    return {
+      after: value,
+      delta: value - balance,
+      clamped: false,
+      barrier: true,
+    };
+  }
+  const raw = balance + value;
+  const after = Math.max(0, raw);
+  return {
+    after,
+    delta: after - balance,
+    clamped: raw < 0,
+    barrier: raw < 0,
+  };
+}
+
+/** Hebrew name of a ledger entry that changes the meaning of a later correction. */
+export function barrierLabel(
+  kind: string,
+  data: Record<string, unknown>
+): string {
+  if (kind === "normalization") return "נרמול";
+  if (kind === "import_set" || kind === "opening") return "קביעת יתרה בייבוא";
+  if (kind === "import_restore") return "קביעת יתרה בשחזור ייבוא";
+  if (kind === "correction") return "תיקון ביצוע שנעצר באפס";
+  if (kind === "correction_decision")
+    return data.choice === "set"
+      ? "קביעת יתרה בהכרעת תיקון"
+      : "הכרעת תיקון שנעצרה באפס";
+  if (data.operation === "set") return "קביעת יתרה";
+  if (data.operation === "percent") return "הפחתת אחוזים";
+  if (data.operation === "subtract") return "הפחתה שנעצרה באפס";
+  return "פעולה שמשנה את משמעות ההפרש";
+}
+
 export function dueCredits(
   duties: Duty[],
   assignments: Assignment[],

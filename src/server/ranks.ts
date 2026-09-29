@@ -322,7 +322,7 @@ export async function setSoldierRank(
       },
     ],
   };
-  await createRecord(
+  const revision = await createRecord(
     tx,
     "rank_history_revision",
     {
@@ -337,10 +337,22 @@ export async function setSoldierRank(
     .update(soldiers)
     .set({ data, version: person.version + 1, updatedAt: new Date() })
     .where(eq(soldiers.id, person.id));
-  await audit(tx, actor, "rank.set", person.id, {
-    rankId: rank.id,
-    effectiveDate: input.effectiveDate,
-  });
+  await audit(
+    tx,
+    actor,
+    "rank.set",
+    person.id,
+    {
+      rankId: rank.id,
+      previousRankId: rankAt(
+        person.data,
+        localDate(input.effectiveDate).toISO()!
+      )?.rankId,
+      effectiveDate: input.effectiveDate,
+      recordId: revision.id,
+    },
+    person.id
+  );
   await reassessAssignments(tx, person.id);
   await refreshRankReminders(tx);
   return { id: person.id, version: person.version + 1 };

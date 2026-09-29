@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   type AppState,
   type Action,
@@ -14,6 +15,7 @@ import {
   emailTypeLabels,
   preferencesPayload,
   reminderHoursText,
+  hiddenPreferenceTypes,
 } from "@/client/notifications";
 import { preferenceTypes } from "@/domain/notification-preferences";
 import {
@@ -27,20 +29,20 @@ import {
   type Field,
 } from "./ui";
 import { TransferRequests } from "./transfers";
+import { AuditLink, ledgerSource } from "./audit";
+import { effectiveDiffers } from "@/domain/time";
+import { CancellationRequests } from "./cancellation-requests";
+import { BackupsView, BackupFreshnessBadge } from "./backups";
 type Props = { state: AppState; action: Action };
-const building = (
-  <Notice>
-    המסלול הזה נמצא בבנייה. הוא ייפתח לאחר השלמת השמירה ובדיקות התהליך.
-  </Notice>
-);
 export { ConstraintsView } from "./constraints";
 export function RequestsView({ state, action }: Props) {
   return (
     <>
       <Notice>
-        העברת תורנות בהסכמה לפני התחלה זמינה. החלפה הדדית, בקשת ביטול או דחייה
+        העברת תורנות בהסכמה ובקשות ביטול או דחייה לפני התחלה זמינות. החלפה הדדית
         והחלפה במהלך ביצוע נמצאות עדיין בבנייה.
       </Notice>
+      <CancellationRequests state={state} action={action} />
       <TransferRequests state={state} action={action} />
     </>
   );
@@ -122,6 +124,7 @@ export function SettingsView({ state, action }: Props) {
         <PreferencesForm
           key={`${str(settings.source)}-${num(settings.version)}-${num(defaults.version)}`}
           values={settings}
+          role={state.actor.role}
           submitLabel="שמירת העדפות אישיות"
           onSubmit={(payload) =>
             action(
@@ -153,6 +156,7 @@ export function SettingsView({ state, action }: Props) {
           <PreferencesForm
             key={`defaults-${num(defaults.version)}`}
             values={defaults}
+            role="manager"
             submitLabel="שמירת ברירות המחדל"
             onSubmit={(payload) =>
               action(
@@ -171,14 +175,17 @@ export function SettingsView({ state, action }: Props) {
 }
 function PreferencesForm({
   values,
+  role,
   submitLabel,
   onSubmit,
 }: {
   values: Record<string, unknown>;
+  role: unknown;
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
 }) {
   const email = obj(values.email);
+  const hidden = hiddenPreferenceTypes(role);
   return (
     <Form
       submitLabel={submitLabel}
@@ -189,14 +196,16 @@ function PreferencesForm({
           hint: "עד שלוש תזכורות, בשעות שלמות בין 1 ל־168. שדה ריק: ללא תזכורות.",
           value: reminderHoursText(values.reminderHours),
         },
-        ...preferenceTypes.map((type): Field => ({
-          name: `email.${type}`,
-          label: `מייל: ${emailTypeLabels[type]}`,
-          type: "checkbox",
-          value: email[type] !== false,
-        })),
+        ...preferenceTypes
+          .filter((type) => !hidden.includes(type))
+          .map((type): Field => ({
+            name: `email.${type}`,
+            label: `מייל: ${emailTypeLabels[type]}`,
+            type: "checkbox",
+            value: email[type] !== false,
+          })),
       ]}
-      onSubmit={(form) => onSubmit(preferencesPayload(form))}
+      onSubmit={(form) => onSubmit(preferencesPayload(form, hidden, email))}
     />
   );
 }
@@ -283,9 +292,11 @@ export function ScoresView({ state, action }: Props) {
                 <tr>
                   <th>חייל</th>
                   <th>מועד תחולה</th>
+                  <th>נרשם</th>
                   <th>שינוי</th>
                   <th>יתרה</th>
                   <th>סיבה</th>
+                  <th>תיעוד</th>
                 </tr>
               </thead>
               <tbody>
@@ -293,9 +304,24 @@ export function ScoresView({ state, action }: Props) {
                   <tr key={row.id}>
                     <td>{personName(state, row.soldierId)}</td>
                     <td>{displayDate(row.effectiveAt, true)}</td>
+                    <td>
+                      {effectiveDiffers(
+                        str(row.effectiveAt),
+                        str(row.recordedAt)
+                      )
+                        ? displayDate(row.recordedAt, true)
+                        : "באותו מועד"}
+                    </td>
                     <td>{num(row.amount)}</td>
                     <td>{num(row.after)}</td>
                     <td>{str(row.reason)}</td>
+                    <td>
+                      {ledgerSource(row) ? (
+                        <AuditLink id={ledgerSource(row)} />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -309,36 +335,7 @@ export function ScoresView({ state, action }: Props) {
   );
 }
 export { ImportsView } from "./imports";
-export function AuditView({ state }: { state: AppState }) {
-  return (
-    <Panel title="יומן פעולות">
-      {state.audit.length ? (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>מבצע</th>
-                <th>פעולה</th>
-                <th>רשומה</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.audit.map((row) => (
-                <tr key={row.id}>
-                  <td>{str(row.actorName)}</td>
-                  <td>{str(row.action)}</td>
-                  <td dir="ltr">{str(row.targetId)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Empty title="אין פעולות להצגה" />
-      )}
-    </Panel>
-  );
-}
+export { AuditView } from "./audit";
 export function TechnicalView({
   state,
   action,
@@ -347,13 +344,10 @@ export function TechnicalView({
   if (path.endsWith("/backups"))
     return (
       <>
-        {building}
-        <Panel title="גיבוי ושחזור">
-          <Empty
-            title="אין גיבויים מאומתים"
-            text="אין להשתמש בנתוני אמת לפני השלמת שחזור בדיקה."
-          />
-        </Panel>
+        <BackupsView state={state} action={action} />
+        <Notice>
+          שחזור מגיבוי למסד מבודד ובדיקת הנתונים לפני פתיחה נמצאים עדיין בבנייה.
+        </Notice>
       </>
     );
   if (path.endsWith("/recovery"))
@@ -386,7 +380,13 @@ export function TechnicalView({
   );
   return (
     <>
-      {path === "/technical" && <HealthPanel health={obj(state.health)} />}
+      {path === "/technical" && (
+        <HealthPanel
+          health={obj(state.health)}
+          backups={obj(state.backups)}
+          now={new Date(str(state.serverNow)).getTime()}
+        />
+      )}
       <AccountsPanel accounts={accounts} action={action} />
     </>
   );
@@ -422,7 +422,15 @@ function HealthRow({
     </div>
   );
 }
-function HealthPanel({ health }: { health: Record<string, unknown> }) {
+function HealthPanel({
+  health,
+  backups,
+  now,
+}: {
+  health: Record<string, unknown>;
+  backups: Record<string, unknown>;
+  now: number;
+}) {
   const worker = obj(health.worker);
   return (
     <Panel
@@ -445,6 +453,12 @@ function HealthPanel({ health }: { health: Record<string, unknown> }) {
         <Badge tone={worker.sameVersion ? "success" : "danger"}>
           {worker.sameVersion ? "זהה לאתר" : "שונה מהאתר"}
         </Badge>
+      </HealthRow>
+      <HealthRow label="גיבוי אחרון">
+        <BackupFreshnessBadge backups={backups} now={now} />
+        <Link className="text-link" href="/technical/backups">
+          {displayDate(backups.lastVerifiedAt, true)}
+        </Link>
       </HealthRow>
       {worker.status !== "ok" && (
         <Notice tone="warning">

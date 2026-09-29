@@ -26,6 +26,7 @@ import {
   previewPerformanceCorrection,
   applyPerformanceCorrection,
 } from "./performance-corrections";
+import { previewScoreDecision, applyScoreDecision } from "./score-decisions";
 import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
 import { user } from "./auth-schema";
 import {
@@ -72,6 +73,14 @@ import {
   reviewTransfer,
   withdrawTransfer,
 } from "./transfers";
+import { requestBackup } from "./operations/backup";
+import {
+  prepareCancellationChange,
+  referCancellationRequest,
+  rejectCancellationRequest,
+  submitCancellationRequest,
+  withdrawCancellationRequest,
+} from "./cancellation-requests";
 import {
   markNotification,
   resetPreferences,
@@ -299,6 +308,46 @@ export async function executeAction(actor: Actor, value: unknown) {
       case "transfer.decide":
         result = await decideTransfer(tx, actor, payload, expectedVersion);
         break;
+      case "cancellation.submit":
+        result = await submitCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.withdraw":
+        result = await withdrawCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.reject":
+        result = await rejectCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.refer":
+        result = await referCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.prepare":
+        result = await prepareCancellationChange(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
       case "score.preview":
         result = await previewScore(tx, actor, payload);
         break;
@@ -320,6 +369,17 @@ export async function executeAction(actor: Actor, value: unknown) {
           payload,
           expectedVersion
         );
+        break;
+      case "score.decision.preview":
+        result = await previewScoreDecision(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "score.decision.apply":
+        result = await applyScoreDecision(tx, actor, payload, expectedVersion);
         break;
       case "account.role": {
         const input = z
@@ -386,6 +446,9 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "notification.defaults.save":
         result = await saveDefaults(tx, actor, payload, expectedVersion);
+        break;
+      case "backup.request":
+        result = await requestBackup(tx, actor);
         break;
       default:
         throw new AppError(

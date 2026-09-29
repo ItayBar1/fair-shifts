@@ -2,7 +2,8 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { db } from "../../src/server/db";
+import { db, unitTransaction } from "../../src/server/db";
+import { refreshRoundNotices } from "../../src/server/round-notices";
 import { user, emailOutbox } from "../../src/server/auth-schema";
 import { soldiers, balances } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
@@ -84,9 +85,23 @@ test("constraint round: direct declaration, shared decision, stale approval, clo
     .click();
   await expect(first.getByRole("dialog")).not.toBeVisible();
   await expect(first.getByText("פתוח להגשה")).toBeVisible();
+  await expect(
+    first.getByText(/^תזכורת סגירה למי שטרם הגיש ב־.*20:00$/)
+  ).toBeVisible();
+
+  // The worker's maintenance run sends the opening notice once.
+  await unitTransaction((tx) => refreshRoundNotices(tx));
+  await unitTransaction((tx) => refreshRoundNotices(tx));
+  await first.reload();
+  await expect(first.getByText("הודעת פתיחה נשלחה ל־3")).toBeVisible();
 
   // "No constraints" completes the submission without manager review.
+  await member.goto("/notifications");
+  await expect(
+    member.getByRole("heading", { name: "סבב אילוצים נפתח" })
+  ).toHaveCount(1);
   await member.goto("/constraints");
+  await expect(member.getByText(/נשלחה ל־/)).toHaveCount(0);
   await member.getByLabel("בחירת סבב").selectOption({ label: "סבב גבולות" });
   await member.getByLabel("אין לי אילוצים").check();
   await expect(member.getByText("נרשמת מיד כהשלמת ההגשה")).toBeVisible();

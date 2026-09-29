@@ -24,6 +24,7 @@ import {
 import { invariant } from "./errors";
 import { parseMoment } from "./duty-service";
 import { reassessAssignments } from "./personnel";
+import { cancelRoundEmails } from "./round-notices";
 import { datesToInstants, interval, overlaps } from "../domain/time";
 
 export async function createRound(
@@ -87,6 +88,7 @@ export async function closeRound(
     closedAt: new Date().toISOString(),
     closedByName: actor.name,
   });
+  await cancelRoundEmails(tx, round.id);
   await audit(tx, actor, "round.close", round.id);
   return { id: round.id };
 }
@@ -108,16 +110,24 @@ export async function reopenRound(
     "נדרש מועד סגירה עתידי לאחר פתיחת הסבב"
   );
   const reopenedAt = new Date().toISOString();
+  // A new generation of notices: "reopening" after closing, "extension" while still open.
+  const reopenKind =
+    round.data.status === "closed" ||
+    new Date(reopenedAt) >= new Date(String(round.data.closesAt))
+      ? "reopen"
+      : "extension";
   await updateRecord(tx, round, {
     ...round.data,
     status: "open",
+    reopenKind,
     closesAt,
     closedAt: null,
     reopenedAt,
     reopenedByName: actor.name,
     reopenCount: Number(round.data.reopenCount ?? 0) + 1,
   });
-  await audit(tx, actor, "round.reopen", round.id);
+  await cancelRoundEmails(tx, round.id);
+  await audit(tx, actor, "round.reopen", round.id, { reopenKind, closesAt });
   return { id: round.id };
 }
 function hasRange(value: unknown) {
@@ -471,7 +481,8 @@ export async function reviewConstraint(
     "constraint.review",
     record.id,
     { decision: input.decision },
-    person.id
+    person.id,
+    input.reason ? { reason: input.reason } : undefined
   );
   return { id: record.id, flagged: await reassessAssignments(tx, person.id) };
 }

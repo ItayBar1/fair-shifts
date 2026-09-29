@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
 import { assignments, duties, dutySlots, dutyTypes, records } from "./schema";
@@ -29,6 +29,12 @@ import type {
 } from "../domain/types";
 import { enqueueEmail } from "./operations/email";
 import { closeTransfersForDuty } from "./transfers";
+import {
+  linkedRequest,
+  settleAfterCancelledDuty,
+  settleAfterPublishedChange,
+} from "./cancellation-requests";
+import { cancelStaleDutyReminders } from "./duty-reminder-checks";
 
 type SavedDuty = (typeof duties.$inferSelect)["data"];
 type Seat = { slotId: string; soldierId: string | null; extraPoints: string };
@@ -384,6 +390,7 @@ export async function previewDutyChange(
     affected: checked.affected,
     pendingReviewRequired: checked.pendingReviewRequired,
     previewToken: checked.previewToken,
+    request: await linkedRequest(tx, checked.row.data.requestId),
   };
 }
 async function applyDutyChange(
@@ -445,7 +452,7 @@ async function applyDutyChange(
     "approval_required",
     "נדרש אישור נפרד לכל חריג בהצעה החדשה"
   );
-  await createRecord(tx, "duty_revision", {
+  const revision = await createRecord(tx, "duty_revision", {
     dutyId: live.id,
     duty: live.data,
     assignmentIds: original.map((item) => item.id),
@@ -503,6 +510,7 @@ async function applyDutyChange(
   const href = `/duties/${live.id}`;
   if (mode === "published") {
     await cancelDutyEmails(tx, href);
+    await cancelStaleDutyReminders(tx, live.id);
     await closeTransfersForDuty(tx, live.id, "התורנות עודכנה אחרי ההצעה");
   }
   for (const item of mode === "published" ? affected : []) {
@@ -544,6 +552,19 @@ async function applyDutyChange(
       ),
     });
   }
+  if (mode === "published")
+    await settleAfterPublishedChange(tx, actor, {
+      dutyId: live.id,
+      changeId: row.id,
+      requestId: row.data.requestId,
+      reason: change.reason,
+      assignedAfter: simulated.map((item) => item.soldierId),
+      rescheduled:
+        instant(change.proposed.start).toMillis() !==
+          instant(live.data.start).toMillis() ||
+        instant(change.proposed.end).toMillis() !==
+          instant(live.data.end).toMillis(),
+    });
   const closed = await updateRecord(tx, row, {
     ...row.data,
     status: mode === "published" ? "published" : "applied",
@@ -558,6 +579,8 @@ async function applyDutyChange(
     {
       changeId: row.id,
       version: live.version + 1,
+      previousVersion: live.version,
+      recordId: revision.id,
     }
   );
   return { id: closed.id, version: closed.version, dutyId: live.id };
@@ -590,6 +613,7 @@ async function releaseReservations(tx: DbTransaction, original: Assignment[]) {
       })
       .where(eq(assignments.id, item.id));
 }
+/** Reminders are cancelled separately, only when their start or recipient changed. */
 async function cancelDutyEmails(tx: DbTransaction, href: string) {
   await tx
     .update(emailOutbox)
@@ -597,6 +621,7 @@ async function cancelDutyEmails(tx: DbTransaction, href: string) {
     .where(
       and(
         eq(emailOutbox.href, href),
+        ne(emailOutbox.kind, "duty-reminder"),
         inArray(emailOutbox.status, ["pending", "sending"])
       )
     );
@@ -609,7 +634,12 @@ export async function cancelDuty(
 ) {
   manager(actor);
   const input = z
-    .object({ id, reason: text, confirmed: z.literal(true) })
+    .object({
+      id,
+      reason: text,
+      confirmed: z.literal(true),
+      requestId: id.optional(),
+    })
     .parse(payload);
   const [live] = await tx.select().from(duties).where(eq(duties.id, input.id));
   invariant(live, "not_found", "תורנות לא נמצאה", 404);
@@ -636,7 +666,14 @@ export async function cancelDuty(
     "נדרש טיפול בביצוע לפני ביטול זה"
   );
   const version = live.version + 1;
-  await createRecord(tx, "duty_revision", {
+  await settleAfterCancelledDuty(
+    tx,
+    actor,
+    live.id,
+    input.reason,
+    input.requestId
+  );
+  const revision = await createRecord(tx, "duty_revision", {
     dutyId: live.id,
     duty: live.data,
     assignmentIds: original.map((item) => item.id),
@@ -672,6 +709,7 @@ export async function cancelDuty(
     });
   const href = `/duties/${live.id}`;
   await cancelDutyEmails(tx, href);
+  await cancelStaleDutyReminders(tx, live.id);
   await closeTransfersForDuty(tx, live.id, "התורנות בוטלה");
   if (live.data.status === "published") {
     for (const soldierId of new Set(original.map((item) => item.soldierId))) {
@@ -708,8 +746,9 @@ export async function cancelDuty(
     }
   }
   await audit(tx, actor, "duty.cancel", live.id, {
-    reason: input.reason,
     version,
+    previousVersion: live.version,
+    recordId: revision.id,
   });
   return { id: live.id, version };
 }

@@ -258,6 +258,9 @@ function ChangeEditor({
           שהוסרו מההרכב יופיעו בהשוואת השיבוצים.
         </Notice>
       ) : null}
+      {change.requestId ? (
+        <RequestNotice state={state} requestId={change.requestId} />
+      ) : null}
       {stale ? (
         <Notice tone="danger">
           התורנות השתנתה מאז יצירת ההצעה. יש לבטל את ההצעה וליצור אחת מתוך הגרסה
@@ -478,5 +481,29 @@ function ChangeEditor({
         </Modal>
       )}
     </div>
+  );
+}
+/** A proposal opened from a soldier's cancellation or postponement request. */
+function RequestNotice({
+  state,
+  requestId,
+}: {
+  state: AppState;
+  requestId: unknown;
+}) {
+  const request = state.requests.find((row) => row.id === requestId);
+  if (!request) return null;
+  const kind = request.kind === "postpone" ? "הדחייה" : "הביטול";
+  return request.status === "pending" ? (
+    <Notice>
+      ההצעה מטפלת בבקשת {kind} של {personName(state, request.soldierId)}. הבקשה
+      תסומן כהושלמה ב״עדכן ופרסם״ אם החייל יוסר מהתורנות או שמועדה ישתנה; אחרת
+      היא תישאר ממתינה.
+    </Notice>
+  ) : (
+    <Notice tone="warning">
+      בקשת {kind} של {personName(state, request.soldierId)} כבר הוכרעה. פרסום
+      ההצעה לא ישנה את ההכרעה.
+    </Notice>
   );
 }

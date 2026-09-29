@@ -145,3 +145,16 @@ export function coveredByRanges(
   }
   return false;
 }
+
+/**
+ * Whether a business effective time differs from when it was recorded. A date
+ * differs when it is another Israel calendar day; a moment by a minute or more.
+ */
+export function effectiveDiffers(effective: string, recordedAt: string) {
+  const recorded = DateTime.fromISO(recordedAt).setZone(UNIT_ZONE);
+  if (!effective || !recorded.isValid) return false;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(effective))
+    return recorded.toISODate() !== effective;
+  const at = DateTime.fromISO(effective);
+  return at.isValid && Math.abs(at.diff(recorded).as("minutes")) >= 1;
+}

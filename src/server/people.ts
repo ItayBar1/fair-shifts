@@ -165,10 +165,64 @@ export async function saveSoldier(
       expiresAt: new Date(Date.now() + 86_400_000),
     });
   }
-  await audit(tx, actor, existing ? "soldier.update" : "soldier.create", id);
+  if (existing) {
+    const changes = profileChanges(
+      {
+        ...existing.data,
+        name: existing.name,
+        personalNumber: existing.personalNumber,
+        phone: contact?.phone,
+        address: contact?.address,
+      },
+      {
+        ...data,
+        phone: input.phone ?? contact?.phone,
+        address: input.address ?? contact?.address,
+      }
+    );
+    // Contact details are personal; the list lives in an erasable detail record.
+    await audit(
+      tx,
+      actor,
+      "soldier.update",
+      id,
+      { fields: changes.map((change) => change.field) },
+      id,
+      { changes }
+    );
+  } else await audit(tx, actor, "soldier.create", id, {}, id);
   if (existing) await reassessAssignments(tx, id);
   await refreshRankReminders(tx);
   return { id, version: data.version };
+}
+
+type ProfileSnapshot = Soldier & {
+  phone?: string | null;
+  address?: string | null;
+};
+const profileFields = {
+  name: (row: ProfileSnapshot) => row.name,
+  personalNumber: (row: ProfileSnapshot) => row.personalNumber,
+  serviceType: (row: ProfileSnapshot) => row.service.type,
+  basePopulation: (row: ProfileSnapshot) => row.service.basePopulation,
+  arrivalDate: (row: ProfileSnapshot) => row.service.arrivalDate,
+  enlistmentDate: (row: ProfileSnapshot) => row.service.enlistmentDate,
+  releaseDate: (row: ProfileSnapshot) => row.service.releaseDate,
+  officerFrom: (row: ProfileSnapshot) => row.service.officerFrom,
+  permanentFrom: (row: ProfileSnapshot) => row.service.permanentFrom,
+  graceEligible: (row: ProfileSnapshot) => row.service.graceEligible,
+  phone: (row: ProfileSnapshot) => row.phone,
+  address: (row: ProfileSnapshot) => row.address,
+};
+/** The profile fields a save changed, with their values before and after. */
+export function profileChanges(
+  before: ProfileSnapshot,
+  after: ProfileSnapshot
+) {
+  return Object.entries(profileFields).flatMap(([field, read]) => {
+    const [from, to] = [read(before) ?? null, read(after) ?? null];
+    return from === to ? [] : [{ field, before: from, after: to }];
+  });
 }
 
 type Profile = z.infer<typeof profileInput>;

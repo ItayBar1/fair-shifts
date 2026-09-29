@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { validBackupTime } from "../domain/backup";
 
 // Deployment configuration check. Messages name the variable only and never
 // echo its value, so the output is safe for container logs.
@@ -105,6 +106,31 @@ export function validateDeploymentConfig(env: Env): string[] {
     errors.push(
       "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET: יש למלא את שניהם או להשאיר את שניהם ריקים"
     );
+
+  // Backups (decision 173). An empty BACKUP_STORAGE switches them off; the
+  // technical screen then shows that no backup is being taken.
+  const backup = value("BACKUP_STORAGE");
+  if (!["", "drive", "directory"].includes(backup))
+    errors.push(
+      "BACKUP_STORAGE: ערך מותר הוא drive או directory, או ריק לכיבוי"
+    );
+  if (backup === "drive")
+    for (const name of [
+      "GOOGLE_DRIVE_CLIENT_ID",
+      "GOOGLE_DRIVE_CLIENT_SECRET",
+      "GOOGLE_DRIVE_REFRESH_TOKEN",
+    ])
+      required(name);
+  if (backup === "directory") required("BACKUP_DIRECTORY");
+  if (backup === "drive" || backup === "directory") {
+    const recipient = required("AGE_RECIPIENT");
+    if (recipient && !/^age1[0-9a-z]{58}$/.test(recipient))
+      errors.push(
+        "AGE_RECIPIENT: נדרש מפתח ציבורי של age (age1…), לא מפתח פרטי"
+      );
+  }
+  if (value("BACKUP_TIME") && !validBackupTime(value("BACKUP_TIME")))
+    errors.push("BACKUP_TIME: נדרשת שעה בתבנית HH:MM");
 
   if (!["", "true", "false"].includes(value("RESTORE_MODE")))
     errors.push("RESTORE_MODE: ערך מותר הוא true או false");

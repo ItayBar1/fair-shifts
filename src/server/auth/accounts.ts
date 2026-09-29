@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { DateTime } from "luxon";
 import { db, type DbTransaction } from "../db";
 import {
   user,
@@ -13,6 +12,7 @@ import {
 } from "../auth-schema";
 import { soldiers, records, soldierContacts } from "../schema";
 import { invariant } from "../errors";
+import { canAccessAfterService } from "../../domain/eligibility";
 import {
   digestCode,
   newRecoveryCode,
@@ -33,9 +33,14 @@ export type InvitedAccount = {
   soldierId?: string;
   role?: Role;
 };
+/**
+ * Checked on every request and sign-in, so release takes effect at the local
+ * boundary even when the worker is late. `now` is injectable for tests.
+ */
 export async function accountAvailable(
   row: typeof user.$inferSelect,
-  tx: DbTransaction | typeof db = db
+  tx: DbTransaction | typeof db = db,
+  now = new Date()
 ) {
   if (row.lockedAt || row.deletedAt) return false;
   if (row.soldierId) {
@@ -44,9 +49,7 @@ export async function accountAvailable(
       .from(soldiers)
       .where(eq(soldiers.id, row.soldierId));
     if (!soldier || soldier.deletedAt) return false;
-    const date = soldier.data.service.releaseDate;
-    if (date && DateTime.now().setZone("Asia/Jerusalem").toISODate()! > date)
-      return false;
+    if (!canAccessAfterService(soldier.data, now.toISOString())) return false;
   }
   const [maintenance] = await tx
     .select()
