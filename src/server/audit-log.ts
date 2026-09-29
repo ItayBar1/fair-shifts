@@ -107,6 +107,7 @@ const labels: Record<string, string> = {
   "role:soldier": "הסרת הרשאת אחראי",
   unlock: "שחרור חשבון נעול",
   "recovery-code": "כניסה בקוד שחזור",
+  "technical.server-recovery": "שחזור גישה טכנית דרך השרת",
 };
 const periodKinds: Record<string, string> = {
   qualification: "כשירות",
@@ -206,7 +207,8 @@ function accountCategory(action: string) {
     action.startsWith("responsibility:") ||
     action.startsWith("account.") ||
     action === "unlock" ||
-    action === "recovery-code"
+    action === "recovery-code" ||
+    action === "technical.server-recovery"
   );
 }
 const soldierTargets = new Set([
@@ -592,6 +594,9 @@ export function projectAudit(
               ? envelope.reasons.length
               : undefined
           );
+          break;
+        case "technical.server-recovery":
+          reason = text(envelope.reason);
           break;
         default:
           if (action.startsWith("responsibility:")) {
