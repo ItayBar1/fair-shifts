@@ -481,7 +481,8 @@ export async function reviewConstraint(
     "constraint.review",
     record.id,
     { decision: input.decision },
-    person.id
+    person.id,
+    input.reason ? { reason: input.reason } : undefined
   );
   return { id: record.id, flagged: await reassessAssignments(tx, person.id) };
 }

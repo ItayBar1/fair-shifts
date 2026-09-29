@@ -65,6 +65,7 @@ import {
   QuickAction,
   Notice,
 } from "./ui";
+import { AuditLink } from "./audit";
 export const dutyStart = (d: Row) => str(d.start ?? d.startsAt);
 export const dutyEnd = (d: Row) => str(d.end ?? d.endsAt);
 export const dutyStatus = (d: Row) => d.status ?? d.publicationStatus;
@@ -743,6 +744,7 @@ export function DutyDetail({
         <CancellationRequestButton state={state} action={action} duty={duty} />
         {manager && (
           <div className="panel-actions">
+            <AuditLink id={id} label="יומן הפעולות של התורנות" />
             {dutyStatus(duty) === "draft" && future && (
               <ActionDialog
                 title="פרסום התורנות"
@@ -831,6 +833,7 @@ export function DutyDetail({
                     {assignment.needsReview === true && (
                       <Badge tone="warning">דורש טיפול</Badge>
                     )}
+                    {manager && <AuditLink id={assignment.id} />}
                   </>
                 ) : (
                   manager &&

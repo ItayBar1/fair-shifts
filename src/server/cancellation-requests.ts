@@ -187,7 +187,8 @@ async function close(
     actor,
     `cancellation.${status}`,
     row.id,
-    { dutyId: data.dutyId, outcome, reason, ...(changeId && { changeId }) },
+    // The reason stays in the request record, which is erased with the soldier.
+    { dutyId: data.dutyId, outcome, ...(changeId && { changeId }) },
     data.soldierId
   );
   return updated;

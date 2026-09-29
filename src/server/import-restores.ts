@@ -24,13 +24,20 @@ import {
   createRecord,
   currentVersion,
   findRecord,
+  loadDomain,
   manager,
   updateRecord,
   type Actor,
 } from "./repository";
+import { populationMoves } from "../domain/eligibility";
 import { getImport, personImportFields } from "./imports";
 import { postScore, settleDue } from "./scoring";
-import { reassessAssignments } from "./personnel";
+import {
+  impactOf,
+  populationChange,
+  reassessAssignments,
+  type DomainState,
+} from "./personnel";
 import { refreshRankReminders } from "./ranks";
 import { date, id, population, text } from "./validation";
 
@@ -210,6 +217,12 @@ function creationActivity(
     if (!refers) continue;
     // User decision (29.09.2026): being only a candidate in a lottery picture is
     // not activity; being drawn, proposed or rejected is.
+    // The rank the import itself set is part of the import, not an edit.
+    if (
+      item.kind === "rank_history_revision" &&
+      Number(item.data.personVersion) < Number(row.data.appliedVersion)
+    )
+      continue;
     // A later file that was only previewed never changed the soldier.
     if (
       item.kind === "import_row" &&
@@ -390,14 +403,17 @@ async function cancelCreation(
         notices.map((item) => item.id)
       )
     );
-  await tx
-    .delete(records)
-    .where(
-      and(
-        eq(records.subjectId, soldierId),
-        inArray(records.kind, ["rank_reminder", "departure"])
-      )
-    );
+  await tx.delete(records).where(
+    and(
+      eq(records.subjectId, soldierId),
+      // The only rank revision left is the one the import itself made.
+      inArray(records.kind, [
+        "rank_reminder",
+        "departure",
+        "rank_history_revision",
+      ])
+    )
+  );
   // History stays; it only stops pointing at a record that no longer exists.
   await tx
     .update(records)
@@ -453,8 +469,97 @@ async function cancelCreation(
     },
   });
 }
-function fingerprint(rows: RestoreRow[]) {
-  return createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+function fingerprint(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+const decisionSchema = z.object({
+  rowId: id,
+  key: z.string().min(1).max(100),
+  action: z.enum(["keep", "restore", "set_score"]),
+  value: z.number().int().nonnegative().max(2147483647).optional(),
+});
+type Decision = z.infer<typeof decisionSchema>;
+const decisionsSchema = z.array(decisionSchema).max(10000).default([]);
+/** Every decision must belong to a restorable field and fit its kind. */
+function checkDecisions(rows: RestoreRow[], decisions: Decision[]) {
+  const decisionKeys = decisions.map(
+    (decision) => `${decision.rowId}:${decision.key}`
+  );
+  invariant(
+    new Set(decisionKeys).size === decisionKeys.length,
+    "duplicate_decision",
+    "נשלחה החלטת שדה כפולה"
+  );
+  for (const decision of decisions) {
+    const field = rows
+      .find((row) => row.id === decision.rowId)
+      ?.fields.find((field) => field.key === decision.key);
+    invariant(
+      field && field.status !== "erased",
+      "invalid_decision",
+      "ההחלטה אינה שייכת לשדה שניתן לשחזר"
+    );
+    invariant(
+      decision.action !== "set_score" ||
+        (field.source === "score" && decision.value !== undefined),
+      "invalid_decision",
+      "קביעת יתרה מחייבת ערך ניקוד מפורש"
+    );
+    invariant(
+      !(
+        field.status === "conflict" &&
+        field.source === "score" &&
+        decision.action === "restore"
+      ),
+      "score_decision_required",
+      "יתרה שהשתנתה מחייבת קביעה מפורשת או השארת היתרה הנוכחית"
+    );
+  }
+}
+/**
+ * The action taken on a field: an automatic field is restored unless kept, and
+ * a conflict is left as it is until the manager decides it.
+ */
+function actionOf(row: RestoreRow, field: RestoreField, decisions: Decision[]) {
+  if (field.status === "erased") return "erased";
+  const decision = decisions.find(
+    (decision) => decision.rowId === row.id && decision.key === field.key
+  );
+  return decision?.action ?? (field.status === "conflict" ? "keep" : "restore");
+}
+type PopulationImpact = ReturnType<typeof populationChange> &
+  ReturnType<typeof impactOf>;
+/**
+ * For each row whose restore, under the given decisions, moves the soldier's
+ * population timeline: the timeline before and after, and the reserved
+ * assignments whose eligibility changes (decision 165).
+ */
+function populationImpacts(
+  rows: RestoreRow[],
+  decisions: Decision[],
+  domain: DomainState
+) {
+  const impacts: Record<string, PopulationImpact> = {};
+  for (const row of rows) {
+    const person = domain.soldiers.find(
+      (item) => item.id === row.soldierId && !item.deletedAt
+    );
+    if (!person) continue;
+    const current = structuredClone(person) as Soldier;
+    const proposed = structuredClone(person) as Soldier;
+    for (const field of row.fields)
+      if (
+        field.source === "person" &&
+        actionOf(row, field, decisions) === "restore"
+      )
+        applyPersonField(proposed, field);
+    if (populationMoves(current, proposed))
+      impacts[row.id] = {
+        ...populationChange(current, proposed),
+        ...impactOf(domain, person.id, proposed),
+      };
+  }
+  return impacts;
 }
 export async function previewImportRestore(
   tx: DbTransaction,
@@ -463,7 +568,7 @@ export async function previewImportRestore(
   expectedVersion?: number
 ) {
   manager(actor);
-  const input = z.object({ id }).parse(payload);
+  const input = z.object({ id, decisions: decisionsSchema }).parse(payload);
   const batch = await findRecord(tx, "import", input.id);
   currentVersion(batch.version, expectedVersion);
   invariant(
@@ -474,21 +579,38 @@ export async function previewImportRestore(
   );
   await settleDue(tx);
   const rows = await restoreRows(tx, batch.id);
+  checkDecisions(rows, input.decisions);
+  const impacts = populationImpacts(
+    rows,
+    input.decisions,
+    await loadDomain(tx)
+  );
   const preview = await createRecord(tx, "import_restore_preview", {
     batchId: batch.id,
     batchVersion: batch.version,
     actorId: actor.id,
     fingerprint: fingerprint(rows),
+    impactFingerprint: fingerprint(impacts),
     expiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
   });
-  return { token: preview.id, id: batch.id, version: batch.version, rows };
+  return {
+    token: preview.id,
+    id: batch.id,
+    version: batch.version,
+    rows: rows.map((row) => ({ ...row, populationImpact: impacts[row.id] })),
+    populationMoves: Object.keys(impacts).length,
+    decisionsPending: rows.some((row) =>
+      row.fields.some(
+        (field) =>
+          field.status === "conflict" &&
+          !input.decisions.some(
+            (decision) =>
+              decision.rowId === row.id && decision.key === field.key
+          )
+      )
+    ),
+  };
 }
-const decisionSchema = z.object({
-  rowId: id,
-  key: z.string().min(1).max(100),
-  action: z.enum(["keep", "restore", "set_score"]),
-  value: z.number().int().nonnegative().max(2147483647).optional(),
-});
 function applyPersonField(person: Soldier, field: RestoreField) {
   if (field.key === "name") person.name = text.parse(field.proposed);
   else if (field.key === "populationHistory")
@@ -526,7 +648,8 @@ export async function applyImportRestore(
       token: id,
       confirmed: z.literal(true),
       reason: text,
-      decisions: z.array(decisionSchema).max(10000).default([]),
+      decisions: decisionsSchema,
+      populationImpactConfirmed: z.boolean().default(false),
       // A new soldier with activity is kept only by an explicit row decision.
       creations: z
         .array(z.object({ rowId: id, action: z.enum(["keep"]) }))
@@ -568,39 +691,7 @@ export async function applyImportRestore(
     "נתונים השתנו מאז תצוגת השחזור; יש לבדוק שוב את ההתנגשויות",
     409
   );
-  const decisionKeys = input.decisions.map(
-    (decision) => `${decision.rowId}:${decision.key}`
-  );
-  invariant(
-    new Set(decisionKeys).size === decisionKeys.length,
-    "duplicate_decision",
-    "נשלחה החלטת שדה כפולה"
-  );
-  for (const decision of input.decisions) {
-    const field = rows
-      .find((row) => row.id === decision.rowId)
-      ?.fields.find((field) => field.key === decision.key);
-    invariant(
-      field && field.status !== "erased",
-      "invalid_decision",
-      "ההחלטה אינה שייכת לשדה שניתן לשחזר"
-    );
-    invariant(
-      decision.action !== "set_score" ||
-        (field.source === "score" && decision.value !== undefined),
-      "invalid_decision",
-      "קביעת יתרה מחייבת ערך ניקוד מפורש"
-    );
-    invariant(
-      !(
-        field.status === "conflict" &&
-        field.source === "score" &&
-        decision.action === "restore"
-      ),
-      "score_decision_required",
-      "יתרה שהשתנתה מחייבת קביעה מפורשת או השארת היתרה הנוכחית"
-    );
-  }
+  checkDecisions(rows, input.decisions);
   for (const row of rows)
     for (const field of row.fields)
       invariant(
@@ -632,6 +723,25 @@ export async function applyImportRestore(
       rows.every((row) => !row.pendingNew),
     "nothing_to_restore",
     "אין שדות או קליטות שנותרו לשחזור. קליטה עם פעילות נשארת עד להכרעה בשורה"
+  );
+  // A restore that moves a population saves only against the impact reviewed
+  // for these decisions, with its assignments unchanged since (decision 165).
+  const impacts = populationImpacts(
+    rows,
+    input.decisions,
+    await loadDomain(tx)
+  );
+  const populationMoved = Object.keys(impacts).length;
+  invariant(
+    !populationMoved || fingerprint(impacts) === preview.data.impactFingerprint,
+    "stale_restore_impact",
+    "ההכרעות או השיבוצים של החייל השתנו מאז תצוגת ההשפעה; יש לחשב מחדש את השפעת השחזור",
+    409
+  );
+  invariant(
+    !populationMoved || input.populationImpactConfirmed,
+    "population_impact_confirmation_required",
+    "יש לאשר במפורש את מעבר האוכלוסייה ואת השיבוצים שהשחזור משפיע עליהם"
   );
   let changed = 0;
   let kept = 0;
@@ -807,6 +917,7 @@ export async function applyImportRestore(
     changed,
     kept,
     cancelled,
+    populationMoves: populationMoved,
     pendingNew: waiting,
   });
   return getImport(tx, actor, { id: batch.id });

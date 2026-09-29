@@ -75,6 +75,7 @@ const technicalLinks = [
   { path: "/technical/recovery", title: "שחזור גישה", icon: History },
   { path: "/technical/mail", title: "משלוחי מייל", icon: Bell },
   { path: "/technical/backups", title: "גיבוי ושחזור", icon: Upload },
+  { path: "/technical/audit", title: "יומן תפעול", icon: ClipboardList },
   { path: "/notifications", title: "הודעות", icon: Bell },
 ];
 const descriptions: Record<string, string> = {
@@ -204,7 +205,9 @@ export function Workspace({ path }: { path: string }) {
   ];
   const pageTitle = effectivePath.startsWith("/duties/")
     ? "פרטי תורנות"
-    : allLinks.find((l) => l.path === effectivePath)?.title || "המערכת";
+    : effectivePath.startsWith("/manage/audit/")
+      ? "יומן פעולות"
+      : allLinks.find((l) => l.path === effectivePath)?.title || "המערכת";
   const unread = unreadCount(state.notifications);
   const restricted =
     (effectivePath.startsWith("/manage") && !manager) ||
@@ -277,6 +280,10 @@ export function Workspace({ path }: { path: string }) {
     if (effectivePath === "/manage/imports")
       return <ImportsView state={state} action={action} reload={reload} />;
     if (effectivePath === "/manage/audit") return <AuditView state={state} />;
+    if (effectivePath.startsWith("/manage/audit/"))
+      return <AuditView state={state} refId={effectivePath.split("/")[3]} />;
+    if (effectivePath === "/technical/audit")
+      return <AuditView state={state} title="יומן תפעול והרשאות" />;
     if (effectivePath.startsWith("/technical"))
       return (
         <TechnicalView state={state} action={action} path={effectivePath} />

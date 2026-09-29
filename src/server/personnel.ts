@@ -262,7 +262,8 @@ async function inspectTimelineEdit(
     data,
     input
   );
-  return { input, person, data, original, previewToken, impact };
+  const replaced = removing ? null : data[field][input.index];
+  return { input, person, data, original, replaced, previewToken, impact };
 }
 export async function previewTimelineEdit(
   tx: DbTransaction,
@@ -284,7 +285,7 @@ export async function editTimeline(
   const confirmation = z
     .object({ previewToken: z.string().length(64), confirmed: z.literal(true) })
     .parse(payload);
-  const { input, person, data, original, previewToken } =
+  const { input, person, data, original, replaced, previewToken } =
     await inspectTimelineEdit(tx, payload, expectedVersion);
   invariant(
     confirmation.previewToken === previewToken,
@@ -296,24 +297,26 @@ export async function editTimeline(
     .update(soldiers)
     .set({ data, version: data.version, updatedAt: new Date() })
     .where(eq(soldiers.id, person.id));
-  await createRecord(
+  const change = await createRecord(
     tx,
     "personnel_change",
     {
       kind: input.kind,
       operation: input.operation,
       before: original,
+      after: replaced,
       reason: input.reason,
       actorId: actor.id,
     },
     person.id
   );
+  // The period kind (an exemption, say) stays in the erasable change record.
   await audit(
     tx,
     actor,
     "soldier.timeline.edit",
     person.id,
-    { kind: input.kind, operation: input.operation },
+    { operation: input.operation, recordId: change.id },
     person.id
   );
   await refreshRankReminders(tx);
@@ -508,12 +511,14 @@ export async function updateTimeline(
     .update(soldiers)
     .set({ data, version: person.version + 1, updatedAt: new Date() })
     .where(eq(soldiers.id, person.id));
-  await createRecord(
+  const change = await createRecord(
     tx,
     "personnel_change",
     {
       kind: input.kind,
       startDate: input.startDate,
+      endDate: input.endDate,
+      value: input.kind === "rank" ? input.name : input.value,
       reason: input.reason,
       actorId: actor.id,
     },
@@ -524,7 +529,7 @@ export async function updateTimeline(
     actor,
     "soldier.timeline",
     person.id,
-    { kind: input.kind },
+    { recordId: change.id },
     person.id
   );
   await refreshRankReminders(tx);
@@ -690,7 +695,7 @@ export async function saveSoldierConditions(
     .update(soldiers)
     .set({ data, version: data.version, updatedAt: new Date() })
     .where(eq(soldiers.id, person.id));
-  await createRecord(
+  const change = await createRecord(
     tx,
     "personnel_change",
     {
@@ -702,7 +707,14 @@ export async function saveSoldierConditions(
     },
     person.id
   );
-  await audit(tx, actor, "soldier.conditions", person.id, {}, person.id);
+  await audit(
+    tx,
+    actor,
+    "soldier.conditions",
+    person.id,
+    { recordId: change.id },
+    person.id
+  );
   return {
     id: person.id,
     version: data.version,

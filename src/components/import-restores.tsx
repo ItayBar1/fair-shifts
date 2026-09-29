@@ -1,7 +1,15 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { type Action, type AppState, rows, str, num } from "@/client/types";
+import {
+  type Action,
+  type AppState,
+  obj,
+  rows,
+  str,
+  num,
+} from "@/client/types";
 import { importValue } from "@/client/import-values";
+import { AffectedAssignments, PopulationChange } from "./personnel-history";
 import { Badge, Notice } from "./ui";
 
 export function ImportRestore({
@@ -20,36 +28,15 @@ export function ImportRestore({
   const [error, setError] = useState("");
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [populationConfirmed, setPopulationConfirmed] = useState(false);
+  // A changed decision on a profile field may change the population impact.
+  const [impactStale, setImpactStale] = useState(false);
   const [decisions, setDecisions] = useState<
     Record<string, { action: string; value?: string }>
   >({});
   const [creations, setCreations] = useState<Record<string, string>>({});
-  async function prepare() {
-    setBusy(true);
-    setError("");
-    setConfirmed(false);
-    setDecisions({});
-    setCreations({});
-    try {
-      setPreview(
-        await action(
-          "import.restore.preview",
-          { id: batch.id },
-          num(batch.version)
-        )
-      );
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "לא ניתן להכין שחזור");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function apply(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!preview) return;
-    setBusy(true);
-    setError("");
-    const choices = rows(preview.rows).flatMap((row) =>
+  function choices() {
+    return rows(preview?.rows).flatMap((row) =>
       rows(row.fields).flatMap((field) => {
         const choice = decisions[`${row.id}:${str(field.key)}`];
         return choice?.action
@@ -66,6 +53,47 @@ export function ImportRestore({
           : [];
       })
     );
+  }
+  async function prepare(withDecisions: boolean) {
+    setBusy(true);
+    setError("");
+    setConfirmed(false);
+    setPopulationConfirmed(false);
+    if (!withDecisions) {
+      setDecisions({});
+      setCreations({});
+    }
+    try {
+      setPreview(
+        await action(
+          "import.restore.preview",
+          { id: batch.id, decisions: withDecisions ? choices() : [] },
+          num(batch.version)
+        )
+      );
+      setImpactStale(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "לא ניתן להכין שחזור");
+    } finally {
+      setBusy(false);
+    }
+  }
+  function decide(
+    key: string,
+    source: unknown,
+    choice: { action: string; value?: string }
+  ) {
+    setDecisions((current) => ({ ...current, [key]: choice }));
+    if (source === "person") {
+      setImpactStale(true);
+      setPopulationConfirmed(false);
+    }
+  }
+  async function apply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!preview) return;
+    setBusy(true);
+    setError("");
     try {
       onChange(
         await action(
@@ -75,7 +103,8 @@ export function ImportRestore({
             token: preview.token,
             reason,
             confirmed,
-            decisions: choices,
+            populationImpactConfirmed: populationConfirmed,
+            decisions: choices(),
             creations: Object.entries(creations)
               .filter(([, choice]) => choice === "keep")
               .map(([rowId]) => ({ rowId, action: "keep" })),
@@ -104,13 +133,14 @@ export function ImportRestore({
     fieldCount > 0 ||
     created.some((row) => creationStatus(row) !== "activity") ||
     Object.values(creations).includes("keep");
+  const hasPopulationMove = planned.some((row) => row.populationImpact);
   return (
     <div className="import-restore">
       <button
         type="button"
         className="btn secondary"
         disabled={busy}
-        onClick={prepare}
+        onClick={() => prepare(false)}
       >
         בדיקת שחזור הייבוא
       </button>
@@ -123,7 +153,9 @@ export function ImportRestore({
               <Notice>
                 שדות שלא השתנו ניתנים לשחזור. לכל התנגשות נדרשת הכרעה נפרדת.
                 תורנויות ופעולות ניקוד מאוחרות נשמרות; השחזור מוסיף פעולה
-                מתועדת.
+                מתועדת. שחזור שמזיז אוכלוסיית שיבוץ מציג את השיבוצים שיסומנו
+                ״דורש טיפול״ ודורש אישור נפרד. התנגשות שטרם הוכרעה נחשבת בינתיים
+                כהשארת הערך הנוכחי.
               </Notice>
             </div>
           )}
@@ -308,16 +340,13 @@ export function ImportRestore({
                                       required
                                       disabled={busy}
                                       onChange={(event) =>
-                                        setDecisions((current) => ({
-                                          ...current,
-                                          [choiceKey]: {
-                                            action: event.target.value,
-                                            value:
-                                              field.source === "score"
-                                                ? str(field.current)
-                                                : undefined,
-                                          },
-                                        }))
+                                        decide(choiceKey, field.source, {
+                                          action: event.target.value,
+                                          value:
+                                            field.source === "score"
+                                              ? str(field.current)
+                                              : undefined,
+                                        })
                                       }
                                     >
                                       {conflict && (
@@ -370,8 +399,40 @@ export function ImportRestore({
                     </tbody>
                   </table>
                 </div>
+                {row.populationImpact && !impactStale ? (
+                  <div
+                    className="stack"
+                    role="region"
+                    aria-label={`מעבר אוכלוסייה בשחזור — ${str(row.name)}`}
+                  >
+                    <h4>השחזור מזיז את אוכלוסיית השיבוץ</h4>
+                    <PopulationChange change={row.populationImpact} />
+                    <AffectedAssignments
+                      impact={rows(obj(row.populationImpact).impact)}
+                      empty="המעבר אינו משנה את ההתאמה של שיבוצים קיימים."
+                    />
+                  </div>
+                ) : null}
               </section>
             ))}
+          {impactStale && (
+            <div className="full stack">
+              <Notice tone="warning">
+                ההכרעות בשדות הפרופיל השתנו. יש לחשב מחדש את השפעת השחזור על
+                אוכלוסיית השיבוץ ועל השיבוצים לפני האישור.
+              </Notice>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={busy}
+                  onClick={() => prepare(true)}
+                >
+                  חישוב השפעה לפי ההכרעות
+                </button>
+              </div>
+            </div>
+          )}
           {actionable || !created.length ? (
             <>
               <label className="field full">
@@ -384,6 +445,20 @@ export function ImportRestore({
                   disabled={busy}
                 />
               </label>
+              {hasPopulationMove && !impactStale && (
+                <label className="check-field full">
+                  <input
+                    type="checkbox"
+                    checked={populationConfirmed}
+                    onChange={(event) =>
+                      setPopulationConfirmed(event.target.checked)
+                    }
+                    disabled={busy}
+                  />
+                  בדקתי את מעברי האוכלוסייה ואת השיבוצים שיסומנו ״דורש טיפול״,
+                  ומאשר/ת אותם
+                </label>
+              )}
               <label className="check-field full">
                 <input
                   type="checkbox"
@@ -394,7 +469,15 @@ export function ImportRestore({
                 בדקתי את השדות ואת ההחלטות ומאשר/ת את השחזור
               </label>
               <div className="form-actions full">
-                <button className="btn primary" disabled={busy || !confirmed}>
+                <button
+                  className="btn primary"
+                  disabled={
+                    busy ||
+                    !confirmed ||
+                    impactStale ||
+                    (hasPopulationMove && !populationConfirmed)
+                  }
+                >
                   אישור השחזור
                 </button>
               </div>
