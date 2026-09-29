@@ -1,6 +1,6 @@
 # הפעלה ב־Ubuntu עם Docker ו־Cloudflare Tunnel
 
-29.09.2026 · כרטיס [#24](https://github.com/ItayBar1/fair-shifts/issues/24) (FS-25) · הכרעה 165 ב[יומן ההכרעות](open-decisions.md).
+29.09.2026 · כרטיס [#24](https://github.com/ItayBar1/fair-shifts/issues/24) (FS-25) · הכרעה 167 ב[יומן ההכרעות](open-decisions.md).
 
 המסמך מתאר את תצורת ההפעלה שבמאגר ואת אופן השימוש בה. זו אינה פריסה: לא הוקם שרת, לא חובר Tunnel אמיתי ולא נוצרו חשבונות ספקים. הקמת staging סינתטי שייכת לכרטיס [#25](https://github.com/ItayBar1/fair-shifts/issues/25), פריסה אוטומטית ל־[#36](https://github.com/ItayBar1/fair-shifts/issues/36) וגיבוי ל־[#27](https://github.com/ItayBar1/fair-shifts/issues/27). שימוש בנתוני אמת מותר רק אחרי שער הפיילוט שבאפיון.
 
