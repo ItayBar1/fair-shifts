@@ -11,7 +11,7 @@ import {
   unlockAccount,
   type Actor,
 } from "./auth/accounts";
-import { currentVersion } from "./repository";
+import { currentVersion, technical } from "./repository";
 import { invariant, AppError } from "./errors";
 import { previewSoldierUpdate, saveSoldier } from "./people";
 import {
@@ -373,6 +373,8 @@ export async function executeAction(actor: Actor, value: unknown) {
         const input = z
           .object({ id: z.string(), role: z.enum(["soldier", "manager"]) })
           .parse(payload);
+        // Permission first, so a refused caller learns nothing about the account.
+        technical(actor);
         const [target] = await tx
           .select()
           .from(user)
@@ -403,12 +405,26 @@ export async function executeAction(actor: Actor, value: unknown) {
       }
       case "account.unlock": {
         const targetId = z.string().parse(payload.id);
+        invariant(
+          actor.role !== "soldier",
+          "FORBIDDEN",
+          "אין הרשאה לשחרר חשבון זה",
+          403
+        );
         const [target] = await tx
           .select()
           .from(user)
           .where(eq(user.id, targetId))
           .for("update");
         invariant(target, "not_found", "חשבון לא נמצא", 404);
+        invariant(
+          target.role === "soldier"
+            ? actor.role === "manager"
+            : target.role === "manager" && actor.role === "technical",
+          "FORBIDDEN",
+          "אין הרשאה לשחרר חשבון זה",
+          403
+        );
         currentVersion(target.securityEpoch, expectedVersion);
         await unlockAccount(actor, targetId, tx);
         result = { success: true };
