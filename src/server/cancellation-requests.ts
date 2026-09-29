@@ -97,7 +97,14 @@ async function notifySoldier(
   tx: DbTransaction,
   requestId: string,
   data: CancellationData,
-  input: { event: string; title: string; body: string; email: boolean }
+  input: {
+    event: string;
+    title: string;
+    body: string;
+    email: boolean;
+    /** The mail omits free-text reasons, which stay on the site (decision 177). */
+    emailBody?: string;
+  }
 ) {
   const [account] = await tx
     .select()
@@ -128,7 +135,7 @@ async function notifySoldier(
       eventKey: `cancellation:${requestId}:${input.event}:${account.id}`,
       kind: "transfer",
       title: input.title,
-      body: input.body,
+      body: input.emailBody ?? input.body,
       href: "/requests",
       priority: 1,
       expiresAt: new Date(Math.min(Date.now() + 86_400_000, endsAt)),
@@ -181,6 +188,10 @@ async function close(
     title,
     body,
     email: status !== "completed",
+    emailBody:
+      outcome === "rejected"
+        ? `הבקשה לתורנות ${data.dutyName} נדחתה, והשיבוץ שלך נשאר בתוקף. הסיבה מופיעה באתר.`
+        : `התורנות ${data.dutyName} כבר התחילה, והבקשה הופנתה לטיפול האחראי בביצוע בפועל. הפרטים באתר.`,
   });
   await audit(
     tx,
