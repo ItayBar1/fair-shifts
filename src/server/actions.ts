@@ -73,6 +73,13 @@ import {
   reviewTransfer,
   withdrawTransfer,
 } from "./transfers";
+import {
+  decideSwap,
+  offerSwap,
+  respondSwap,
+  reviewSwap,
+  withdrawSwap,
+} from "./swaps";
 import { requestBackup } from "./operations/backup";
 import {
   prepareCancellationChange,
@@ -307,6 +314,21 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "transfer.decide":
         result = await decideTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "swap.offer":
+        result = await offerSwap(tx, actor, payload, expectedVersion);
+        break;
+      case "swap.respond":
+        result = await respondSwap(tx, actor, payload, expectedVersion);
+        break;
+      case "swap.withdraw":
+        result = await withdrawSwap(tx, actor, payload, expectedVersion);
+        break;
+      case "swap.review":
+        result = await reviewSwap(tx, actor, payload, expectedVersion);
+        break;
+      case "swap.decide":
+        result = await decideSwap(tx, actor, payload, expectedVersion);
         break;
       case "cancellation.submit":
         result = await submitCancellationRequest(
