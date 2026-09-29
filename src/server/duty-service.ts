@@ -29,6 +29,11 @@ import { enqueueEmail } from "./operations/email";
 const priceValue = z
   .union([z.number().finite().nonnegative(), z.string().regex(/^\d+(\.\d+)?$/)])
   .transform(String);
+/** An optional amount; an empty or zero value means none is saved. */
+export const optionalPrice = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  priceValue.optional()
+);
 const rankClause = z
   .object({
     trackId: text,
@@ -48,7 +53,7 @@ const rankClause = z
       ),
     "נדרש תנאי דרגה תקין בתוך מסלול"
   );
-const requirementsInput = z.object({
+export const requirementsInput = z.object({
   populations: z.array(population).min(1).optional(),
   ranks: z.array(rankClause).optional(),
   qualificationIds: z.array(id).optional(),
@@ -80,6 +85,7 @@ const catalogInput = z.object({
   pricing: z.object({
     mode: z.enum(["fixed", "daily"]),
     base: priceValue,
+    callUp: optionalPrice,
     supplements: z
       .array(
         z.object({
@@ -96,51 +102,13 @@ const catalogInput = z.object({
       .default([]),
   }),
 });
-export async function saveDutyType(
+/** Rank, qualification, exemption and capability conditions must name existing catalog entries. */
+export async function assertRequirementReferences(
   tx: DbTransaction,
-  actor: Actor,
-  payload: unknown,
-  expectedVersion?: number
+  conditions: Requirements[]
 ) {
-  manager(actor);
-  const input = catalogInput.parse(payload);
-  const pricing: Pricing = {
-    mode: input.pricing.mode,
-    basePoints: input.pricing.base,
-    surcharges: input.pricing.supplements.map((item) => ({
-      id: item.id,
-      name: item.name,
-      points: item.points,
-      window: {
-        startTime: item.windowStart,
-        endTime: item.windowEnd,
-        weekdays: item.weekdays?.map((day) => day || 7),
-      },
-      frequency: item.recurrence === "once" ? "once" : "per_window",
-      threshold: item.minimumHours
-        ? { kind: "minimum_hours", hours: String(item.minimumHours) }
-        : { kind: "any_overlap" },
-    })),
-  };
-  // Validate window syntax, thresholds, decimal values and the supported integer range.
-  calculatePrice(
-    pricing,
-    "2026-01-01T00:00:00+02:00",
-    "2026-01-02T00:00:00+02:00"
-  );
-  const requirements: Requirements = {
-    populations: input.populations,
-    ranks: input.ranks,
-    qualificationIds: input.qualificationIds,
-    blockingExemptionIds: input.exemptionIds,
-    genders: input.genders,
-    capabilityIds: input.capabilityIds,
-  };
   const catalog = await tx.select().from(records);
-  for (const condition of [
-    requirements,
-    ...input.roles.map((role) => role.requirements ?? {}),
-  ]) {
+  for (const condition of conditions) {
     for (const clause of condition.ranks ?? []) {
       const track = catalog.filter(
         (row) =>
@@ -171,6 +139,54 @@ export async function saveDutyType(
           "תנאי הכשירות, הפטור או היכולת אינו קיים בקטלוג"
         );
   }
+}
+export async function saveDutyType(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const input = catalogInput.parse(payload);
+  const pricing: Pricing = {
+    mode: input.pricing.mode,
+    basePoints: input.pricing.base,
+    ...(input.pricing.callUp && Number(input.pricing.callUp) > 0
+      ? { callUpPoints: input.pricing.callUp }
+      : {}),
+    surcharges: input.pricing.supplements.map((item) => ({
+      id: item.id,
+      name: item.name,
+      points: item.points,
+      window: {
+        startTime: item.windowStart,
+        endTime: item.windowEnd,
+        weekdays: item.weekdays?.map((day) => day || 7),
+      },
+      frequency: item.recurrence === "once" ? "once" : "per_window",
+      threshold: item.minimumHours
+        ? { kind: "minimum_hours", hours: String(item.minimumHours) }
+        : { kind: "any_overlap" },
+    })),
+  };
+  // Validate window syntax, thresholds, decimal values and the supported integer range.
+  calculatePrice(
+    pricing,
+    "2026-01-01T00:00:00+02:00",
+    "2026-01-02T00:00:00+02:00"
+  );
+  const requirements: Requirements = {
+    populations: input.populations,
+    ranks: input.ranks,
+    qualificationIds: input.qualificationIds,
+    blockingExemptionIds: input.exemptionIds,
+    genders: input.genders,
+    capabilityIds: input.capabilityIds,
+  };
+  await assertRequirementReferences(tx, [
+    requirements,
+    ...input.roles.map((role) => role.requirements ?? {}),
+  ]);
   const data = { ...input, pricing, uiPricing: input.pricing, requirements };
   if (input.id) {
     const [existing] = await tx

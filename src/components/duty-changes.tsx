@@ -14,6 +14,12 @@ import {
   displayDate,
 } from "@/client/types";
 import { ActionDialog, Form, Modal, Notice, Panel, type Field } from "./ui";
+import { callUpFields, callUpValue } from "./call-up";
+import {
+  CompositionEditor,
+  describeComposition,
+  describePricing,
+} from "./instance-composition";
 
 export function CatalogImpact({
   state,
@@ -156,6 +162,7 @@ function ChangeEditor({
 }) {
   const draft = duty.status === "draft";
   const [editing, setEditing] = useState(false);
+  const [editingRules, setEditingRules] = useState(false);
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [reviewPending, setReviewPending] = useState(false);
   const proposed = obj(change.proposed);
@@ -217,14 +224,14 @@ function ChangeEditor({
               .map((person) => ({ value: person.id, label: str(person.name) })),
           ],
         },
-        {
-          name: `extra${index}`,
-          label: `תוספת אישית למקום ${index + 1}`,
-          type: "number",
-          min: 0,
-          step: "0.01",
-          value: num(seat?.extraPoints),
-        },
+        ...callUpFields(
+          { id: str(change.id), pricing: proposed.pricing },
+          {
+            prefix: `seat${index}`,
+            label: `הזנקה במקום ${index + 1}`,
+            current: seat?.extraPoints,
+          }
+        ),
       ];
     }),
   ];
@@ -271,6 +278,12 @@ function ChangeEditor({
           <button className="btn secondary" onClick={() => setEditing(true)}>
             עריכת ההצעה והשיבוצים
           </button>
+          <button
+            className="btn secondary"
+            onClick={() => setEditingRules(true)}
+          >
+            עריכת הרכב ותמחור למופע
+          </button>
           <Form
             fields={[
               {
@@ -301,6 +314,20 @@ function ChangeEditor({
         payload={{ id: change.id }}
         version={change.version}
       />
+      {editingRules && (
+        <Modal
+          title="הרכב ותמחור למופע זה"
+          wide
+          onClose={() => setEditingRules(false)}
+        >
+          <CompositionEditor
+            state={state}
+            action={action}
+            change={change}
+            onDone={() => setEditingRules(false)}
+          />
+        </Modal>
+      )}
       {editing && (
         <Modal title="עריכת הצעת שינוי" wide onClose={() => setEditing(false)}>
           <Form
@@ -318,7 +345,7 @@ function ChangeEditor({
                       values[`soldier${index}`] === "vacant"
                         ? null
                         : values[`soldier${index}`],
-                    extraPoints: values[`extra${index}`],
+                    extraPoints: callUpValue(values, `seat${index}`),
                   })),
                 },
                 change.version
@@ -369,20 +396,15 @@ function ChangeEditor({
                   <th>הרכב</th>
                   {[preview.before, preview.after].map((snapshot, index) => (
                     <td key={index}>
-                      {rows(obj(snapshot).slots)
-                        .map((slot) => str(slot.role))
-                        .join(", ")}
+                      {describeComposition(obj(snapshot).slots)}
                     </td>
                   ))}
                 </tr>
                 <tr>
-                  <th>תעריף בסיס</th>
+                  <th>תמחור</th>
                   {[preview.before, preview.after].map((snapshot, index) => (
                     <td key={index}>
-                      {str(obj(obj(snapshot).pricing).basePoints)}{" "}
-                      {obj(obj(snapshot).pricing).mode === "daily"
-                        ? "ל־24 שעות"
-                        : "לביצוע"}
+                      {describePricing(obj(obj(snapshot).pricing) as Row)}
                     </td>
                   ))}
                 </tr>
@@ -411,6 +433,55 @@ function ChangeEditor({
               </tbody>
             </table>
           </div>
+          <h3>פירוט הניקוד לכל מקום</h3>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>מקום</th>
+                  <th>בסיס</th>
+                  <th>תוספות זמן</th>
+                  <th>הזנקה</th>
+                  <th>סכום מדויק</th>
+                  <th>ניקוד</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows(preview.seatPrices).map((seat) => {
+                  const price = obj(seat.price);
+                  const surcharges = rows(
+                    obj(obj(preview.after).pricing).surcharges
+                  );
+                  return (
+                    <tr key={str(seat.slotId)}>
+                      <th>
+                        {str(seat.role)} ·{" "}
+                        {seat.soldierId
+                          ? personName(state, seat.soldierId)
+                          : "פנוי"}
+                      </th>
+                      <td>{str(price.base)}</td>
+                      <td>
+                        {rows(price.surcharges)
+                          .filter((item) => num(item.count))
+                          .map(
+                            (item) =>
+                              `${str(surcharges.find((rule) => rule.id === item.id)?.name, "תוספת")}: ${num(item.count)} ${num(item.count) === 1 ? "חלון" : "חלונות"} = ${str(item.subtotal)}`
+                          )
+                          .join("; ") || "—"}
+                      </td>
+                      <td>{str(price.extras)}</td>
+                      <td>{str(price.totalExact)}</td>
+                      <td>{num(price.points)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted">
+            הרכיבים מחוברים בדיוק ומעוגלים פעם אחת, חצי כלפי מעלה.
+          </p>
           {preview.pendingReviewRequired ? (
             <Notice tone="danger">
               יש לחזור ולאשר המשך לפני סקירת האילוצים הממתינים.
@@ -423,7 +494,7 @@ function ChangeEditor({
                 נקודות
               </h3>
               <p>
-                בסיס: {str(obj(check.price).base)} · תוספת אישית:{" "}
+                בסיס: {str(obj(check.price).base)} · הזנקה:{" "}
                 {str(obj(check.price).extras)}
               </p>
               {rows(obj(check.price).surcharges).map((bonus, index) => (
