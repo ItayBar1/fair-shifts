@@ -2,6 +2,7 @@ import {
   MAX_REMINDERS,
   MAX_REMINDER_HOURS,
   preferenceTypes,
+  technicalPreferenceTypes,
   type PreferenceType,
 } from "../domain/notification-preferences";
 
@@ -11,6 +12,7 @@ export const emailTypeLabels: Record<PreferenceType, string> = {
   roundClosing: "תזכורת לפני סגירת סבב, למי שלא הגיש",
   publication: "שיבוץ, שינוי או ביטול של תורנות שפורסמה",
   transfer: "החלפות והעברות של תורנויות",
+  operations: "תקלות תפעול, כמו גיבוי שנכשל",
 };
 
 type Row = Record<string, unknown>;
@@ -48,13 +50,32 @@ export function parseReminderHours(
   return { hours };
 }
 
-export function preferencesPayload(values: Row) {
+/** Types that are not shown in the form keep their current value. */
+export function preferencesPayload(
+  values: Row,
+  shown: readonly PreferenceType[] = preferenceTypes,
+  current: Row = {}
+) {
   const parsed = parseReminderHours(String(values.reminderHours ?? ""));
   if ("error" in parsed) throw new Error(parsed.error);
   return {
     reminderHours: parsed.hours,
     email: Object.fromEntries(
-      preferenceTypes.map((type) => [type, values[`email.${type}`] === true])
+      preferenceTypes.map((type) => [
+        type,
+        shown.includes(type)
+          ? values[`email.${type}`] === true
+          : current[type] !== false,
+      ])
     ),
   };
+}
+
+/** Operational alerts concern the technical account only. */
+export function shownPreferenceTypes(role: unknown) {
+  return role === "technical"
+    ? preferenceTypes
+    : preferenceTypes.filter(
+        (type) => !technicalPreferenceTypes.includes(type)
+      );
 }

@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { refreshRankReminders } from "./server/ranks";
 import { recordWorkerHeartbeat } from "./server/operations/health";
 import { refreshRoundNotices } from "./server/round-notices";
+import { runBackupCycle } from "./server/operations/backup";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 // The container health check reads this file's age (see compose.production.yaml).
@@ -41,6 +42,19 @@ await boss.work("unit-maintenance", async () => {
     const result = await deliverNextEmail();
     if (result.status === "idle" || result.status === "disabled") break;
   }
+});
+// Backups run in their own queue so a long dump never delays the minute's maintenance.
+// The run table, not the queue, decides whether a backup is due (decision 170).
+await boss.createQueue("backup", {
+  policy: "stately",
+  retryLimit: 0,
+  expireInSeconds: 2 * 3600,
+});
+await boss.schedule("backup", "* * * * *");
+await boss.work("backup", async () => {
+  const result = await runBackupCycle();
+  if (result.status === "failed" || result.status === "retry")
+    console.error("Backup run failed", result.code);
 });
 await boss.send("unit-maintenance");
 console.log("עובד Fair Shifts מוכן");

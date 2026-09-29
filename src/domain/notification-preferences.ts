@@ -11,6 +11,7 @@ export const preferenceTypes = [
   "roundClosing",
   "publication",
   "transfer",
+  "operations",
 ] as const;
 export type PreferenceType = (typeof preferenceTypes)[number];
 
@@ -34,6 +35,8 @@ export const preferencesSchema = z
         roundClosing: z.boolean(),
         publication: z.boolean(),
         transfer: z.boolean(),
+        // Added with decision 170; a form sent without it keeps the default.
+        operations: z.boolean().default(true),
       })
       .strict(),
   })
@@ -48,8 +51,14 @@ export const systemDefaults: Preferences = {
     roundClosing: true,
     publication: true,
     transfer: true,
+    operations: true,
   },
 };
+
+/** Operational alerts go to the technical account only (decision 170). */
+export const technicalPreferenceTypes: readonly PreferenceType[] = [
+  "operations",
+];
 
 /** Security and account emails are never subject to preferences. */
 export const mandatoryEmailKinds = [
@@ -64,6 +73,7 @@ const preferenceByKind = {
   publication: "publication",
   "publication-change": "publication",
   transfer: "transfer",
+  "backup-alert": "operations",
 } as const satisfies Record<string, PreferenceType>;
 export type EmailKind =
   (typeof mandatoryEmailKinds)[number] | keyof typeof preferenceByKind;
@@ -71,6 +81,7 @@ export type EmailKind =
 /** Types added after preferences were first stored (decision 163). */
 const newTypeDefaults: Partial<Preferences["email"]> = {
   transfer: systemDefaults.email.transfer,
+  operations: systemDefaults.email.operations,
 };
 
 export type PreferenceSource = "personal" | "unit" | "system";
