@@ -117,6 +117,8 @@ export interface Duty extends InstantRange {
   rulesVersion?: number;
   status: "draft" | "published" | "cancelled";
   wasPublished?: boolean;
+  /** First publication; duty reminders skip times that passed before it. */
+  publishedAt?: string;
   location?: string;
   instructions?: string;
   requirements: Requirements;

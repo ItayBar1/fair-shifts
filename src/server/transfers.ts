@@ -25,6 +25,7 @@ import type {
   Soldier,
 } from "../domain/types";
 import { enqueueEmail } from "./operations/email";
+import { cancelStaleDutyReminders } from "./duty-reminder-checks";
 
 // Consensual transfer of a published seat before it starts (decisions 108-109, 149, 163).
 type CandidateStatus = "pending" | "declined" | "accepted" | "closed";
@@ -542,6 +543,8 @@ export async function respondTransfer(
       updatedAt: new Date(),
     })
     .where(eq(duties.id, duty.id));
+  // The original soldier's queued reminders end here; the replacement gets their own.
+  await cancelStaleDutyReminders(tx, duty.id);
   const updated = await updateRecord(tx, row, {
     ...data,
     status: "completed",
