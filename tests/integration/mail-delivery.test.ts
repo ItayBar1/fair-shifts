@@ -462,3 +462,45 @@ describe("relevance and content", () => {
     expect("mail" in soldierView).toBe(false);
   });
 });
+
+describe("delay notice on the login page", () => {
+  const unknown = "not-registered@example.invalid";
+  it("tells every address the same thing, and only when codes cannot go out", async () => {
+    // Nothing is wrong: no notice for anyone.
+    expect(await requestCode(memberEmail)).toEqual({ success: true });
+    expect(await requestCode(unknown)).toEqual({ success: true });
+
+    // Mail is paused by an account problem at the provider.
+    await queue();
+    await deliverNextEmail(async () => {
+      throw new MailDeliveryError("configuration");
+    }, later(1000));
+    const paused = later(2 * 60_000);
+    const answers = [
+      await requestCode(memberEmail, paused),
+      await requestCode(unknown, paused),
+    ];
+    expect(answers).toEqual([
+      { success: true, mailDelayed: true },
+      { success: true, mailDelayed: true },
+    ]);
+    // After the pause ends the notice goes away.
+    expect(await requestCode(unknown, later(20 * 60_000))).toEqual({
+      success: true,
+    });
+  });
+
+  it("shows the notice once even the code reserve is spent, not before", async () => {
+    await setUsed(299);
+    expect(await requestCode(unknown)).toEqual({ success: true });
+    await setUsed(300);
+    expect(await requestCode(unknown)).toEqual({
+      success: true,
+      mailDelayed: true,
+    });
+    expect(await requestCode(memberEmail)).toEqual({
+      success: true,
+      mailDelayed: true,
+    });
+  });
+});

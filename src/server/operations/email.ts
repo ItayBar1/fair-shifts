@@ -491,6 +491,21 @@ export async function deliverNextEmail(
   }
 }
 
+/**
+ * Whether sign-in codes cannot go out right now: mail is paused, or even the code
+ * reserve is spent. It depends on the system only, never on an address, so the
+ * login page can show it without revealing which addresses are registered.
+ */
+export async function codeDeliveryDelayed(tx: Executor, now = new Date()) {
+  const state = await readMailState(tx);
+  if (state.pausedUntil && new Date(state.pausedUntil) > now) return true;
+  const [quota] = await tx
+    .select()
+    .from(emailQuota)
+    .where(eq(emailQuota.day, quotaDay(now)));
+  return !quotaAllows("login-code", quota?.used ?? 0);
+}
+
 export type MailFailure = {
   id: string;
   kind: string;

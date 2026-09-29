@@ -155,3 +155,31 @@ test("technical admin sees mail failures, the pause and the quota without person
     fullPage: true,
   });
 });
+
+test("the login page shows a general delay notice while codes cannot go out", async ({
+  browser,
+}) => {
+  // Pauses mail (a no-op if the previous test already paused it).
+  await queue("e2e:login-delay");
+  await deliverNextEmail(async () => {
+    throw new MailDeliveryError("configuration");
+  });
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+  const delay = page.getByText("משלוח המיילים מתעכב כרגע");
+  // The same notice for an unregistered and a registered address.
+  for (const email of ["nobody@example.invalid", recipientEmail]) {
+    await page.goto("/login");
+    await page.getByLabel("כתובת המייל המאושרת").fill(email);
+    await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
+    await expect(page.getByLabel("קוד כניסה", { exact: true })).toBeVisible();
+    await expect(delay).toBeVisible();
+  }
+  await page.screenshot({
+    path: "test-results/login-mail-delay-mobile.png",
+    fullPage: true,
+  });
+  await context.close();
+});
