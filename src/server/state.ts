@@ -3,10 +3,11 @@ import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
 import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
-import { emailOutbox, operationsState, user } from "./auth-schema";
+import { operationsState, user } from "./auth-schema";
 import { populationAt, rankAt, serviceSummary } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
+import { readMailStatus } from "./operations/email";
 import { projectRequests } from "./transfers";
 import { projectCancellationRequests } from "./cancellation-requests";
 import { effectivePreferences } from "./notifications";
@@ -88,29 +89,17 @@ export async function readState(actor: Actor) {
           version: user.securityEpoch,
         })
         .from(user);
-      const mail = await tx
-        .select({
-          id: emailOutbox.id,
-          kind: emailOutbox.kind,
-          status: emailOutbox.status,
-          attempts: emailOutbox.attempts,
-          error: emailOutbox.error,
-          createdAt: emailOutbox.createdAt,
-        })
-        .from(emailOutbox);
       const operations = await tx.select().from(operationsState);
       return {
         ...base,
         settings: await preferencesState(tx, actor),
         accounts,
-        // The worker heartbeat is presented through `health`.
-        operations: [
-          ...mail,
-          ...operations
-            .filter((row) => row.key !== "worker")
-            .map((row) => ({ id: row.key, ...row.data })),
-        ],
+        // The worker heartbeat and mail state are presented through `health` and `mail`.
+        operations: operations
+          .filter((row) => row.key !== "worker" && row.key !== "mail")
+          .map((row) => ({ id: row.key, ...row.data })),
         health: await readHealth(tx),
+        mail: await readMailStatus(tx),
       };
     }
     const state = await loadDomain(tx);
