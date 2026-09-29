@@ -10,6 +10,7 @@ export const emailTypeLabels: Record<PreferenceType, string> = {
   roundOpening: "פתיחת סבב אילוצים",
   roundClosing: "תזכורת לפני סגירת סבב, למי שלא הגיש",
   publication: "שיבוץ, שינוי או ביטול של תורנות שפורסמה",
+  transfer: "החלפות והעברות של תורנויות",
 };
 
 type Row = Record<string, unknown>;

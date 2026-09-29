@@ -5,6 +5,7 @@ import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
 import { populationAt, rankAt } from "../domain/eligibility";
+import { projectRequests } from "./transfers";
 import { effectivePreferences } from "./notifications";
 import { resolvePreferences } from "../domain/notification-preferences";
 import type { DbTransaction } from "./db";
@@ -207,6 +208,7 @@ export async function readState(actor: Actor) {
                 soldierId: row.soldierId,
                 status: row.status,
                 points: row.points,
+                version: row.version,
                 ...(row.performance && {
                   performance: {
                     performerId: row.performance.performerId,
@@ -228,7 +230,7 @@ export async function readState(actor: Actor) {
         : [],
       rounds: workflow("round"),
       constraints: managing ? workflow("constraint") : own("constraint"),
-      requests: managing ? workflow("request") : own("request"),
+      requests: projectRequests(workflows, actor, managing),
       // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
       notifications: workflows
         .filter(

@@ -64,6 +64,36 @@ describe("notification preferences", () => {
       preferencesSchema.safeParse({ ...valid, accountId: "other" }).success
     ).toBe(false);
   });
+  it("keeps a form saved before the transfer type existed and starts that type enabled", () => {
+    const legacy = {
+      custom: true,
+      reminderHours: [12],
+      email: {
+        dutyReminder: false,
+        roundOpening: true,
+        roundClosing: true,
+        publication: false,
+      },
+    };
+    expect(resolvePreferences(legacy, undefined)).toEqual({
+      preferences: {
+        reminderHours: [12],
+        email: { ...legacy.email, transfer: true },
+      },
+      source: "personal",
+    });
+    const { custom: _custom, ...unitLegacy } = legacy;
+    void _custom;
+    expect(
+      resolvePreferences(undefined, unitLegacy).preferences.email
+    ).toMatchObject({ publication: false, transfer: true });
+    expect(
+      resolvePreferences(
+        { ...legacy, email: { ...legacy.email, transfer: false } },
+        undefined
+      ).preferences.email.transfer
+    ).toBe(false);
+  });
   it("never withholds security email and checks each business type and reminder time", () => {
     const off: Preferences = {
       reminderHours: [2],
@@ -72,6 +102,7 @@ describe("notification preferences", () => {
         roundOpening: false,
         roundClosing: false,
         publication: false,
+        transfer: false,
       },
     };
     for (const kind of ["login-code", "invitation", "email-change"] as const)
@@ -81,6 +112,7 @@ describe("notification preferences", () => {
       "publication-change",
       "round-opening",
       "round-closing",
+      "transfer",
     ] as const) {
       expect(emailAllowed(off, kind)).toBe(false);
       expect(emailAllowed(systemDefaults, kind)).toBe(true);
@@ -120,6 +152,7 @@ describe("notification inbox helpers", () => {
         roundOpening: false,
         roundClosing: false,
         publication: false,
+        transfer: false,
       },
     });
   });
