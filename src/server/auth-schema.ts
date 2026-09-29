@@ -10,6 +10,7 @@ import {
   index,
   uniqueIndex,
   check,
+  bigint,
 } from "drizzle-orm/pg-core";
 const dates = () => ({
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -179,3 +180,49 @@ export const operationsState = pgTable("operations_state", {
     .notNull()
     .defaultNow(),
 });
+// One row per backup run: a daily key per Israel date, or a manual request.
+export const backupRun = pgTable(
+  "backup_run",
+  {
+    id: uuid("id").primaryKey(),
+    key: text("key").notNull().unique(),
+    trigger: text("trigger").notNull(),
+    requestedBy: text("requested_by").references(() => user.id),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseUntil: timestamp("lease_until", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    fileName: text("file_name"),
+    storageKind: text("storage_kind"),
+    storageId: text("storage_id"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    sha256: text("sha256"),
+    freeBytes: bigint("free_bytes", { mode: "number" }),
+    // A safe failure category only; provider responses are never stored.
+    errorCode: text("error_code"),
+    alertedAt: timestamp("alerted_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deleteReason: text("delete_reason"),
+    ...dates(),
+  },
+  (t) => [
+    check("backup_trigger", sql`${t.trigger} in ('daily','manual')`),
+    check(
+      "backup_status",
+      sql`${t.status} in ('pending','running','verified','failed','deleted')`
+    ),
+    check(
+      "backup_delete_reason",
+      sql`${t.deleteReason} is null or ${t.deleteReason} in ('retention','space')`
+    ),
+    // At most one run waits or runs at a time, whatever triggered it.
+    uniqueIndex("backup_one_active")
+      .on(sql`(true)`)
+      .where(sql`${t.status} in ('pending','running')`),
+    index("backup_status_finished").on(t.status, t.finishedAt),
+  ]
+);
