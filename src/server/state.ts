@@ -56,6 +56,7 @@ export async function readState(actor: Actor) {
       duties: [],
       assignments: [],
       rounds: [],
+      roundNotices: [],
       constraints: [],
       requests: [],
       ledger: [],
@@ -235,6 +236,8 @@ export async function readState(actor: Actor) {
           }))
         : [],
       rounds: workflow("round"),
+      // Delivery bookkeeping (who was reached) is operational: managers only.
+      roundNotices: managing ? workflow("round_notice") : [],
       constraints: managing ? workflow("constraint") : own("constraint"),
       requests: projectRequests(workflows, actor, managing),
       // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
