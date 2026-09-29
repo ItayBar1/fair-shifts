@@ -13,6 +13,7 @@ import { backupState } from "./operations/backup";
 import { projectRequests } from "./transfers";
 import { projectSwaps } from "./swaps";
 import { projectCancellationRequests } from "./cancellation-requests";
+import { projectPlanning } from "./planning";
 import { effectivePreferences } from "./notifications";
 import { resolvePreferences } from "../domain/notification-preferences";
 import type { DbTransaction } from "./db";
@@ -345,8 +346,9 @@ export async function readState(actor: Actor) {
       rankRules: managing ? workflow("rank_rule") : [],
       rankReminders: managing ? workflow("rank_reminder") : [],
       departures: managing ? workflow("departure") : [],
-      lotteryAttempts: managing ? workflow("lottery_attempt") : [],
-      planningRuns: managing ? workflow("planning_run") : [],
+      ...(managing
+        ? projectPlanning(state, workflows)
+        : { lotteryAttempts: [], planningRuns: [] }),
       dutyChanges: managing ? workflow("duty_change") : [],
       performanceCorrections: managing
         ? workflow("performance_correction")
