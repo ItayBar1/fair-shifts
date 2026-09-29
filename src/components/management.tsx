@@ -42,6 +42,7 @@ import {
 import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
 import { AddPeriod, PersonnelHistory, ProfileEdit } from "./personnel-history";
+import { AuditLink } from "./audit";
 import {
   ConditionToggles,
   ConditionsSummary,
@@ -349,6 +350,7 @@ export function SoldiersView({
             <span className="muted">
               מספר אישי {str(selected.personalNumber)}
             </span>
+            <AuditLink id={selected.id} label="יומן הפעולות של החייל" />
           </div>
           <ServiceDates person={selected} />
           <ProfileEdit

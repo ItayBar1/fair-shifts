@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { projectAudit, technicalScope, type AuditAccount } from "./audit-log";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
 import { loadDomain } from "./repository";
@@ -26,6 +27,17 @@ function unitDefaults(workflows: (typeof records.$inferSelect)[]) {
     ...resolvePreferences(null, row?.data).preferences,
     version: row?.version,
   };
+}
+
+async function auditAccountsOf(tx: DbTransaction): Promise<AuditAccount[]> {
+  return tx
+    .select({
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      soldierId: user.soldierId,
+    })
+    .from(user);
 }
 
 export async function readState(actor: Actor) {
@@ -98,10 +110,26 @@ export async function readState(actor: Actor) {
         })
         .from(emailOutbox);
       const operations = await tx.select().from(operationsState);
+      const auditAccounts = await auditAccountsOf(tx);
       return {
         ...base,
         settings: await preferencesState(tx, actor),
         accounts,
+        // Account operations within technical authority; no soldier data is resolved.
+        audit: projectAudit(
+          {
+            workflows: await tx
+              .select()
+              .from(records)
+              .where(eq(records.kind, "audit")),
+            soldiers: [],
+            duties: [],
+            dutyTypes: [],
+            assignments: [],
+            accounts: auditAccounts,
+          },
+          technicalScope(auditAccounts)
+        ),
         // The worker heartbeat is presented through `health`.
         operations: [
           ...mail,
@@ -270,7 +298,16 @@ export async function readState(actor: Actor) {
               effectiveAt: row.effectiveAt,
               kind: row.kind,
             })),
-      audit: managing ? workflow("audit") : [],
+      audit: managing
+        ? projectAudit({
+            workflows,
+            soldiers: state.soldiers,
+            duties: state.duties,
+            dutyTypes: catalog,
+            assignments: state.assignments,
+            accounts: await auditAccountsOf(tx),
+          })
+        : [],
       imports: managing ? workflow("import") : [],
       accounts: managing
         ? await tx

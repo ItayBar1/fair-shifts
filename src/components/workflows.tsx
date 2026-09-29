@@ -30,6 +30,8 @@ import {
   type Field,
 } from "./ui";
 import { TransferRequests } from "./transfers";
+import { AuditLink, ledgerSource } from "./audit";
+import { effectiveDiffers } from "@/domain/time";
 type Props = { state: AppState; action: Action };
 const building = (
   <Notice>
@@ -293,9 +295,11 @@ export function ScoresView({ state, action }: Props) {
                 <tr>
                   <th>חייל</th>
                   <th>מועד תחולה</th>
+                  <th>נרשם</th>
                   <th>שינוי</th>
                   <th>יתרה</th>
                   <th>סיבה</th>
+                  <th>תיעוד</th>
                 </tr>
               </thead>
               <tbody>
@@ -303,9 +307,24 @@ export function ScoresView({ state, action }: Props) {
                   <tr key={row.id}>
                     <td>{personName(state, row.soldierId)}</td>
                     <td>{displayDate(row.effectiveAt, true)}</td>
+                    <td>
+                      {effectiveDiffers(
+                        str(row.effectiveAt),
+                        str(row.recordedAt)
+                      )
+                        ? displayDate(row.recordedAt, true)
+                        : "באותו מועד"}
+                    </td>
                     <td>{num(row.amount)}</td>
                     <td>{num(row.after)}</td>
                     <td>{str(row.reason)}</td>
+                    <td>
+                      {ledgerSource(row) ? (
+                        <AuditLink id={ledgerSource(row)} />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -319,36 +338,7 @@ export function ScoresView({ state, action }: Props) {
   );
 }
 export { ImportsView } from "./imports";
-export function AuditView({ state }: { state: AppState }) {
-  return (
-    <Panel title="יומן פעולות">
-      {state.audit.length ? (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>מבצע</th>
-                <th>פעולה</th>
-                <th>רשומה</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.audit.map((row) => (
-                <tr key={row.id}>
-                  <td>{str(row.actorName)}</td>
-                  <td>{str(row.action)}</td>
-                  <td dir="ltr">{str(row.targetId)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Empty title="אין פעולות להצגה" />
-      )}
-    </Panel>
-  );
-}
+export { AuditView } from "./audit";
 export function TechnicalView({
   state,
   action,

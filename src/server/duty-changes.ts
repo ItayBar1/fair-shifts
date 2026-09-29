@@ -445,7 +445,7 @@ async function applyDutyChange(
     "approval_required",
     "נדרש אישור נפרד לכל חריג בהצעה החדשה"
   );
-  await createRecord(tx, "duty_revision", {
+  const revision = await createRecord(tx, "duty_revision", {
     dutyId: live.id,
     duty: live.data,
     assignmentIds: original.map((item) => item.id),
@@ -558,6 +558,8 @@ async function applyDutyChange(
     {
       changeId: row.id,
       version: live.version + 1,
+      previousVersion: live.version,
+      recordId: revision.id,
     }
   );
   return { id: closed.id, version: closed.version, dutyId: live.id };
@@ -636,7 +638,7 @@ export async function cancelDuty(
     "נדרש טיפול בביצוע לפני ביטול זה"
   );
   const version = live.version + 1;
-  await createRecord(tx, "duty_revision", {
+  const revision = await createRecord(tx, "duty_revision", {
     dutyId: live.id,
     duty: live.data,
     assignmentIds: original.map((item) => item.id),
@@ -708,8 +710,9 @@ export async function cancelDuty(
     }
   }
   await audit(tx, actor, "duty.cancel", live.id, {
-    reason: input.reason,
     version,
+    previousVersion: live.version,
+    recordId: revision.id,
   });
   return { id: live.id, version };
 }

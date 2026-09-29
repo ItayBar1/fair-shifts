@@ -1528,3 +1528,56 @@ tbody tr:last-child td {
   gap: 6px;
   overflow-wrap: anywhere;
 }
+.audit-search {
+  margin-bottom: 16px;
+  max-width: 420px;
+  color: var(--muted);
+}
+.audit-list {
+  display: grid;
+}
+.audit-entry {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.audit-entry:last-child {
+  border-bottom: 0;
+}
+.audit-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.audit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.audit-meta div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.audit-meta dt {
+  color: var(--muted);
+}
+.audit-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.audit-changes {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.audit-reason {
+  margin: 10px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.audit-reason span {
+  color: var(--muted);
+}
