@@ -463,6 +463,14 @@ export async function getImport(
             name: person.name,
             erased: true,
             changes: [],
+            ...(row.data.newRowRestored
+              ? {
+                  newRowRestored: {
+                    action: (row.data.newRowRestored as { action: string })
+                      .action,
+                  },
+                }
+              : {}),
           },
         }
       : row;

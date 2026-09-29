@@ -79,6 +79,14 @@ test("cancels a new soldier without activity and waits for a decision on one who
     3,
   ]);
   sheet.addRow(["000312", "קליטה שנכנסה", activeEmail, "0500000312", null, 4]);
+  sheet.addRow([
+    "000313",
+    "קליטה שנמחקה",
+    "restore-erased@example.invalid",
+    null,
+    null,
+    0,
+  ]);
   await page.getByLabel("קובץ XLSX").setInputFiles({
     name: "new-soldiers.xlsx",
     mimeType:
@@ -101,6 +109,11 @@ test("cancels a new soldier without activity and waits for a decision on one who
   const soldierContext = await browser.newContext();
   await login(await soldierContext.newPage(), activeEmail);
   await soldierContext.close();
+  // The third soldier was erased in the deletion flow (synthetic stand-in).
+  await db
+    .update(soldiers)
+    .set({ deletedAt: new Date() })
+    .where(eq(soldiers.personalNumber, "000313"));
 
   await page
     .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
@@ -111,6 +124,11 @@ test("cancels a new soldier without activity and waits for a decision on one who
   await expect(quiet.getByText("הקליטה תבוטל", { exact: true })).toBeVisible();
   await expect(active.getByText("יש פעילות", { exact: true })).toBeVisible();
   await expect(active.getByText("כניסה לחשבון")).toBeVisible();
+  await expect(
+    creations
+      .getByRole("row", { name: /קליטה שנמחקה/ })
+      .getByText("נמחק במסלול המחיקה", { exact: true })
+  ).toBeVisible();
   await page.getByLabel("סיבת השחזור וההכרעות").fill("קובץ שגוי");
   await page.getByLabel("בדקתי את השדות ואת ההחלטות ומאשר/ת את השחזור").check();
   await page
@@ -131,6 +149,7 @@ test("cancels a new soldier without activity and waits for a decision on one who
   await page.getByRole("button", { name: "אישור השחזור", exact: true }).click();
   await expect(page.getByText(/השחזור בוצע בחלקו/)).toBeVisible();
   await expect(page.getByText(/הקליטה בוטלה בשחזור/)).toBeVisible();
+  await expect(page.getByText(/נמחק במסלול המחיקה; השורה נסגרה/)).toBeVisible();
   const partial = await (await page.request.get("/api/v1/state")).json();
   const numbers = partial.soldiers.map(
     (person: { personalNumber: string }) => person.personalNumber
@@ -146,10 +165,36 @@ test("cancels a new soldier without activity and waits for a decision on one who
       .getByRole("region", { name: "קליטות חדשות באצווה" })
       .getByRole("row", { name: /קליטה ללא פעילות/ })
   ).toHaveCount(0);
-  await page.getByLabel("החלטה עבור קליטת קליטה שנכנסה").selectOption("keep");
-  await page.getByLabel("סיבת השחזור וההכרעות").fill("החייל כבר פעיל");
-  await page.getByLabel("בדקתי את השדות ואת ההחלטות ומאשר/ת את השחזור").check();
-  await page.getByRole("button", { name: "אישור השחזור", exact: true }).click();
+  const keep = async () => {
+    await page.getByLabel("החלטה עבור קליטת קליטה שנכנסה").selectOption("keep");
+    await page.getByLabel("סיבת השחזור וההכרעות").fill("החייל כבר פעיל");
+    await page
+      .getByLabel("בדקתי את השדות ואת ההחלטות ומאשר/ת את השחזור")
+      .check();
+    await page
+      .getByRole("button", { name: "אישור השחזור", exact: true })
+      .click();
+  };
+  // A change between the check and the approval makes the check stale.
+  const [activePerson] = await db
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.personalNumber, "000312"));
+  await db
+    .update(soldierContacts)
+    .set({ phone: "0500000399" })
+    .where(eq(soldierContacts.soldierId, activePerson.id));
+  await keep();
+  await expect(page.getByText(/נתונים השתנו מאז תצוגת השחזור/)).toBeVisible();
+  await page
+    .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("region", { name: "קליטות חדשות באצווה" })
+      .getByText(/עריכה בפרטי הקשר/)
+  ).toBeVisible();
+  await keep();
   await expect(page.getByText(/שחזור הייבוא הושלם/)).toBeVisible();
   await expect(page.getByText(/החייל נשאר במערכת בהכרעת שחזור/)).toBeVisible();
   const [kept] = await db

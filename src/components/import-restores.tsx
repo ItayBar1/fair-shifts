@@ -118,12 +118,15 @@ export function ImportRestore({
       {preview && (
         <form onSubmit={apply} className="form-grid">
           <h3 className="full">בדיקת שחזור — לפי השינויים מאז הייבוא</h3>
-          <div className="full">
-            <Notice>
-              שדות שלא השתנו ניתנים לשחזור. לכל התנגשות נדרשת הכרעה נפרדת.
-              תורנויות ופעולות ניקוד מאוחרות נשמרות; השחזור מוסיף פעולה מתועדת.
-            </Notice>
-          </div>
+          {fieldCount > 0 && (
+            <div className="full">
+              <Notice>
+                שדות שלא השתנו ניתנים לשחזור. לכל התנגשות נדרשת הכרעה נפרדת.
+                תורנויות ופעולות ניקוד מאוחרות נשמרות; השחזור מוסיף פעולה
+                מתועדת.
+              </Notice>
+            </div>
+          )}
           {created.length > 0 && (
             <section
               className="full"
