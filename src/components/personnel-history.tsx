@@ -8,6 +8,7 @@ import {
   rows,
   str,
   displayDate,
+  population,
 } from "@/client/types";
 import { Badge, Form, Modal, Notice, type Field } from "./ui";
 import type { ReactNode } from "react";
@@ -225,7 +226,7 @@ function TimelineEdit({
     </Modal>
   );
 }
-function ImpactList({
+export function ImpactList({
   impact,
   empty = "אין שיבוצים פעילים שהושפעו.",
 }: {
@@ -239,7 +240,8 @@ function ImpactList({
         {str(item.dutyName)}
       </Link>
       <p>
-        {displayDate(item.start, true)} ·{" "}
+        {displayDate(item.start, true)}
+        {item.end ? <> — {displayDate(item.end, true)}</> : null} ·{" "}
         <Badge tone={item.after === "eligible" ? "neutral" : "warning"}>
           {item.after === "eligible" ? "מתאים" : "דורש טיפול"}
         </Badge>
@@ -252,15 +254,65 @@ function ImpactList({
     </div>
   ));
 }
+function Timeline({ segments }: { segments: Row[] }) {
+  return (
+    <ul>
+      {segments.map((segment, index) => (
+        <li key={index}>
+          <strong>{population(segment.population)}</strong>{" "}
+          {segment.from ? `מ־${displayDate(segment.from)}` : "מתחילת השירות"}
+        </li>
+      ))}
+    </ul>
+  );
+}
+/** The population timeline before and after a proposed change, side by side. */
+export function PopulationChange({ change }: { change: unknown }) {
+  const value = change as { before?: unknown; after?: unknown } | undefined;
+  return (
+    <div className="population-change">
+      <div>
+        <span className="muted">לפני השינוי</span>
+        <Timeline segments={rows(value?.before)} />
+      </div>
+      <div>
+        <span className="muted">אחרי השינוי</span>
+        <Timeline segments={rows(value?.after)} />
+      </div>
+    </div>
+  );
+}
+/** Only the assignments whose eligibility changes, with a count of the rest. */
+export function AffectedAssignments({
+  impact,
+  empty,
+}: {
+  impact: Row[];
+  empty: string;
+}) {
+  const affected = impact.filter((item) => item.affected === true);
+  return (
+    <>
+      <ImpactList impact={affected} empty={empty} />
+      {impact.length > affected.length && (
+        <p className="muted">
+          שיבוצים נוספים שנבדקו ואינם מושפעים: {impact.length - affected.length}
+        </p>
+      )}
+    </>
+  );
+}
 const periodLabels: Record<string, string> = {
   qualification: "כשירות",
   exemption: "פטור",
   inactive: "תקופת אי־פעילות",
+  population: "מעבר אוכלוסיית שיבוץ",
 };
 /**
- * Adds a qualification, exemption or inactivity period only after the manager
- * reviewed which reserved assignments it affects. `fixed` supplies values the
- * surrounding screen already knows, such as the soldier or the period kind.
+ * Adds a qualification, exemption or inactivity period, or a population
+ * transition, only after the manager reviewed which reserved assignments it
+ * affects. `fixed` supplies values the surrounding screen already knows, such
+ * as the soldier or the period kind.
  */
 export function AddPeriod({
   state,
@@ -308,10 +360,10 @@ export function AddPeriod({
   const { values: proposal, preview } = draft;
   const person = state.soldiers.find((item) => item.id === proposal.soldierId);
   const kind = str(proposal.kind);
+  const transition = kind === "population";
   const impact = rows(preview.impact);
-  const affected = impact.filter((item) => item.affected === true);
   const catalogName =
-    kind === "inactive"
+    kind === "inactive" || transition
       ? ""
       : str(
           rows(state.eligibilityCatalog).find(
@@ -320,24 +372,41 @@ export function AddPeriod({
           "הגדרה מהקטלוג"
         );
   return (
-    <div className="stack" aria-label="השפעת התקופה החדשה" role="region">
+    <div
+      className="stack"
+      aria-label={transition ? "השפעת מעבר האוכלוסייה" : "השפעת התקופה החדשה"}
+      role="region"
+    >
       <h3>השינוי המוצע</h3>
       <p>
         <strong>{str(person?.name, "חייל")}</strong> ·{" "}
         <Badge>{periodLabels[kind] ?? kind}</Badge>
-        {catalogName && <> {catalogName}</>} · {displayDate(proposal.startDate)}{" "}
-        — {displayDate(proposal.endDate)}
+        {transition ? (
+          <>
+            {" "}
+            ל{population(proposal.value)} מ־{displayDate(proposal.startDate)}
+          </>
+        ) : (
+          <>
+            {catalogName && <> {catalogName}</>} ·{" "}
+            {displayDate(proposal.startDate)} — {displayDate(proposal.endDate)}
+          </>
+        )}
       </p>
-      <h3>שיבוצים שהתקופה משפיעה עליהם</h3>
-      <ImpactList
-        impact={affected}
-        empty="התקופה אינה משנה את ההתאמה של שיבוצים קיימים."
+      {transition && <PopulationChange change={preview.population} />}
+      <h3>
+        {transition
+          ? "שיבוצים שהמעבר משפיע עליהם"
+          : "שיבוצים שהתקופה משפיעה עליהם"}
+      </h3>
+      <AffectedAssignments
+        impact={impact}
+        empty={
+          transition
+            ? "המעבר אינו משנה את ההתאמה של שיבוצים קיימים."
+            : "התקופה אינה משנה את ההתאמה של שיבוצים קיימים."
+        }
       />
-      {impact.length > affected.length && (
-        <p className="muted">
-          שיבוצים נוספים שנבדקו ואינם מושפעים: {impact.length - affected.length}
-        </p>
-      )}
       <Notice>
         השיבוצים נשארים בתוקף. שיבוץ שנפגע יסומן ״דורש טיפול״ באותה שמירה;
         אילוצים מאושרים, הכניסה לחשבון והיתרה אינם משתנים.
@@ -346,12 +415,16 @@ export function AddPeriod({
         fields={[
           {
             name: "confirmed",
-            label: "בדקתי את ההשפעה ומאשר את הוספת התקופה",
+            label: transition
+              ? "בדקתי את ההשפעה ומאשר את מעבר האוכלוסייה"
+              : "בדקתי את ההשפעה ומאשר את הוספת התקופה",
             type: "checkbox",
             required: true,
           },
         ]}
-        submitLabel="אישור הוספת התקופה"
+        submitLabel={
+          transition ? "אישור מעבר האוכלוסייה" : "אישור הוספת התקופה"
+        }
         onSubmit={async (confirmation) => {
           await action(
             "soldier.timeline",
@@ -367,6 +440,95 @@ export function AddPeriod({
         }}
       />
       <button className="btn secondary" onClick={() => setDraft(null)}>
+        חזרה לעריכה
+      </button>
+    </div>
+  );
+}
+/**
+ * Saves the profile form directly unless the edit moves the soldier's
+ * population (for example a career or officer start date). Then the manager
+ * first reviews the affected assignments and confirms the save explicitly.
+ */
+export function ProfileEdit({
+  person,
+  fields,
+  action,
+  onDone,
+}: {
+  person: Row;
+  fields: Field[];
+  action: Action;
+  onDone: () => void;
+}) {
+  const [review, setReview] = useState<{
+    values: Record<string, unknown>;
+    preview: Record<string, unknown>;
+  } | null>(null);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  if (!review)
+    return (
+      <Form
+        fields={fields.map((field) =>
+          field.name in values
+            ? { ...field, value: values[field.name] as Field["value"] }
+            : field
+        )}
+        onSubmit={async (input) => {
+          setValues(input);
+          const payload = { id: person.id, ...input };
+          const preview = await action(
+            "soldier.update.preview",
+            payload,
+            person.version
+          );
+          if (preview.populationMoves !== true) {
+            await action("soldier.update", payload, person.version);
+            onDone();
+            return;
+          }
+          setReview({ values: payload, preview });
+        }}
+      />
+    );
+  const { preview } = review;
+  return (
+    <div className="stack" aria-label="השפעת עריכת הפרופיל" role="region">
+      <h3>השינוי מזיז את אוכלוסיית השיבוץ</h3>
+      <PopulationChange change={preview.population} />
+      <h3>שיבוצים שהמעבר משפיע עליהם</h3>
+      <AffectedAssignments
+        impact={rows(preview.impact)}
+        empty="המעבר אינו משנה את ההתאמה של שיבוצים קיימים."
+      />
+      <Notice>
+        השיבוצים נשארים בתוקף. שיבוץ שנפגע יסומן ״דורש טיפול״ באותה שמירה;
+        מעברים קודמים, אילוצים מאושרים והיתרה אינם משתנים.
+      </Notice>
+      <Form
+        fields={[
+          {
+            name: "confirmed",
+            label: "בדקתי את ההשפעה ומאשר את שמירת הפרופיל",
+            type: "checkbox",
+            required: true,
+          },
+        ]}
+        submitLabel="אישור ושמירת הפרופיל"
+        onSubmit={async (confirmation) => {
+          await action(
+            "soldier.update",
+            {
+              ...review.values,
+              ...confirmation,
+              previewToken: preview.previewToken,
+            },
+            person.version
+          );
+          onDone();
+        }}
+      />
+      <button className="btn secondary" onClick={() => setReview(null)}>
         חזרה לעריכה
       </button>
     </div>

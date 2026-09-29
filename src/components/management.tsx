@@ -41,7 +41,7 @@ import {
 } from "@/client/soldier-filters";
 import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
-import { AddPeriod, PersonnelHistory } from "./personnel-history";
+import { AddPeriod, PersonnelHistory, ProfileEdit } from "./personnel-history";
 import type { RankClause, Requirements } from "@/domain/types";
 const soldierFields = (s?: Row): Field[] => [
   { name: "name", label: "שם מלא", required: true, value: str(s?.name) },
@@ -318,18 +318,13 @@ export function SoldiersView({
               מספר אישי {str(selected.personalNumber)}
             </span>
           </div>
-          <Form
+          <ProfileEdit
+            person={selected}
             fields={soldierFields(selected).filter(
               (f) => !["email", "currentScore"].includes(f.name)
             )}
-            onSubmit={async (v) => {
-              await action(
-                "soldier.update",
-                { id: selected.id, ...v },
-                selected.version
-              );
-              setSelected(null);
-            }}
+            action={action}
+            onDone={() => setSelected(null)}
           />
           <details className="disclosure">
             <summary>מועדי שירות, כשירות והיסטוריה</summary>
@@ -357,8 +352,11 @@ export function SoldiersView({
                   </div>
                 ))
               )}
-              <ActionDialog
-                title="מעבר אוכלוסיית שיבוץ"
+              <h3>מעבר אוכלוסיית שיבוץ</h3>
+              <AddPeriod
+                state={state}
+                action={action}
+                fixed={{ soldierId: selected.id, kind: "population" }}
                 fields={[
                   {
                     name: "value",
@@ -375,16 +373,13 @@ export function SoldiersView({
                   },
                   {
                     name: "reason",
-                    label: "סיבה",
+                    label: "סיבת המעבר",
                     type: "textarea",
                     required: true,
                     full: true,
                   },
                 ]}
-                action={action}
-                type="soldier.timeline"
-                payload={{ soldierId: selected.id, kind: "population" }}
-                version={selected.version}
+                submitLabel="בדיקת השפעת המעבר"
               />
               <h3>הוספת תקופת אי־פעילות</h3>
               <AddPeriod
