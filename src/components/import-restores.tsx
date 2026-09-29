@@ -34,6 +34,7 @@ export function ImportRestore({
   const [decisions, setDecisions] = useState<
     Record<string, { action: string; value?: string }>
   >({});
+  const [creations, setCreations] = useState<Record<string, string>>({});
   function choices() {
     return rows(preview?.rows).flatMap((row) =>
       rows(row.fields).flatMap((field) => {
@@ -58,7 +59,10 @@ export function ImportRestore({
     setError("");
     setConfirmed(false);
     setPopulationConfirmed(false);
-    if (!withDecisions) setDecisions({});
+    if (!withDecisions) {
+      setDecisions({});
+      setCreations({});
+    }
     try {
       setPreview(
         await action(
@@ -101,6 +105,9 @@ export function ImportRestore({
             confirmed,
             populationImpactConfirmed: populationConfirmed,
             decisions: choices(),
+            creations: Object.entries(creations)
+              .filter(([, choice]) => choice === "keep")
+              .map(([rowId]) => ({ rowId, action: "keep" })),
           },
           num(preview.version)
         )
@@ -119,6 +126,13 @@ export function ImportRestore({
     (sum, row) => sum + rows(row.fields).length,
     0
   );
+  const created = planned.filter((row) => row.creation);
+  const creationStatus = (row: Record<string, unknown>) =>
+    str((row.creation as Record<string, unknown>).status);
+  const actionable =
+    fieldCount > 0 ||
+    created.some((row) => creationStatus(row) !== "activity") ||
+    Object.values(creations).includes("keep");
   const hasPopulationMove = planned.some((row) => row.populationImpact);
   return (
     <div className="import-restore">
@@ -128,28 +142,109 @@ export function ImportRestore({
         disabled={busy}
         onClick={() => prepare(false)}
       >
-        בדיקת שחזור עדכונים
+        בדיקת שחזור הייבוא
       </button>
       {error && <Notice tone="danger">{error}</Notice>}
       {preview && (
         <form onSubmit={apply} className="form-grid">
           <h3 className="full">בדיקת שחזור — לפי השינויים מאז הייבוא</h3>
-          <div className="full">
-            <Notice>
-              שדות שלא השתנו ניתנים לשחזור. לכל התנגשות נדרשת הכרעה נפרדת.
-              תורנויות ופעולות ניקוד מאוחרות נשמרות; השחזור מוסיף פעולה מתועדת.
-              שחזור שמזיז אוכלוסיית שיבוץ מציג את השיבוצים שיסומנו ״דורש טיפול״
-              ודורש אישור נפרד. התנגשות שטרם הוכרעה נחשבת בינתיים כהשארת הערך
-              הנוכחי.
-            </Notice>
-          </div>
-          {planned.some((row) => row.pendingNew) && (
+          {fieldCount > 0 && (
             <div className="full">
               <Notice>
-                באצווה יש קליטות חדשות. שחזור קליטות חדשות עדיין אינו זמין;
-                הפעולה הזו מטפלת בעדכונים לחיילים שהיו קיימים.
+                שדות שלא השתנו ניתנים לשחזור. לכל התנגשות נדרשת הכרעה נפרדת.
+                תורנויות ופעולות ניקוד מאוחרות נשמרות; השחזור מוסיף פעולה
+                מתועדת. שחזור שמזיז אוכלוסיית שיבוץ מציג את השיבוצים שיסומנו
+                ״דורש טיפול״ ודורש אישור נפרד. התנגשות שטרם הוכרעה נחשבת בינתיים
+                כהשארת הערך הנוכחי.
               </Notice>
             </div>
+          )}
+          {created.length > 0 && (
+            <section
+              className="full"
+              role="region"
+              aria-label="קליטות חדשות באצווה"
+            >
+              <h3>קליטות חדשות</h3>
+              <Notice>
+                קליטה בלי פעילות מאז הייבוא תבוטל בהסרה מלאה: החייל, פרטי הקשר,
+                היתרה, החשבון וההזמנה, והמספר האישי יתפנה. בשורת הייבוא יישארו
+                השם, המספר האישי ותוצאת השחזור. חייל עם פעילות נשאר עד שתבחרו
+                להשאיר אותו; מחיקת משתמש תתווסף כאן עם מסלול המחיקה.
+              </Notice>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>חייל</th>
+                      <th>מספר אישי</th>
+                      <th>מצב</th>
+                      <th>פעילות מאז הייבוא</th>
+                      <th>החלטה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {created.map((row) => {
+                      const status = creationStatus(row);
+                      const activity = (
+                        (row.creation as Record<string, unknown>)
+                          .activity as unknown[]
+                      ).map((item) => str(item));
+                      return (
+                        <tr key={row.id}>
+                          <td>
+                            {str(row.name)} · שורה {num(row.rowNumber)}
+                          </td>
+                          <td>
+                            <bdi>{str(row.personalNumber)}</bdi>
+                          </td>
+                          <td>
+                            <Badge
+                              tone={
+                                status === "cancel"
+                                  ? "success"
+                                  : status === "activity"
+                                    ? "warning"
+                                    : "danger"
+                              }
+                            >
+                              {status === "cancel"
+                                ? "הקליטה תבוטל"
+                                : status === "activity"
+                                  ? "יש פעילות"
+                                  : "נמחק במסלול המחיקה"}
+                            </Badge>
+                          </td>
+                          <td>{activity.join(" · ") || "אין"}</td>
+                          <td>
+                            {status === "activity" ? (
+                              <select
+                                aria-label={`החלטה עבור קליטת ${str(row.name)}`}
+                                value={creations[row.id] ?? ""}
+                                disabled={busy}
+                                onChange={(event) =>
+                                  setCreations((current) => ({
+                                    ...current,
+                                    [row.id]: event.target.value,
+                                  }))
+                                }
+                              >
+                                <option value="">להכריע מאוחר יותר</option>
+                                <option value="keep">להשאיר את החייל</option>
+                              </select>
+                            ) : status === "cancel" ? (
+                              "ביטול עם אישור השחזור"
+                            ) : (
+                              "נסגר בלי פעולה"
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           )}
           {planned
             .filter((row) => rows(row.fields).length > 0)
@@ -338,7 +433,7 @@ export function ImportRestore({
               </div>
             </div>
           )}
-          {fieldCount > 0 || !planned.some((row) => row.pendingNew) ? (
+          {actionable || !created.length ? (
             <>
               <label className="field full">
                 <span>סיבת השחזור וההכרעות</span>
@@ -383,13 +478,14 @@ export function ImportRestore({
                     (hasPopulationMove && !populationConfirmed)
                   }
                 >
-                  אישור שחזור העדכונים
+                  אישור השחזור
                 </button>
               </div>
             </>
           ) : (
             <p className="muted full">
-              אין שדות של חיילים קיימים שנותרו לשחזור באצווה הזאת.
+              אין שדות לשחזור, וכל הקליטות שנותרו ממתינות להכרעה. בחרו ״להשאיר
+              את החייל״ בשורה כדי לסגור אותה.
             </p>
           )}
         </form>

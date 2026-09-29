@@ -228,6 +228,19 @@ export function ImportsView({
                 ) : (
                   <p className="muted">אין שינויים בשורה הזאת</p>
                 )}
+                {row.newRowRestored ? (
+                  <p className="muted">
+                    {
+                      {
+                        cancelled:
+                          "הקליטה בוטלה בשחזור. פרטי הקשר הוסרו מהשורה.",
+                        kept: "החייל נשאר במערכת בהכרעת שחזור.",
+                        erased:
+                          "החייל נמחק במסלול המחיקה; השורה נסגרה בלי פעולה.",
+                      }[str(obj(row.newRowRestored).action)]
+                    }
+                  </p>
+                ) : null}
                 {batch.status === "preview" && row.populationImpact ? (
                   <div
                     className="stack"
@@ -307,9 +320,9 @@ export function ImportsView({
           ) : (
             <Notice tone="success">
               {batch.status === "restored"
-                ? "שחזור העדכונים הושלם."
+                ? "שחזור הייבוא הושלם: כל השורות טופלו."
                 : batch.status === "partially_restored"
-                  ? "עדכוני החיילים הקיימים שוחזרו או הוכרעו; הקליטות החדשות נשארו במערכת."
+                  ? "השחזור בוצע בחלקו. קליטות עם פעילות ממתינות להכרעה בבדיקת שחזור חוזרת."
                   : "הייבוא נשמר בשלמותו. שינויי היתרה מתועדים ביומן; השיבוצים והניקוד השמור נשמרו."}
             </Notice>
           )}
