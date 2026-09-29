@@ -9,7 +9,9 @@ import {
 import { drawCandidate } from "../../src/domain/scheduling";
 import {
   applyScoreOperation,
+  barrierLabel,
   correctionBarriers,
+  correctionDecision,
   correctionEffect,
   dueCredits,
   rankFairness,
@@ -402,6 +404,57 @@ describe("past performance corrections", () => {
         openDecision: false,
       })
     ).toThrow();
+  });
+  it("resolves a pending decision by keeping, adjusting with a zero floor or setting the balance", () => {
+    expect(correctionDecision({ balance: 5, choice: "keep" })).toEqual({
+      after: 5,
+      delta: 0,
+      clamped: false,
+      barrier: false,
+    });
+    expect(
+      correctionDecision({ balance: 5, choice: "adjust", value: 3 })
+    ).toEqual({ after: 8, delta: 3, clamped: false, barrier: false });
+    expect(
+      correctionDecision({ balance: 5, choice: "adjust", value: -9 })
+    ).toEqual({ after: 0, delta: -5, clamped: true, barrier: true });
+    expect(correctionDecision({ balance: 5, choice: "set", value: 2 })).toEqual(
+      { after: 2, delta: -3, clamped: false, barrier: true }
+    );
+    expect(() => correctionDecision({ balance: 5, choice: "set" })).toThrow();
+    expect(() =>
+      correctionDecision({ balance: 5, choice: "set", value: -1 })
+    ).toThrow();
+    expect(() =>
+      correctionDecision({ balance: 5, choice: "adjust", value: 1.5 })
+    ).toThrow();
+  });
+  it("names every operation that changes the meaning of a correction", () => {
+    expect(
+      [
+        ["normalization", { operation: "percent" }],
+        ["adjustment", { operation: "set" }],
+        ["adjustment", { operation: "percent" }],
+        ["adjustment", { operation: "subtract" }],
+        ["correction", { barrier: true }],
+        ["import_set", {}],
+        ["import_restore", {}],
+        ["correction_decision", { choice: "set" }],
+        ["correction_decision", { choice: "adjust" }],
+      ].map(([kind, data]) =>
+        barrierLabel(kind as string, data as Record<string, unknown>)
+      )
+    ).toEqual([
+      "נרמול",
+      "קביעת יתרה",
+      "הפחתת אחוזים",
+      "הפחתה שנעצרה באפס",
+      "תיקון ביצוע שנעצר באפס",
+      "קביעת יתרה בייבוא",
+      "קביעת יתרה בשחזור ייבוא",
+      "קביעת יתרה בהכרעת תיקון",
+      "הכרעת תיקון שנעצרה באפס",
+    ]);
   });
 });
 describe("Israel time boundaries", () => {

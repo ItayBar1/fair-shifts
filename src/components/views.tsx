@@ -8,6 +8,7 @@ import {
   performanceOf,
 } from "./performance-corrections";
 import { LotteryButton, LotteryHistory } from "./planning";
+import { ScoreDecisions } from "./score-decisions";
 import { TransferOffer } from "./transfers";
 import {
   CalendarDays,
@@ -478,6 +479,9 @@ export function Dashboard({
         str(r.status)
       )
   );
+  const decisions = rows(state.scoreDecisions).filter(
+    (row) => row.status === "pending"
+  );
   const concerns = state.assignments.filter(
     (a) =>
       ["reserved", "held"].includes(str(a.status)) &&
@@ -502,8 +506,8 @@ export function Dashboard({
         />
         <Stat
           label="ממתינים להחלטה"
-          value={pending.length + requests.length}
-          detail="אילוצים, החלפות ובקשות"
+          value={pending.length + requests.length + decisions.length}
+          detail="אילוצים, החלפות, בקשות ותיקוני יתרה"
           icon={Clock3}
           tone="amber"
         />
@@ -589,6 +593,7 @@ export function Dashboard({
           </div>
         </Panel>
       </div>
+      {decisions.length > 0 && <ScoreDecisions state={state} action={action} />}
       <Panel
         title="טיוטות משותפות"
         actions={
@@ -861,6 +866,7 @@ export function DutyDetail({
       {manager && dutyStatus(duty) === "published" && !future && (
         <PerformanceCorrections state={state} action={action} duty={duty} />
       )}
+      {manager && <ScoreDecisions state={state} action={action} dutyId={id} />}
       {manager && <LotteryHistory state={state} action={action} dutyId={id} />}
     </>
   );
