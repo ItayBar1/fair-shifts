@@ -35,6 +35,8 @@ import {
   previewTimelineAdd,
   previewTimelineEdit,
   editTimeline,
+  previewSoldierConditions,
+  saveSoldierConditions,
 } from "./personnel";
 import {
   createRound,
@@ -166,6 +168,22 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "soldier.timeline.edit":
         result = await editTimeline(tx, actor, payload, expectedVersion);
+        break;
+      case "soldier.conditions.preview":
+        result = await previewSoldierConditions(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "soldier.conditions":
+        result = await saveSoldierConditions(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
         break;
       case "rank.catalog.save":
         result = await saveRankCatalog(tx, actor, payload, expectedVersion);
