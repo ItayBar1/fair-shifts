@@ -401,6 +401,7 @@ describe("failures reach the technical screen and account", () => {
           roundClosing: true,
           publication: true,
           transfer: true,
+          departure: true,
           operations: false,
         },
       },

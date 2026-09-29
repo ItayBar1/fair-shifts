@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { UNIT_ZONE } from "./time";
 
 /**
- * Backup policy (decisions 145 and 170): one encrypted daily copy, up to 30 kept
+ * Backup policy (decisions 145 and 171): one encrypted daily copy, up to 30 kept
  * subject to the free space, and the newest verified copy is never removed
  * before a replacement is verified.
  */
@@ -73,7 +73,7 @@ export type StoredBackup = {
 /**
  * Before an upload: verified copies to remove, oldest first, until the new file
  * fits in the free space. The newest verified copy is never offered, so a
- * shortage it cannot solve fails the run instead (decision 170).
+ * shortage it cannot solve fails the run instead (decision 171).
  */
 export function spaceToFree<T extends StoredBackup>(
   verified: T[],

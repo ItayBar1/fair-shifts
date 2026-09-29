@@ -64,7 +64,7 @@ describe("notification preferences", () => {
       preferencesSchema.safeParse({ ...valid, accountId: "other" }).success
     ).toBe(false);
   });
-  it("keeps a form saved before the transfer and operations types existed and starts them enabled", () => {
+  it("keeps a form saved before the transfer, departure and operations types existed and starts them enabled", () => {
     const legacy = {
       custom: true,
       reminderHours: [12],
@@ -78,7 +78,12 @@ describe("notification preferences", () => {
     expect(resolvePreferences(legacy, undefined)).toEqual({
       preferences: {
         reminderHours: [12],
-        email: { ...legacy.email, transfer: true, operations: true },
+        email: {
+          ...legacy.email,
+          transfer: true,
+          departure: true,
+          operations: true,
+        },
       },
       source: "personal",
     });
@@ -103,6 +108,7 @@ describe("notification preferences", () => {
         roundClosing: false,
         publication: false,
         transfer: false,
+        departure: false,
         operations: false,
       },
     };
@@ -114,6 +120,7 @@ describe("notification preferences", () => {
       "round-opening",
       "round-closing",
       "transfer",
+      "departure",
       "backup-alert",
     ] as const) {
       expect(emailAllowed(off, kind)).toBe(false);
@@ -155,8 +162,22 @@ describe("notification inbox helpers", () => {
         roundClosing: false,
         publication: false,
         transfer: false,
+        departure: false,
         operations: false,
       },
     });
+    // A type the form does not show keeps its stored value.
+    expect(
+      preferencesPayload(
+        { reminderHours: "", "email.departure": false },
+        ["departure"],
+        { departure: true }
+      ).email.departure
+    ).toBe(true);
+    expect(
+      preferencesPayload({ reminderHours: "" }, ["departure"], {
+        departure: false,
+      }).email.departure
+    ).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import {
   MAX_REMINDERS,
   MAX_REMINDER_HOURS,
   preferenceTypes,
+  managerPreferenceTypes,
   technicalPreferenceTypes,
   type PreferenceType,
 } from "../domain/notification-preferences";
@@ -12,6 +13,7 @@ export const emailTypeLabels: Record<PreferenceType, string> = {
   roundClosing: "תזכורת לפני סגירת סבב, למי שלא הגיש",
   publication: "שיבוץ, שינוי או ביטול של תורנות שפורסמה",
   transfer: "החלפות והעברות של תורנויות",
+  departure: "סיום שירות של חייל (לאחראים)",
   operations: "תקלות תפעול, כמו גיבוי שנכשל",
 };
 
@@ -50,10 +52,10 @@ export function parseReminderHours(
   return { hours };
 }
 
-/** Types that are not shown in the form keep their current value. */
+/** A type the form does not show keeps its current value instead of turning off. */
 export function preferencesPayload(
   values: Row,
-  shown: readonly PreferenceType[] = preferenceTypes,
+  hidden: readonly PreferenceType[] = [],
   current: Row = {}
 ) {
   const parsed = parseReminderHours(String(values.reminderHours ?? ""));
@@ -63,19 +65,22 @@ export function preferencesPayload(
     email: Object.fromEntries(
       preferenceTypes.map((type) => [
         type,
-        shown.includes(type)
-          ? values[`email.${type}`] === true
-          : current[type] !== false,
+        hidden.includes(type)
+          ? current[type] !== false
+          : values[`email.${type}`] === true,
       ])
     ),
   };
 }
 
-/** Operational alerts concern the technical account only. */
-export function shownPreferenceTypes(role: unknown) {
-  return role === "technical"
-    ? preferenceTypes
-    : preferenceTypes.filter(
-        (type) => !technicalPreferenceTypes.includes(type)
-      );
+/**
+ * Types a role's form does not show: departure emails reach managers only
+ * (decision 170), operational alerts the technical account only (decision 171).
+ */
+export function hiddenPreferenceTypes(role: unknown): PreferenceType[] {
+  return preferenceTypes.filter(
+    (type) =>
+      (managerPreferenceTypes.includes(type) && role !== "manager") ||
+      (technicalPreferenceTypes.includes(type) && role !== "technical")
+  );
 }

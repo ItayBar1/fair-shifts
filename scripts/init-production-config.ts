@@ -60,7 +60,7 @@ const content = {
     "MAIL_QUOTA_TIME_ZONE=UTC",
     "GOOGLE_CLIENT_ID=",
     "GOOGLE_CLIENT_SECRET=",
-    "# גיבוי יומי מוצפן ל־Drive (הכרעה 170). ריק = כבוי, ומוצג במסך הגיבוי.",
+    "# גיבוי יומי מוצפן ל־Drive (הכרעה 171). ריק = כבוי, ומוצג במסך הגיבוי.",
     "# AGE_RECIPIENT הוא המפתח הציבורי בלבד; המפתח הפרטי נשמר מחוץ לשרת.",
     "BACKUP_STORAGE=",
     "BACKUP_TIME=03:30",

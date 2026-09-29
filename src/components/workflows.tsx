@@ -15,8 +15,9 @@ import {
   emailTypeLabels,
   preferencesPayload,
   reminderHoursText,
-  shownPreferenceTypes,
+  hiddenPreferenceTypes,
 } from "@/client/notifications";
+import { preferenceTypes } from "@/domain/notification-preferences";
 import {
   Badge,
   Panel,
@@ -180,7 +181,7 @@ function PreferencesForm({
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
 }) {
   const email = obj(values.email);
-  const shown = shownPreferenceTypes(role);
+  const hidden = hiddenPreferenceTypes(role);
   return (
     <Form
       submitLabel={submitLabel}
@@ -191,14 +192,16 @@ function PreferencesForm({
           hint: "עד שלוש תזכורות, בשעות שלמות בין 1 ל־168. שדה ריק: ללא תזכורות.",
           value: reminderHoursText(values.reminderHours),
         },
-        ...shown.map((type): Field => ({
-          name: `email.${type}`,
-          label: `מייל: ${emailTypeLabels[type]}`,
-          type: "checkbox",
-          value: email[type] !== false,
-        })),
+        ...preferenceTypes
+          .filter((type) => !hidden.includes(type))
+          .map((type): Field => ({
+            name: `email.${type}`,
+            label: `מייל: ${emailTypeLabels[type]}`,
+            type: "checkbox",
+            value: email[type] !== false,
+          })),
       ]}
-      onSubmit={(form) => onSubmit(preferencesPayload(form, shown, email))}
+      onSubmit={(form) => onSubmit(preferencesPayload(form, hidden, email))}
     />
   );
 }

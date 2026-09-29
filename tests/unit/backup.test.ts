@@ -15,7 +15,7 @@ import {
 import { backupFreshness, formatBytes } from "../../src/client/backups";
 import {
   preferencesPayload,
-  shownPreferenceTypes,
+  hiddenPreferenceTypes,
 } from "../../src/client/notifications";
 
 const MB = 1024 * 1024;
@@ -305,12 +305,16 @@ describe("backup screen helpers", () => {
     expect(formatBytes(undefined)).toBe("—");
   });
   it("shows the operations email switch to the technical account only", () => {
-    expect(shownPreferenceTypes("technical")).toContain("operations");
-    expect(shownPreferenceTypes("manager")).not.toContain("operations");
+    expect(hiddenPreferenceTypes("technical")).toEqual(["departure"]);
+    expect(hiddenPreferenceTypes("manager")).toEqual(["operations"]);
+    expect(hiddenPreferenceTypes("soldier")).toEqual([
+      "departure",
+      "operations",
+    ]);
     // A soldier's form keeps the hidden switch as it was.
     const payload = preferencesPayload(
       { reminderHours: "24", "email.transfer": true },
-      shownPreferenceTypes("soldier"),
+      hiddenPreferenceTypes("soldier"),
       { operations: false }
     );
     expect(payload.email).toMatchObject({ transfer: true, operations: false });
