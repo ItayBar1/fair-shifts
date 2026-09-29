@@ -97,6 +97,14 @@ const labels: Record<string, string> = {
   "transfer.retract": "ביטול הסכמה להעברה",
   "transfer.approve": "אישור אחראי להעברת תורנות",
   "transfer.reject": "דחיית העברה בידי אחראי",
+  "swap.offer": "הצעת החלפת תורנויות",
+  "swap.decline": "סירוב להחלפה",
+  "swap.accept.pending": "הסכמה להחלפה שממתינה לאחראי",
+  "swap.complete": "השלמת החלפת תורנויות",
+  "swap.withdraw": "משיכת הצעת החלפה",
+  "swap.retract": "ביטול הסכמה להחלפה",
+  "swap.approve": "אישור אחראי להחלפת תורנויות",
+  "swap.reject": "דחיית החלפה בידי אחראי",
   "cancellation.submit": "בקשת ביטול או דחייה",
   "cancellation.withdraw": "משיכת בקשת ביטול או דחייה",
   "cancellation.prepare": "הכנת שינוי לבקשת ביטול או דחייה",
@@ -594,13 +602,51 @@ export function projectAudit(
             reason = text(data(target.approvals[0]).reason);
           break;
         }
+        case "swap.offer":
+          add(
+            "שיבוצים מוצעים",
+            Array.isArray(envelope.targetAssignmentIds)
+              ? envelope.targetAssignmentIds.length
+              : undefined
+          );
+          break;
+        case "swap.complete":
+        case "swap.approve": {
+          const ids = (key: string) =>
+            Array.isArray(envelope[key]) ? envelope[key].map(String) : [];
+          const to = ids("toAssignmentIds");
+          for (const [index, id] of ids("fromAssignmentIds").entries()) {
+            const from = assignment.get(id);
+            const next = assignment.get(to[index]);
+            change(
+              `משובץ ב${dutyName.get(String(from?.dutyId)) ?? "תורנות"}`,
+              person(from?.soldierId),
+              person(next?.soldierId)
+            );
+            for (const ref of [from?.soldierId, from?.dutyId, id, to[index]])
+              if (ref) refs.add(ref);
+          }
+          add(
+            "נקודות",
+            Array.isArray(envelope.points)
+              ? envelope.points.join(" / ")
+              : undefined
+          );
+          if (action === "swap.approve" && Array.isArray(target.approvals))
+            reason = text(data(target.approvals[0]).reason);
+          break;
+        }
         case "transfer.reject":
+        case "swap.reject":
           reason = text(target.decisionReason);
           break;
         case "transfer.withdraw":
         case "transfer.retract":
+        case "swap.withdraw":
+        case "swap.retract":
           reason = text(target.closedReason);
           break;
+        case "swap.accept.pending":
         case "transfer.accept.pending":
           add(
             "סיבות לאישור",

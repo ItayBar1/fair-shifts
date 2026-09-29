@@ -10,6 +10,7 @@ import {
 import { LotteryButton, LotteryHistory } from "./planning";
 import { ScoreDecisions } from "./score-decisions";
 import { TransferOffer } from "./transfers";
+import { SwapOffer } from "./swaps";
 import {
   CancellationRequestButton,
   CancellationRequests,
@@ -479,9 +480,9 @@ export function Dashboard({
 }) {
   const drafts = state.duties.filter((d) => dutyStatus(d) === "draft");
   const pending = state.constraints.filter((c) => c.status === "pending");
-  // A transfer counts only once it waits for a manager; before that it waits for a soldier's consent.
+  // A transfer or swap counts only once it waits for a manager; before that it waits for a soldier's consent.
   const requests = state.requests.filter((r) =>
-    r.type === "transfer"
+    r.type === "transfer" || r.type === "swap"
       ? r.status === "awaiting_manager"
       : ![
           "completed",
@@ -494,6 +495,7 @@ export function Dashboard({
         ].includes(str(r.status))
   );
   const transfers = requests.filter((r) => r.type === "transfer");
+  const swaps = requests.filter((r) => r.type === "swap");
   const decisions = rows(state.scoreDecisions).filter(
     (row) => row.status === "pending"
   );
@@ -586,6 +588,30 @@ export function Dashboard({
               <ChevronLeft size={18} />
             </Link>
           ))}
+          {swaps.map((r) => {
+            const accepted = rows(r.candidates).find(
+              (item) => item.assignmentId === r.acceptedAssignmentId
+            );
+            return (
+              <Link className="task-item" href="/requests" key={r.id}>
+                <span className="task-symbol amber">
+                  <Clock3 size={20} />
+                </span>
+                <span>
+                  <strong>
+                    החלפה ממתינה להחלטה: {str(r.dutyName)} ⇄{" "}
+                    {str(accepted?.dutyName)}
+                  </strong>
+                  <small>
+                    {personName(state, r.fromSoldierId)} ⇄{" "}
+                    {personName(state, r.acceptedBy)}. עד ההחלטה השיבוצים
+                    המקוריים בתוקף
+                  </small>
+                </span>
+                <ChevronLeft size={18} />
+              </Link>
+            );
+          })}
           {departed.map((s) => {
             const notice = rows(state.departures).find(
               (row) =>
@@ -760,6 +786,7 @@ export function DutyDetail({
           </Notice>
         )}
         <TransferOffer state={state} action={action} duty={duty} />
+        <SwapOffer state={state} action={action} duty={duty} />
         <CancellationRequestButton state={state} action={action} duty={duty} />
         {manager && (
           <div className="panel-actions">

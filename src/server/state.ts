@@ -11,6 +11,7 @@ import { readHealth } from "./operations/health";
 import { readMailStatus } from "./operations/email";
 import { backupState } from "./operations/backup";
 import { projectRequests } from "./transfers";
+import { projectSwaps } from "./swaps";
 import { projectCancellationRequests } from "./cancellation-requests";
 import { effectivePreferences } from "./notifications";
 import { resolvePreferences } from "../domain/notification-preferences";
@@ -281,10 +282,14 @@ export async function readState(actor: Actor) {
       constraints: managing ? workflow("constraint") : own("constraint"),
       requests: [
         ...projectRequests(
-          workflows.filter((row) => row.data.type !== "cancellation"),
+          workflows.filter(
+            (row) =>
+              row.data.type !== "cancellation" && row.data.type !== "swap"
+          ),
           actor,
           managing
         ),
+        ...projectSwaps(workflows, actor, managing),
         ...projectCancellationRequests(workflows, actor, managing),
       ],
       // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
