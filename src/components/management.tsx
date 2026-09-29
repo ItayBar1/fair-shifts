@@ -42,7 +42,14 @@ import {
 import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
 import { AddPeriod, PersonnelHistory, ProfileEdit } from "./personnel-history";
-import type { RankClause, Requirements } from "@/domain/types";
+import {
+  ConditionToggles,
+  ConditionsSummary,
+  SoldierConditions,
+  capabilityOptions,
+  genders,
+} from "./eligibility-conditions";
+import type { Gender, RankClause, Requirements } from "@/domain/types";
 const soldierFields = (s?: Row): Field[] => [
   { name: "name", label: "שם מלא", required: true, value: str(s?.name) },
   {
@@ -412,6 +419,18 @@ export function SoldiersView({
             </div>
           </details>
           <details className="disclosure">
+            <summary>תנאי התאמה אישיים: מגדר, יכולות ושעות</summary>
+            <div className="stack">
+              <ConditionsSummary state={state} person={selected} />
+              <SoldierConditions
+                key={String(selected.version)}
+                state={state}
+                action={action}
+                person={selected}
+              />
+            </div>
+          </details>
+          <details className="disclosure">
             <summary>ניהול כתובת מייל וחשבון</summary>
             <div className="stack">
               <ActionDialog
@@ -502,12 +521,13 @@ export function EligibilityView({
   return (
     <>
       <Notice>
-        פטורים וכשירויות מוזנים לאחר בדיקת האחראי. שינוי נתונים מסמן שיבוצים
-        שנפגעו לטיפול ואינו מבטל אותם אוטומטית.
+        פטורים, כשירויות ויכולות מוזנים לאחר בדיקת האחראי. יכולות משויכות לחייל
+        בפרופיל שלו, בלי תוקף. שינוי נתונים מסמן שיבוצים שנפגעו לטיפול ואינו
+        מבטל אותם אוטומטית.
       </Notice>
       <div className="two-columns">
         <Panel
-          title="סוגי פטורים וכשירויות"
+          title="סוגי פטורים, כשירויות ויכולות"
           actions={
             <ActionDialog
               title="הגדרה חדשה"
@@ -520,6 +540,7 @@ export function EligibilityView({
                   options: [
                     { value: "qualification", label: "כשירות נדרשת" },
                     { value: "exemption", label: "פטור" },
+                    { value: "capability", label: "יכולת (ללא תוקף)" },
                   ],
                 },
                 { name: "name", label: "שם", required: true },
@@ -545,7 +566,13 @@ export function EligibilityView({
                   <strong>{str(c.name)}</strong>
                   <small>{str(c.description)}</small>
                 </span>
-                <Badge>{c.kind === "exemption" ? "פטור" : "כשירות"}</Badge>
+                <Badge>
+                  {c.kind === "exemption"
+                    ? "פטור"
+                    : c.kind === "capability"
+                      ? "יכולת"
+                      : "כשירות"}
+                </Badge>
                 <ActionDialog
                   title={`עריכת ${str(c.name)}`}
                   action={action}
@@ -606,10 +633,12 @@ export function EligibilityView({
                 label: "סוג מהקטלוג",
                 type: "select",
                 required: true,
-                options: catalogs.map((c) => ({
-                  value: c.id,
-                  label: str(c.name),
-                })),
+                options: catalogs
+                  .filter((c) => c.kind !== "capability")
+                  .map((c) => ({
+                    value: c.id,
+                    label: str(c.name),
+                  })),
               },
               {
                 name: "startDate",
@@ -760,6 +789,23 @@ function CatalogForm({
         ? initial.exemptionIds.map(String)
         : [],
     },
+    {
+      name: "genders",
+      label: "מגדר מותר",
+      type: "multiselect",
+      options: genders,
+      value: Array.isArray(initial?.genders) ? initial.genders.map(String) : [],
+      hint: "ללא בחירה — ללא תנאי מגדר",
+    },
+    {
+      name: "capabilityIds",
+      label: "יכולות נדרשות",
+      type: "multiselect",
+      options: capabilityOptions(state),
+      value: Array.isArray(initial?.capabilityIds)
+        ? initial.capabilityIds.map(String)
+        : [],
+    },
   ];
   if (bonus)
     fields.push(
@@ -845,6 +891,8 @@ function CatalogForm({
               restAfterMinutes: v.restAfterMinutes,
               qualificationIds: v.qualificationIds,
               exemptionIds: v.exemptionIds,
+              genders: v.genders,
+              capabilityIds: v.capabilityIds,
               roles: roleItems,
             },
             initial?.version
@@ -909,6 +957,48 @@ function CatalogForm({
                 }
                 label={`תנאי דרגה לתפקיד ${i + 1}`}
               />
+              <div className="subsection">
+                <ConditionToggles
+                  legend={`מגדר מותר לתפקיד ${i + 1}`}
+                  options={genders}
+                  value={role.requirements.genders ?? []}
+                  onChange={(value) =>
+                    setRoles(
+                      roleItems.map((r, index) =>
+                        index === i
+                          ? {
+                              ...r,
+                              requirements: {
+                                ...r.requirements,
+                                genders: value as Gender[],
+                              },
+                            }
+                          : r
+                      )
+                    )
+                  }
+                />
+                <ConditionToggles
+                  legend={`יכולות נדרשות לתפקיד ${i + 1}`}
+                  options={capabilityOptions(state)}
+                  value={role.requirements.capabilityIds ?? []}
+                  onChange={(value) =>
+                    setRoles(
+                      roleItems.map((r, index) =>
+                        index === i
+                          ? {
+                              ...r,
+                              requirements: {
+                                ...r.requirements,
+                                capabilityIds: value,
+                              },
+                            }
+                          : r
+                      )
+                    )
+                  }
+                />
+              </div>
               {roleItems.length > 1 && (
                 <button
                   type="button"
