@@ -99,7 +99,7 @@ export async function readState(actor: Actor) {
         })
         .from(emailOutbox);
       const operations = await tx.select().from(operationsState);
-      // Operational alerts are addressed to each technical account (decision 171).
+      // Operational alerts are addressed to each technical account (decision 172).
       const notices = await tx
         .select()
         .from(records)

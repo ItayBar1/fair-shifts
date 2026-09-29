@@ -107,7 +107,7 @@ export function validateDeploymentConfig(env: Env): string[] {
       "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET: יש למלא את שניהם או להשאיר את שניהם ריקים"
     );
 
-  // Backups (decision 171). An empty BACKUP_STORAGE switches them off; the
+  // Backups (decision 172). An empty BACKUP_STORAGE switches them off; the
   // technical screen then shows that no backup is being taken.
   const backup = value("BACKUP_STORAGE");
   if (!["", "drive", "directory"].includes(backup))

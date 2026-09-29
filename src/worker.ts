@@ -10,6 +10,7 @@ import { announceDepartures } from "./server/departures";
 import { recordWorkerHeartbeat } from "./server/operations/health";
 import { refreshRoundNotices } from "./server/round-notices";
 import { runBackupCycle } from "./server/operations/backup";
+import { refreshDutyReminders } from "./server/duty-reminders";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 // The container health check reads this file's age (see compose.production.yaml).
@@ -37,6 +38,7 @@ await boss.work("unit-maintenance", async () => {
     await refreshRankReminders(tx);
     await refreshRoundNotices(tx, now);
     await announceDepartures(tx, now);
+    await refreshDutyReminders(tx, now);
     await recordWorkerHeartbeat(tx, { now, paused: false, credited });
   });
   await writeFile(heartbeatFile, new Date().toISOString());
@@ -46,7 +48,7 @@ await boss.work("unit-maintenance", async () => {
   }
 });
 // Backups run in their own queue so a long dump never delays the minute's maintenance.
-// The run table, not the queue, decides whether a backup is due (decision 171).
+// The run table, not the queue, decides whether a backup is due (decision 172).
 await boss.createQueue("backup", {
   policy: "stately",
   retryLimit: 0,

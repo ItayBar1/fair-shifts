@@ -75,7 +75,7 @@ export function preferencesPayload(
 
 /**
  * Types a role's form does not show: departure emails reach managers only
- * (decision 170), operational alerts the technical account only (decision 171).
+ * (decision 170), operational alerts the technical account only (decision 172).
  */
 export function hiddenPreferenceTypes(role: unknown): PreferenceType[] {
   return preferenceTypes.filter(
