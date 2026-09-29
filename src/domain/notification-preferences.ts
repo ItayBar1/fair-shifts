@@ -10,6 +10,7 @@ export const preferenceTypes = [
   "roundOpening",
   "roundClosing",
   "publication",
+  "transfer",
 ] as const;
 export type PreferenceType = (typeof preferenceTypes)[number];
 
@@ -32,6 +33,7 @@ export const preferencesSchema = z
         roundOpening: z.boolean(),
         roundClosing: z.boolean(),
         publication: z.boolean(),
+        transfer: z.boolean(),
       })
       .strict(),
   })
@@ -45,6 +47,7 @@ export const systemDefaults: Preferences = {
     roundOpening: true,
     roundClosing: true,
     publication: true,
+    transfer: true,
   },
 };
 
@@ -60,9 +63,15 @@ const preferenceByKind = {
   "round-closing": "roundClosing",
   publication: "publication",
   "publication-change": "publication",
+  transfer: "transfer",
 } as const satisfies Record<string, PreferenceType>;
 export type EmailKind =
   (typeof mandatoryEmailKinds)[number] | keyof typeof preferenceByKind;
+
+/** Types added after preferences were first stored (decision 163). */
+const newTypeDefaults: Partial<Preferences["email"]> = {
+  transfer: systemDefaults.email.transfer,
+};
 
 export type PreferenceSource = "personal" | "unit" | "system";
 
@@ -85,9 +94,13 @@ function storedPreferences(value: unknown, requireCustom = true) {
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
   if (requireCustom && data.custom !== true) return null;
+  // A form saved before a type existed keeps its choices; the new type starts from the system default (decision 163).
   const parsed = preferencesSchema.safeParse({
     reminderHours: data.reminderHours,
-    email: data.email,
+    email:
+      data.email && typeof data.email === "object"
+        ? { ...newTypeDefaults, ...data.email }
+        : data.email,
   });
   return parsed.success ? parsed.data : null;
 }

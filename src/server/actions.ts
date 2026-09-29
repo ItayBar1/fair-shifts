@@ -63,6 +63,7 @@ import {
 } from "./duty-changes";
 import { previewImport, applyImport, getImport } from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
+import { offerTransfer, respondTransfer, withdrawTransfer } from "./transfers";
 import {
   markNotification,
   resetPreferences,
@@ -258,6 +259,15 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "duty.change.discard":
         result = await discardDutyChange(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.offer":
+        result = await offerTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.respond":
+        result = await respondTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.withdraw":
+        result = await withdrawTransfer(tx, actor, payload, expectedVersion);
         break;
       case "score.preview":
         result = await previewScore(tx, actor, payload);
