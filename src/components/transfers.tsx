@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import {
   type AppState,
@@ -10,7 +11,17 @@ import {
   displayDate,
   personName,
 } from "@/client/types";
-import { ActionDialog, Empty, Notice, Panel, QuickAction, Status } from "./ui";
+import {
+  ActionDialog,
+  Empty,
+  Form,
+  Modal,
+  Notice,
+  Panel,
+  QuickAction,
+  Status,
+  type Field,
+} from "./ui";
 
 const OPEN = ["awaiting_consent", "awaiting_manager"];
 const candidateLabels: Record<string, string> = {
@@ -118,6 +129,196 @@ function Reasons({ row }: { row: Row }) {
   );
 }
 
+function Decision({ row }: { row: Row }) {
+  if (row.status === "manager_rejected")
+    return <small>{str(row.closedReason)}</small>;
+  if (row.status === "cancelled" && row.closedReason)
+    return <small>{str(row.closedReason)}</small>;
+  if (row.decidedByName && row.status === "completed")
+    return <small>ההעברה אושרה בידי {str(row.decidedByName)}</small>;
+  return null;
+}
+const started = (state: AppState, row: Row) => {
+  const duty = state.duties.find((item) => item.id === row.dutyId);
+  return (
+    !!duty &&
+    new Date(str(duty.start)).getTime() <=
+      new Date(str(state.serverNow)).getTime()
+  );
+};
+function Retract({
+  action,
+  row,
+  label,
+  description,
+}: {
+  action: Action;
+  row: Row;
+  label: string;
+  description: string;
+}) {
+  return (
+    <ActionDialog
+      title={label}
+      buttonLabel={label}
+      description={description}
+      fields={[
+        {
+          name: "confirmed",
+          label: "אני מאשר את הביטול",
+          type: "checkbox",
+          required: true,
+        },
+      ]}
+      action={action}
+      type="transfer.withdraw"
+      transform={() => ({ id: row.id })}
+      version={num(row.version)}
+      danger
+    />
+  );
+}
+
+/** Manager decision on a transfer awaiting approval: review, per-exception approval, or a rejection with a reason. */
+function TransferDecision({
+  state,
+  action,
+  row,
+}: {
+  state: AppState;
+  action: Action;
+  row: Row;
+}) {
+  const [review, setReview] = useState<Record<string, unknown> | null>(null);
+  const requirements = rows(review?.requirements);
+  const close = () => setReview(null);
+  const reject = (
+    <ActionDialog
+      title="דחיית ההעברה"
+      buttonLabel="דחייה"
+      description="ההעברה תיסגר והשיבוץ המקורי יישאר בתוקף. הסיבה תוצג למציע, למחליף ולאחראים, ולכן אין לכתוב בה מידע רגיש."
+      fields={[
+        {
+          name: "reason",
+          label: "סיבת הדחייה",
+          type: "textarea",
+          required: true,
+          full: true,
+        },
+      ]}
+      action={action}
+      type="transfer.decide"
+      payload={{ id: row.id, decision: "reject" }}
+      version={num(row.version)}
+      danger
+    />
+  );
+  if (started(state, row))
+    return (
+      <>
+        <Notice tone="warning">
+          התורנות כבר התחילה. העברה אחרי התחלה תטופל במסלול תקופות הביצוע, ועד
+          אז השיבוץ המקורי והניקוד השמור בתוקף. אפשר לדחות את ההעברה.
+        </Notice>
+        {reject}
+      </>
+    );
+  return (
+    <>
+      <button
+        className="btn secondary"
+        onClick={async () => {
+          try {
+            setReview(
+              await action("transfer.review", { id: row.id }, num(row.version))
+            );
+          } catch {
+            /* workspace displays API error */
+          }
+        }}
+      >
+        בדיקה והחלטה
+      </button>
+      {reject}
+      {review && (
+        <Modal title="אישור העברה" onClose={close}>
+          {!review.valid ? (
+            <Notice tone="danger">{str(review.message)}</Notice>
+          ) : review.started ? (
+            <Notice tone="warning">
+              התורנות כבר התחילה. העברה אחרי התחלה תטופל במסלול תקופות הביצוע.
+            </Notice>
+          ) : (
+            <>
+              <Notice>
+                {personName(state, row.acceptedBy)} יקבל את התורנות{" "}
+                {str(row.dutyName)} עם מלוא הניקוד ({num(row.points)} נקודות), ו
+                {personName(state, row.fromSoldierId)} לא יהיה משובץ לה עוד.
+              </Notice>
+              {rows(review.blockers).map((item, index) => (
+                <Notice tone="danger" key={index}>
+                  {str(item.message)}
+                </Notice>
+              ))}
+              {review.status === "blocked" ? (
+                <p className="form-description">
+                  המחליף אינו עומד כעת בתנאי התורנות. אפשר לדחות את ההעברה.
+                </p>
+              ) : (
+                <Form
+                  fields={[
+                    ...requirements.map((item, index): Field => ({
+                      name: `approval${index}`,
+                      label: str(item.message),
+                      type: "checkbox",
+                      required: true,
+                    })),
+                    ...(requirements.length
+                      ? [
+                          {
+                            name: "approvalReason",
+                            label: "סיבה לאישור החריגים הנקודתיים",
+                            type: "textarea" as const,
+                            required: true,
+                            full: true,
+                            hint: "הסיבה נשמרת אצל האחראים בלבד.",
+                          },
+                        ]
+                      : []),
+                    {
+                      name: "confirmed",
+                      label: "בדקתי את ההתאמה ומאשר את ההעברה",
+                      type: "checkbox",
+                      required: true,
+                    },
+                  ]}
+                  submitLabel="אישור ההעברה"
+                  onSubmit={async (values) => {
+                    await action(
+                      "transfer.decide",
+                      {
+                        id: row.id,
+                        decision: "approve",
+                        confirmed: true,
+                        previewToken: review.previewToken,
+                        approvalReason: values.approvalReason,
+                        approvalKeys: requirements.map((item) => item.key),
+                      },
+                      num(row.version)
+                    );
+                    close();
+                  }}
+                  onCancel={close}
+                />
+              )}
+            </>
+          )}
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export function TransferRequests({
   state,
   action,
@@ -150,9 +351,19 @@ export function TransferRequests({
                 </strong>
                 <DutyLine state={state} row={row} />
                 {row.acceptedBy === soldierId && <Reasons row={row} />}
+                {row.acceptedBy === soldierId && <Decision row={row} />}
               </div>
               <div className="inline">
                 <Status value={row.status} />
+                {row.status === "awaiting_manager" &&
+                  row.acceptedBy === soldierId && (
+                    <Retract
+                      action={action}
+                      row={row}
+                      label="ביטול ההסכמה"
+                      description="ההעברה תיסגר לפני החלטת האחראי, והתורנות תישאר אצל המציע."
+                    />
+                  )}
                 {row.status === "awaiting_consent" && (
                   <>
                     <ActionDialog
@@ -209,10 +420,20 @@ export function TransferRequests({
                 </small>
                 {row.closedReason ? (
                   <small>{str(row.closedReason)}</small>
-                ) : null}
+                ) : (
+                  <Decision row={row} />
+                )}
               </div>
               <div className="inline">
                 <Status value={row.status} />
+                {row.status === "awaiting_manager" && (
+                  <Retract
+                    action={action}
+                    row={row}
+                    label="ביטול ההעברה"
+                    description="ההעברה תיסגר לפני החלטת האחראי, והשיבוץ שלך יישאר בתוקף."
+                  />
+                )}
                 {row.status === "awaiting_consent" && (
                   <QuickAction
                     action={action}
@@ -233,14 +454,8 @@ export function TransferRequests({
       {manager && (
         <Panel
           title="העברות ביחידה"
-          subtitle="העברה תקינה לפני התחלה מושלמת בלי אישור אחראי"
+          subtitle="העברה תקינה לפני התחלה מושלמת בלי אישור אחראי. עד החלטה בהעברה שממתינה לטיפול, השיבוץ המקורי והניקוד השמור בתוקף"
         >
-          {all.some((row) => row.status === "awaiting_manager") && (
-            <Notice tone="warning">
-              החלטת אחראי בהעברה שממתינה לטיפול תתווסף בהמשך. עד אז השיבוץ
-              המקורי והניקוד השמור נשארים בתוקף.
-            </Notice>
-          )}
           {all.length ? (
             all.map((row) => (
               <article className="task-item" key={row.id}>
@@ -255,10 +470,20 @@ export function TransferRequests({
                   <Reasons row={row} />
                   {row.closedReason ? (
                     <small>{str(row.closedReason)}</small>
+                  ) : (
+                    <Decision row={row} />
+                  )}
+                  {rows(row.approvals).length ? (
+                    <small>
+                      סיבת אישור החריגים: {str(rows(row.approvals)[0].reason)}
+                    </small>
                   ) : null}
                 </div>
                 <div className="inline">
                   <Status value={row.status} />
+                  {row.status === "awaiting_manager" && (
+                    <TransferDecision state={state} action={action} row={row} />
+                  )}
                 </div>
               </article>
             ))

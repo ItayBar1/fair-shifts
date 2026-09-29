@@ -463,6 +463,14 @@ export async function getImport(
             name: person.name,
             erased: true,
             changes: [],
+            ...(row.data.newRowRestored
+              ? {
+                  newRowRestored: {
+                    action: (row.data.newRowRestored as { action: string })
+                      .action,
+                  },
+                }
+              : {}),
           },
         }
       : row;
@@ -634,6 +642,10 @@ export async function applyImport(
       ...detail.data,
       changes: appliedChanges,
       appliedVersion: version,
+      // Restore compares against these to find any edit made after the import.
+      appliedFieldVersions: person.fieldVersions,
+      appliedContactVersions: contact?.fieldVersions ?? {},
+      appliedBalanceVersion: balance?.version,
       appliedAt: new Date().toISOString(),
     });
   }

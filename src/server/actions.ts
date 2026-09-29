@@ -67,7 +67,13 @@ import {
 } from "./duty-changes";
 import { previewImport, applyImport, getImport } from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
-import { offerTransfer, respondTransfer, withdrawTransfer } from "./transfers";
+import {
+  decideTransfer,
+  offerTransfer,
+  respondTransfer,
+  reviewTransfer,
+  withdrawTransfer,
+} from "./transfers";
 import { requestBackup } from "./operations/backup";
 import {
   prepareCancellationChange,
@@ -299,6 +305,12 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "transfer.withdraw":
         result = await withdrawTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.review":
+        result = await reviewTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.decide":
+        result = await decideTransfer(tx, actor, payload, expectedVersion);
         break;
       case "cancellation.submit":
         result = await submitCancellationRequest(

@@ -811,10 +811,16 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     .set({ phone: "0500000007" })
     .where(eq(soldierContacts.soldierId, importedPerson.id));
   await page
-    .getByRole("button", { name: "בדיקת שחזור עדכונים", exact: true })
+    .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "בדיקת שחזור — לפי השינויים מאז הייבוא" })
+  ).toBeVisible();
+  // The new soldier has no activity since the import: the restore cancels it.
+  await expect(
+    page
+      .getByRole("region", { name: "קליטות חדשות באצווה" })
+      .getByText("הקליטה תבוטל", { exact: true })
   ).toBeVisible();
   await expect(page.getByText("השתנה מאז", { exact: true })).toBeVisible();
   await page
@@ -845,12 +851,9 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     fullPage: true,
   });
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page
-    .getByRole("button", { name: "אישור שחזור העדכונים", exact: true })
-    .click();
-  await expect(
-    page.getByText(/עדכוני החיילים הקיימים שוחזרו או הוכרעו/)
-  ).toBeVisible();
+  await page.getByRole("button", { name: "אישור השחזור", exact: true }).click();
+  await expect(page.getByText(/שחזור הייבוא הושלם/)).toBeVisible();
+  await expect(page.getByText(/הקליטה בוטלה בשחזור/)).toBeVisible();
   const restoredState = await (await page.request.get("/api/v1/state")).json();
   expect(
     restoredState.soldiers.find(
@@ -866,7 +869,10 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     restoredState.soldiers.find(
       (person: { personalNumber: string }) => person.personalNumber === "000019"
     )
-  ).toMatchObject({ currentScore: 5 });
+  ).toBeUndefined();
+  expect(
+    await db.select().from(user).where(eq(user.email, "xlsx@example.invalid"))
+  ).toHaveLength(0);
   await soldierContext.close();
 });
 

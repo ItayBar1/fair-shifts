@@ -42,6 +42,8 @@ export default function LoginPage() {
   const [recovery, setRecovery] = useState(false);
   const [touched, setTouched] = useState(false);
   const [notice, setNotice] = useState("");
+  // System-wide only: the same for every address (decision 177).
+  const [mailDelayed, setMailDelayed] = useState(false);
   const shownError = error || (touched ? "" : providerError(search));
   async function post(path: string, body: Record<string, string>) {
     setError("");
@@ -132,6 +134,12 @@ export default function LoginPage() {
           </p>
           {shownError && <Notice tone="danger">{shownError}</Notice>}
           {notice && <Notice tone="success">{notice}</Notice>}
+          {sent && !recovery && mailDelayed && (
+            <Notice tone="warning">
+              משלוח המיילים מתעכב כרגע. אם הקוד לא מגיע תוך כמה דקות, פנו לאחראי
+              התורנויות.
+            </Notice>
+          )}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -157,6 +165,7 @@ export default function LoginPage() {
                 const result = await post("/api/auth/request-code", { email });
                 if (result) {
                   setSent(true);
+                  setMailDelayed(result.mailDelayed === true);
                   setResendAt(Date.now() + 60000);
                 }
               }
@@ -222,7 +231,10 @@ export default function LoginPage() {
                   const result = await post("/api/auth/request-code", {
                     email,
                   });
-                  if (result) setResendAt(Date.now() + 60000);
+                  if (result) {
+                    setMailDelayed(result.mailDelayed === true);
+                    setResendAt(Date.now() + 60000);
+                  }
                 }}
                 disabled={!ready || pending}
               >

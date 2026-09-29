@@ -42,6 +42,9 @@ export const user = pgTable(
     invitedAt: timestamp("invited_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Set once, when the first session is created. An imported soldier who
+    // ever signed in has activity, so import restore keeps the record.
+    firstSignInAt: timestamp("first_sign_in_at", { withTimezone: true }),
     ...dates(),
   },
   (t) => [
