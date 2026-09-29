@@ -5,6 +5,9 @@ import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
 import { populationAt, rankAt } from "../domain/eligibility";
+import { interveningActions } from "./score-decisions";
+import { readHealth } from "./operations/health";
+import { projectRequests } from "./transfers";
 import { effectivePreferences } from "./notifications";
 import { resolvePreferences } from "../domain/notification-preferences";
 import type { DbTransaction } from "./db";
@@ -98,10 +101,14 @@ export async function readState(actor: Actor) {
         ...base,
         settings: await preferencesState(tx, actor),
         accounts,
+        // The worker heartbeat is presented through `health`.
         operations: [
           ...mail,
-          ...operations.map((row) => ({ id: row.key, ...row.data })),
+          ...operations
+            .filter((row) => row.key !== "worker")
+            .map((row) => ({ id: row.key, ...row.data })),
         ],
+        health: await readHealth(tx),
       };
     }
     const state = await loadDomain(tx);
@@ -208,6 +215,7 @@ export async function readState(actor: Actor) {
                 soldierId: row.soldierId,
                 status: row.status,
                 points: row.points,
+                version: row.version,
                 ...(row.performance && {
                   performance: {
                     performerId: row.performance.performerId,
@@ -231,7 +239,7 @@ export async function readState(actor: Actor) {
       // Delivery bookkeeping (who was reached) is operational: managers only.
       roundNotices: managing ? workflow("round_notice") : [],
       constraints: managing ? workflow("constraint") : own("constraint"),
-      requests: managing ? workflow("request") : own("request"),
+      requests: projectRequests(workflows, actor, managing),
       // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
       notifications: workflows
         .filter(
@@ -281,7 +289,23 @@ export async function readState(actor: Actor) {
       performanceCorrections: managing
         ? workflow("performance_correction")
         : [],
-      scoreDecisions: managing ? workflow("score_decision") : [],
+      scoreDecisions: managing
+        ? workflow("score_decision").map((row) => {
+            const data = workflows.find((item) => item.id === row.id)!.data;
+            if (data.status !== "pending") return row;
+            // Pending decisions show the intervening operations as they stand now, in effective order.
+            const end = state.assignments.find(
+              (item) => item.id === data.assignmentId
+            )?.performance?.end;
+            const from = String(data.from ?? end ?? "");
+            return {
+              ...row,
+              barriers: from
+                ? interveningActions(String(data.soldierId), from, scoreRows)
+                : [],
+            };
+          })
+        : [],
     };
   });
 }

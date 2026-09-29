@@ -33,6 +33,8 @@ const statusLabels: Record<string, string> = {
   running: "בתהליך",
   needs_review: "דורש טיפול",
   transferred: "הועבר",
+  declined: "נדחתה",
+  expired: "פגה",
   waiting_manager: "ממתינה לאחראי",
   preview: "תצוגה מקדימה",
   applied: "נשמרה",

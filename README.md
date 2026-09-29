@@ -7,7 +7,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.6](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.15](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [מצב השלבים, חלוקת עבודה בצוות ושער השחרור](docs/team-roadmap.md).
@@ -35,6 +35,14 @@ sh scripts/docker.sh --profile test down
 הבדיקות משתמשות במסד `fair_shifts_test` נפרד ומסרבות לנקות מסד שאינו מוגדר כמסד בדיקות. אין להריץ אינטגרציה ו־E2E במקביל מול אותו מסד. הפיתוח מתמיד ב־volume; מסד הבדיקות זמני. דוחות הדפדפן ב־`test-results` ו־`playwright-report`, שאינם נשמרים ב־Git.
 
 Compose מיועד לפיתוח סינתטי: סודות מקומיים גלויים ומייל כבוי. Google ומשלוח אמיתי דורשים חשבונות ספקים והגדרות. בדיקות משתמשות במתאם מייל מדומה ובקוד מהמסד המבודד, ללא עוקף־אימות באתר. הקוד והתלויות מותקנים ורצים בתוך התמונות.
+
+## תצורת הפעלה (staging/production)
+
+`compose.production.yaml` מפעיל מסד, אתר, עובד ו־cloudflared, עם סודות מחוץ למאגר ובדיקת תצורה לפני עלייה. ההוראות ב[מדריך ההפעלה](docs/operations.md). בדיקת התצורה ב־Docker עם סודות סינתטיים:
+
+```sh
+sh scripts/production-smoke.sh
+```
 
 ## בדיקה לפני commit וגיבוי ב־Git
 

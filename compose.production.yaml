@@ -1,0 +1,119 @@
+# Production and synthetic staging on a single Ubuntu host. Separate from the
+# development compose.yaml: no secrets in the repository and no published ports.
+# The site is reachable only through cloudflared. Use via scripts/production.sh;
+# operating instructions in docs/operations.md.
+name: fair-shifts-production
+
+x-service: &service
+  init: true
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: 10m, max-file: "5" }
+
+x-app: &app
+  <<: *service
+  image: fair-shifts:${APP_VERSION:?APP_VERSION is required}
+  env_file:
+    - path: ${FAIR_SHIFTS_CONFIG_DIR:?FAIR_SHIFTS_CONFIG_DIR is required}/app.env
+      required: true
+  stop_grace_period: 30s
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    <<: *service
+    image: postgres:18.6-bookworm
+    env_file:
+      - path: ${FAIR_SHIFTS_CONFIG_DIR}/db.env
+        required: true
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks: [internal]
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    <<: *app
+    build:
+      context: .
+      target: production
+      args:
+        APP_VERSION: ${APP_VERSION}
+    networks: [internal, egress]
+    # Configuration is checked before migrations; exec lets Next.js receive SIGTERM.
+    command:
+      [
+        sh,
+        -c,
+        "pnpm --silent config:check && pnpm --silent db:migrate && exec node_modules/.bin/next start --hostname 0.0.0.0",
+      ]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  worker:
+    <<: *app
+    pull_policy: never
+    networks: [internal, egress]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    command:
+      [
+        sh,
+        -c,
+        "pnpm --silent config:check && exec node_modules/.bin/tsx src/worker.ts",
+      ]
+    # The worker touches this file after each maintenance run (every minute).
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "const s=require('fs').statSync('/tmp/fair-shifts-worker-heartbeat');process.exit(Date.now()-s.mtimeMs<180000?0:1)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  cloudflared:
+    <<: *service
+    image: cloudflare/cloudflared:2026.9.3
+    command: [tunnel, --no-autoupdate, run]
+    env_file:
+      - path: ${FAIR_SHIFTS_CONFIG_DIR}/tunnel.env
+        required: true
+    networks: [egress]
+    depends_on:
+      app:
+        condition: service_healthy
+
+networks:
+  # The database has no route outside the host.
+  internal:
+    internal: true
+  egress: {}
+
+volumes:
+  postgres-data:

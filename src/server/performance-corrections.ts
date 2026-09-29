@@ -178,6 +178,7 @@ async function plan(
           ...barrier,
           reason: entries.find((item) => item.id === barrier.id)!.reason,
         })),
+        from: references[0]!,
         decisionId: decision?.id,
         decisionVersion: decision?.version,
         ...effect,
@@ -254,6 +255,7 @@ function view(result: Awaited<ReturnType<typeof plan>>) {
       ...effect,
       balanceVersion: undefined,
       decisionVersion: undefined,
+      from: undefined,
     })),
     findings,
   };
@@ -315,6 +317,15 @@ export async function applyPerformanceCorrection(
       });
       continue;
     }
+    const existing = effect.decisionId
+      ? (
+          await tx
+            .select()
+            .from(records)
+            .where(eq(records.id, effect.decisionId))
+        )[0]
+      : undefined;
+    const earlier = existing ? String(existing.data.from ?? effect.from) : "";
     const decision = {
       assignmentId: row.id,
       dutyId: duty.id,
@@ -324,16 +335,13 @@ export async function applyPerformanceCorrection(
       reflectedPoints: effect.reflected,
       rawDelta: effect.rawDelta,
       barrierIds: effect.barriers.map((barrier) => barrier.id),
+      // Barriers are searched from the earliest performance end any merged correction touched.
+      from:
+        earlier && instant(earlier).toMillis() < instant(effect.from).toMillis()
+          ? earlier
+          : effect.from,
       reason: input.reason,
     };
-    const existing = effect.decisionId
-      ? (
-          await tx
-            .select()
-            .from(records)
-            .where(eq(records.id, effect.decisionId))
-        )[0]
-      : undefined;
     const saved = existing
       ? await updateRecord(tx, existing, {
           ...decision,
@@ -411,7 +419,7 @@ export async function applyPerformanceCorrection(
         accountId: account.id,
         title: "תיקון ביצוע ממתין להכרעת ניקוד",
         body: `ההיסטוריה של ${duty.name} תוקנה. יש להחליט אם ובכמה לשנות את היתרה כיום.`,
-        href: `/duties/${duty.id}`,
+        href: "/manage",
       });
   }
   return { id: correctionId, version, outcomes };

@@ -154,6 +154,7 @@ const allEmail = {
   roundOpening: true,
   roundClosing: true,
   publication: true,
+  transfer: true,
 };
 
 beforeEach(async () => {

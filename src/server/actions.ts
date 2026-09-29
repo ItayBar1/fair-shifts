@@ -13,7 +13,7 @@ import {
 } from "./auth/accounts";
 import { currentVersion } from "./repository";
 import { invariant, AppError } from "./errors";
-import { saveSoldier } from "./people";
+import { previewSoldierUpdate, saveSoldier } from "./people";
 import {
   saveDutyType,
   createDuty,
@@ -26,6 +26,7 @@ import {
   previewPerformanceCorrection,
   applyPerformanceCorrection,
 } from "./performance-corrections";
+import { previewScoreDecision, applyScoreDecision } from "./score-decisions";
 import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
 import { user } from "./auth-schema";
 import {
@@ -34,6 +35,8 @@ import {
   previewTimelineAdd,
   previewTimelineEdit,
   editTimeline,
+  previewSoldierConditions,
+  saveSoldierConditions,
 } from "./personnel";
 import {
   createRound,
@@ -63,6 +66,7 @@ import {
 } from "./duty-changes";
 import { previewImport, applyImport, getImport } from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
+import { offerTransfer, respondTransfer, withdrawTransfer } from "./transfers";
 import {
   markNotification,
   resetPreferences,
@@ -132,6 +136,15 @@ export async function executeAction(actor: Actor, value: unknown) {
         );
         result = await saveSoldier(tx, actor, payload);
         break;
+      case "soldier.update.preview":
+        id.parse(payload.id);
+        result = await previewSoldierUpdate(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
       case "soldier.update":
         id.parse(payload.id);
         result = await saveSoldier(tx, actor, payload, expectedVersion);
@@ -155,6 +168,22 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "soldier.timeline.edit":
         result = await editTimeline(tx, actor, payload, expectedVersion);
+        break;
+      case "soldier.conditions.preview":
+        result = await previewSoldierConditions(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "soldier.conditions":
+        result = await saveSoldierConditions(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
         break;
       case "rank.catalog.save":
         result = await saveRankCatalog(tx, actor, payload, expectedVersion);
@@ -250,6 +279,15 @@ export async function executeAction(actor: Actor, value: unknown) {
       case "duty.change.discard":
         result = await discardDutyChange(tx, actor, payload, expectedVersion);
         break;
+      case "transfer.offer":
+        result = await offerTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.respond":
+        result = await respondTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "transfer.withdraw":
+        result = await withdrawTransfer(tx, actor, payload, expectedVersion);
+        break;
       case "score.preview":
         result = await previewScore(tx, actor, payload);
         break;
@@ -271,6 +309,17 @@ export async function executeAction(actor: Actor, value: unknown) {
           payload,
           expectedVersion
         );
+        break;
+      case "score.decision.preview":
+        result = await previewScoreDecision(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "score.decision.apply":
+        result = await applyScoreDecision(tx, actor, payload, expectedVersion);
         break;
       case "account.role": {
         const input = z

@@ -84,6 +84,7 @@ const allEmail = {
   roundOpening: true,
   roundClosing: true,
   publication: true,
+  transfer: true,
 };
 async function queue(
   actor: Actor,

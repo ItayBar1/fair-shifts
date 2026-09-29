@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { DateTime } from "luxon";
 import type { DbTransaction } from "./db";
@@ -14,10 +14,10 @@ import {
   updateRecord,
   type Actor,
 } from "./repository";
-import { id, date, population, text } from "./validation";
+import { id, date, population, text, gender } from "./validation";
 import { invariant } from "./errors";
-import { evaluateEligibility } from "../domain/eligibility";
-import type { Soldier } from "../domain/types";
+import { evaluateEligibility, populationTimeline } from "../domain/eligibility";
+import type { AllowedHours, Soldier } from "../domain/types";
 import { refreshRankReminders } from "./ranks";
 
 /** Changed rules flag existing reservations; they never silently remove an assignee. */
@@ -79,7 +79,7 @@ export async function saveEligibilityCatalog(
   const input = z
     .object({
       id: id.optional(),
-      kind: z.enum(["qualification", "exemption"]),
+      kind: z.enum(["qualification", "exemption", "capability"]),
       name: text,
       description: z.string().max(2000).default(""),
     })
@@ -119,17 +119,13 @@ function replaceEntry<T>(entries: T[], index: number, replacement?: T) {
     i !== index ? [entry] : replacement ? [replacement] : []
   );
 }
+export type DomainState = Awaited<ReturnType<typeof loadDomain>>;
 /**
  * Compares every reserved assignment of the soldier before and after a proposed
- * change. The token binds the confirmation to the exact input and domain state.
+ * change. `basis` lists the compared assignments and duties with their versions,
+ * so a stored preview can tell that they changed since.
  */
-async function assessPeriodImpact(
-  tx: DbTransaction,
-  soldierId: string,
-  data: Soldier,
-  input: unknown
-) {
-  const state = await loadDomain(tx);
+export function impactOf(state: DomainState, soldierId: string, data: Soldier) {
   const existing = state.soldiers.find((item) => item.id === soldierId)!;
   const proposed = {
     ...existing,
@@ -137,44 +133,67 @@ async function assessPeriodImpact(
     currentScore: existing.currentScore,
     constraints: existing.constraints,
   };
-  const impact = state.assignments
-    .filter(
-      (item) => item.soldierId === soldierId && item.status === "reserved"
-    )
-    .map((assignment) => {
-      const duty = state.duties.find((item) => item.id === assignment.dutyId)!;
-      const slot = duty.slots.find((item) => item.id === assignment.slotId)!;
-      const context = {
-        duties: state.duties,
-        assignments: state.assignments,
-        mode: "manual" as const,
-        ignoreAssignmentIds: [assignment.id],
-        approvals: assignment.approvals,
-        pendingReviewConfirmed: assignment.pendingReviewConfirmed,
-      };
-      const before = evaluateEligibility(existing, duty, slot, context);
-      const after = evaluateEligibility(proposed, duty, slot, context);
-      const codes = (result: typeof before) =>
-        JSON.stringify(
-          [...result.blockers, ...result.approvalsRequired].map(
-            (row) => `${row.code}:${row.referenceId ?? ""}`
-          )
-        );
-      return {
-        assignmentId: assignment.id,
-        dutyId: duty.id,
-        dutyName: duty.name,
-        start: duty.start,
-        before: before.status,
-        after: after.status,
-        affected: codes(before) !== codes(after),
-        reasons: [...after.blockers, ...after.approvalsRequired],
-      };
-    });
+  const reserved = state.assignments.filter(
+    (item) => item.soldierId === soldierId && item.status === "reserved"
+  );
+  const impact = reserved.map((assignment) => {
+    const duty = state.duties.find((item) => item.id === assignment.dutyId)!;
+    const slot = duty.slots.find((item) => item.id === assignment.slotId)!;
+    const context = {
+      duties: state.duties,
+      assignments: state.assignments,
+      mode: "manual" as const,
+      ignoreAssignmentIds: [assignment.id],
+      approvals: assignment.approvals,
+      pendingReviewConfirmed: assignment.pendingReviewConfirmed,
+    };
+    const before = evaluateEligibility(existing, duty, slot, context);
+    const after = evaluateEligibility(proposed, duty, slot, context);
+    const codes = (result: typeof before) =>
+      JSON.stringify(
+        [...result.blockers, ...result.approvalsRequired].map(
+          (row) => `${row.code}:${row.referenceId ?? ""}`
+        )
+      );
+    return {
+      assignmentId: assignment.id,
+      dutyId: duty.id,
+      dutyName: duty.name,
+      start: duty.start,
+      end: duty.end,
+      before: before.status,
+      after: after.status,
+      affected: codes(before) !== codes(after),
+      reasons: [...after.blockers, ...after.approvalsRequired],
+    };
+  });
+  const basis = reserved.map((assignment) => ({
+    assignmentId: assignment.id,
+    version: assignment.version,
+    dutyVersion: state.duties.find((item) => item.id === assignment.dutyId)!
+      .version,
+  }));
+  return { impact, basis };
+}
+/** The token binds the confirmation to the exact input and domain state. */
+async function assessPeriodImpact(
+  tx: DbTransaction,
+  soldierId: string,
+  data: Soldier,
+  input: unknown
+) {
+  const state = await loadDomain(tx);
+  const { impact } = impactOf(state, soldierId, data);
   const previewToken = createHash("sha256")
     .update(JSON.stringify({ input, state }))
     .digest("hex");
   return { previewToken, impact };
+}
+export function populationChange(before: Soldier, after: Soldier) {
+  return {
+    before: populationTimeline(before),
+    after: populationTimeline(after),
+  };
 }
 async function inspectTimelineEdit(
   tx: DbTransaction,
@@ -324,9 +343,15 @@ const timelineInput = z.object({
   order: z.number().int().nonnegative().optional(),
   reason: z.string().trim().max(2000).default(""),
 });
-const periodKinds = ["inactive", "qualification", "exemption"] as const;
-function isPeriodKind(kind: string): kind is (typeof periodKinds)[number] {
-  return (periodKinds as readonly string[]).includes(kind);
+/** Additions that are saved only against the impact the manager reviewed. */
+const reviewedKinds = [
+  "inactive",
+  "qualification",
+  "exemption",
+  "population",
+] as const;
+function isReviewedKind(kind: string): kind is (typeof reviewedKinds)[number] {
+  return (reviewedKinds as readonly string[]).includes(kind);
 }
 async function loadSoldierForTimeline(
   tx: DbTransaction,
@@ -341,53 +366,74 @@ async function loadSoldierForTimeline(
   currentVersion(person.version, expectedVersion);
   return person;
 }
-/** A new period is only saved against the impact the manager reviewed. */
-async function inspectPeriodAdd(
+/**
+ * Builds a proposed period or population transition without saving it. The
+ * population transition keeps every earlier transition as it was.
+ */
+async function inspectTimelineAdd(
   tx: DbTransaction,
   payload: unknown,
   expectedVersion?: number
 ) {
   const input = timelineInput.parse(payload);
   invariant(
-    isPeriodKind(input.kind),
+    isReviewedKind(input.kind),
     "period_kind",
-    "תצוגת השפעה זמינה להוספת כשירות, פטור או אי־פעילות"
+    "תצוגת השפעה זמינה להוספת כשירות, פטור, אי־פעילות או מעבר אוכלוסייה"
   );
   const person = await loadSoldierForTimeline(
     tx,
     input.soldierId,
     expectedVersion
   );
-  invariant(
-    input.endDate && input.endDate >= input.startDate,
-    "date_range",
-    "נדרש טווח תוקף תקין עם תאריך סיום"
-  );
   const data: Soldier = { ...person.data, version: person.version + 1 };
-  const range = { start: input.startDate, end: input.endDate };
-  if (input.kind === "inactive")
-    data.inactivePeriods = [...data.inactivePeriods, range];
-  else {
-    const catalog = await findRecord(
-      tx,
-      "eligibility_catalog",
-      id.parse(input.value)
-    );
+  if (input.kind === "population") {
+    invariant(input.reason, "reason_required", "נדרשת סיבה למעבר");
     invariant(
-      catalog.data.kind === input.kind,
-      "catalog_kind",
-      "סוג ההגדרה אינו מתאים לשיוך"
+      !data.populationHistory.some(
+        (row) => row.effectiveFrom === input.startDate
+      ),
+      "existing_effective_date",
+      "כבר קיים מעבר בתאריך הזה"
     );
-    if (input.kind === "qualification")
-      data.qualifications = [
-        ...data.qualifications,
-        { ...range, qualificationId: catalog.id },
-      ];
-    else
-      data.exemptions = [
-        ...data.exemptions,
-        { ...range, exemptionId: catalog.id },
-      ];
+    data.populationHistory = [
+      ...data.populationHistory,
+      {
+        effectiveFrom: input.startDate,
+        population: population.parse(input.value),
+      },
+    ];
+  } else {
+    invariant(
+      input.endDate && input.endDate >= input.startDate,
+      "date_range",
+      "נדרש טווח תוקף תקין עם תאריך סיום"
+    );
+    const range = { start: input.startDate, end: input.endDate };
+    if (input.kind === "inactive")
+      data.inactivePeriods = [...data.inactivePeriods, range];
+    else {
+      const catalog = await findRecord(
+        tx,
+        "eligibility_catalog",
+        id.parse(input.value)
+      );
+      invariant(
+        catalog.data.kind === input.kind,
+        "catalog_kind",
+        "סוג ההגדרה אינו מתאים לשיוך"
+      );
+      if (input.kind === "qualification")
+        data.qualifications = [
+          ...data.qualifications,
+          { ...range, qualificationId: catalog.id },
+        ];
+      else
+        data.exemptions = [
+          ...data.exemptions,
+          { ...range, exemptionId: catalog.id },
+        ];
+    }
   }
   const { previewToken, impact } = await assessPeriodImpact(
     tx,
@@ -404,8 +450,14 @@ export async function previewTimelineAdd(
   expectedVersion?: number
 ) {
   manager(actor);
-  const checked = await inspectPeriodAdd(tx, payload, expectedVersion);
-  return { previewToken: checked.previewToken, impact: checked.impact };
+  const checked = await inspectTimelineAdd(tx, payload, expectedVersion);
+  return {
+    previewToken: checked.previewToken,
+    impact: checked.impact,
+    ...(checked.input.kind === "population"
+      ? { population: populationChange(checked.person.data, checked.data) }
+      : {}),
+  };
 }
 export async function updateTimeline(
   tx: DbTransaction,
@@ -417,58 +469,40 @@ export async function updateTimeline(
   const input = timelineInput.parse(payload);
   let person: typeof soldiers.$inferSelect;
   let data: Soldier;
-  if (isPeriodKind(input.kind)) {
+  if (isReviewedKind(input.kind)) {
     const confirmation = z
       .object({
         previewToken: z.string().length(64),
         confirmed: z.literal(true),
       })
       .parse(payload);
-    const checked = await inspectPeriodAdd(tx, payload, expectedVersion);
+    const checked = await inspectTimelineAdd(tx, payload, expectedVersion);
     invariant(
       confirmation.previewToken === checked.previewToken,
       "stale_preview",
-      "נתוני החייל או השיבוצים השתנו. יש לבדוק שוב את השפעת התקופה",
+      "נתוני החייל או השיבוצים השתנו. יש לבדוק שוב את השפעת השינוי",
       409
     );
     ({ person, data } = checked);
   } else {
     person = await loadSoldierForTimeline(tx, input.soldierId, expectedVersion);
     data = { ...person.data, version: person.version + 1 };
-    if (input.kind === "population") {
-      invariant(input.reason, "reason_required", "נדרשת סיבה למעבר");
-      invariant(
-        !data.populationHistory.some(
-          (row) => row.effectiveFrom === input.startDate
-        ),
-        "existing_effective_date",
-        "כבר קיים מעבר בתאריך הזה"
-      );
-      data.populationHistory = [
-        ...data.populationHistory,
-        {
-          effectiveFrom: input.startDate,
-          population: population.parse(input.value),
-        },
-      ];
-    } else {
-      invariant(
-        input.name && input.track && input.order !== undefined && input.reason,
-        "rank_details",
-        "נדרשים דרגה, מסלול, סדר ומקור אישור"
-      );
-      data.rankHistory = [
-        ...data.rankHistory.filter(
-          (row) => row.effectiveFrom !== input.startDate
-        ),
-        {
-          effectiveFrom: input.startDate,
-          rankId: input.name,
-          trackId: input.track,
-          order: input.order,
-        },
-      ];
-    }
+    invariant(
+      input.name && input.track && input.order !== undefined && input.reason,
+      "rank_details",
+      "נדרשים דרגה, מסלול, סדר ומקור אישור"
+    );
+    data.rankHistory = [
+      ...data.rankHistory.filter(
+        (row) => row.effectiveFrom !== input.startDate
+      ),
+      {
+        effectiveFrom: input.startDate,
+        rankId: input.name,
+        trackId: input.track,
+        order: input.order,
+      },
+    ];
   }
   await tx
     .update(soldiers)
@@ -497,6 +531,181 @@ export async function updateTimeline(
   return {
     id: person.id,
     version: person.version + 1,
+    flagged: await reassessAssignments(tx, person.id),
+  };
+}
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה לא תקינה");
+const conditionsInput = z.object({
+  soldierId: id,
+  gender: z.preprocess(
+    (value) => (value === "" || value === null ? undefined : value),
+    gender.optional()
+  ),
+  capabilityIds: z.array(id).max(50).default([]),
+  allowedHours: z
+    .array(
+      z.object({
+        id: id.optional(),
+        start: date,
+        end: date,
+        windows: z
+          .array(
+            z.object({
+              startTime: clock,
+              endTime: clock,
+              weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+            })
+          )
+          .min(1)
+          .max(7),
+      })
+    )
+    .max(20)
+    .default([]),
+  reason: z.string().trim().max(2000).default(""),
+});
+function conditionsOf(data: Soldier) {
+  return {
+    gender: data.gender ?? null,
+    capabilities: data.capabilities ?? [],
+    allowedHours: data.allowedHours ?? [],
+  };
+}
+/**
+ * Gender, capabilities and personal hours limits are replaced as one set, and
+ * only against the impact the manager reviewed (decision 164).
+ */
+async function inspectConditions(
+  tx: DbTransaction,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  const input = conditionsInput.parse(payload);
+  const person = await loadSoldierForTimeline(
+    tx,
+    input.soldierId,
+    expectedVersion
+  );
+  const capabilities = [...new Set(input.capabilityIds)].sort();
+  for (const capabilityId of capabilities) {
+    const catalog = await findRecord(tx, "eligibility_catalog", capabilityId);
+    invariant(
+      catalog.data.kind === "capability",
+      "catalog_kind",
+      "היכולת שנבחרה אינה מוגדרת בקטלוג היכולות"
+    );
+  }
+  const existingIds = new Set(
+    (person.data.allowedHours ?? []).map((limit) => limit.id)
+  );
+  const allowedHours: AllowedHours[] = input.allowedHours.map((limit) => {
+    invariant(
+      limit.start <= limit.end,
+      "date_range",
+      "נדרש טווח תוקף תקין להגבלת השעות"
+    );
+    invariant(
+      !limit.id || existingIds.has(limit.id),
+      "not_found",
+      "הגבלת השעות שנבחרה לא נמצאה",
+      404
+    );
+    return {
+      id: limit.id ?? randomUUID(),
+      start: limit.start,
+      end: limit.end,
+      windows: limit.windows.map((window) => ({
+        startTime: window.startTime,
+        endTime: window.endTime,
+        weekdays: [...new Set(window.weekdays)].sort(),
+      })),
+    };
+  });
+  invariant(
+    new Set(allowedHours.map((limit) => limit.id)).size === allowedHours.length,
+    "invalid_input",
+    "הגבלת שעות מופיעה פעמיים"
+  );
+  const data: Soldier = {
+    ...person.data,
+    version: person.version + 1,
+    capabilities,
+    allowedHours,
+  };
+  if (input.gender) data.gender = input.gender;
+  else delete data.gender;
+  const before = conditionsOf(person.data);
+  const after = conditionsOf(data);
+  const comparable = (value: typeof before) =>
+    JSON.stringify({
+      ...value,
+      allowedHours: value.allowedHours.map(({ start, end, windows }) => ({
+        start,
+        end,
+        windows,
+      })),
+    });
+  invariant(
+    comparable(before) !== comparable(after),
+    "no_change",
+    "לא בוצע שינוי בתנאי ההתאמה"
+  );
+  const { previewToken, impact } = await assessPeriodImpact(
+    tx,
+    person.id,
+    data,
+    input
+  );
+  return { input, person, data, before, after, previewToken, impact };
+}
+export async function previewSoldierConditions(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const checked = await inspectConditions(tx, payload, expectedVersion);
+  return { previewToken: checked.previewToken, impact: checked.impact };
+}
+export async function saveSoldierConditions(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const confirmation = z
+    .object({ previewToken: z.string().length(64), confirmed: z.literal(true) })
+    .parse(payload);
+  const { input, person, data, before, after, previewToken } =
+    await inspectConditions(tx, payload, expectedVersion);
+  invariant(
+    confirmation.previewToken === previewToken,
+    "stale_preview",
+    "נתוני החייל או השיבוצים השתנו. יש לבדוק שוב את השפעת השינוי",
+    409
+  );
+  await tx
+    .update(soldiers)
+    .set({ data, version: data.version, updatedAt: new Date() })
+    .where(eq(soldiers.id, person.id));
+  await createRecord(
+    tx,
+    "personnel_change",
+    {
+      kind: "conditions",
+      before,
+      after,
+      reason: input.reason,
+      actorId: actor.id,
+    },
+    person.id
+  );
+  await audit(tx, actor, "soldier.conditions", person.id, {}, person.id);
+  return {
+    id: person.id,
+    version: data.version,
     flagged: await reassessAssignments(tx, person.id),
   };
 }

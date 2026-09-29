@@ -79,10 +79,34 @@ export function releaseBoundary(releaseDate: string): string {
   return localDate(releaseDate).plus({ days: 1 }).toISO()!;
 }
 
+/**
+ * Resolves a wall-clock window boundary without rejecting clock changes. A time
+ * skipped when summer time starts maps to the moment of the change; a repeated
+ * time maps to its first occurrence as a start and its second as an end, so the
+ * window keeps its widest meaning.
+ */
+export function windowBoundary(
+  date: string,
+  time: string,
+  side: "start" | "end"
+): number {
+  localDate(date);
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error("שעה לא תקינה");
+  const requested = `${date}T${time}`;
+  const parsed = DateTime.fromISO(requested, { zone: UNIT_ZONE });
+  if (parsed.toFormat("yyyy-MM-dd'T'HH:mm") !== requested)
+    return parsed.startOf("hour").toMillis();
+  const moments = parsed
+    .getPossibleOffsets()
+    .map((candidate) => candidate.toMillis());
+  return side === "start" ? Math.min(...moments) : Math.max(...moments);
+}
+
 /** A window spanning midnight belongs to its starting date. Equal endpoints mean one full local day. */
 export function dailyWindows(
   range: InstantRange,
-  rule: DailyWindow
+  rule: DailyWindow,
+  lenient = false
 ): { date: string; start: number; end: number }[] {
   const target = interval(range);
   const windows: { date: string; start: number; end: number }[] = [];
@@ -95,10 +119,12 @@ export function dailyWindows(
         rule.endTime <= rule.startTime
           ? date.plus({ days: 1 }).toISODate()!
           : isoDate;
-      const start = instant(
-        resolveLocalTime(isoDate, rule.startTime)
-      ).toMillis();
-      const end = instant(resolveLocalTime(endDate, rule.endTime)).toMillis();
+      const start = lenient
+        ? windowBoundary(isoDate, rule.startTime, "start")
+        : instant(resolveLocalTime(isoDate, rule.startTime)).toMillis();
+      const end = lenient
+        ? windowBoundary(endDate, rule.endTime, "end")
+        : instant(resolveLocalTime(endDate, rule.endTime)).toMillis();
       if (overlaps(target, { start, end }))
         windows.push({ date: isoDate, start, end });
     }

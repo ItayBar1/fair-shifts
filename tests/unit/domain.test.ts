@@ -3,11 +3,15 @@ import { calculatePrice, priceSplitExecution } from "../../src/domain/pricing";
 import {
   evaluateEligibility,
   canAccessAfterService,
+  populationMoves,
+  populationTimeline,
 } from "../../src/domain/eligibility";
 import { drawCandidate } from "../../src/domain/scheduling";
 import {
   applyScoreOperation,
+  barrierLabel,
   correctionBarriers,
+  correctionDecision,
   correctionEffect,
   dueCredits,
   rankFairness,
@@ -116,6 +120,67 @@ describe("eligibility", () => {
         mode: "volunteer",
       }).status
     ).toBe("blocked");
+  });
+  it("lets a consenting volunteer bypass pending constraints but not approved ones or release", () => {
+    const volunteer = { ...context, mode: "volunteer" as const };
+    const person = soldier({
+      constraints: [
+        {
+          id: "c1",
+          version: 1,
+          status: "pending",
+          start: "2026-09-27",
+          end: "2026-09-27",
+        },
+      ],
+    });
+    expect(
+      evaluateEligibility(person, target, target.slots[0], context).status
+    ).toBe("approval_required");
+    expect(
+      evaluateEligibility(person, target, target.slots[0], volunteer).status
+    ).toBe("eligible");
+    person.constraints[0].status = "approved";
+    expect(
+      evaluateEligibility(person, target, target.slots[0], volunteer).blockers
+    ).toEqual([expect.objectContaining({ code: "approved_constraint" })]);
+    const leaving = soldier({
+      service: { ...soldier().service, releaseDate: "2026-09-26" },
+    });
+    expect(
+      evaluateEligibility(leaving, target, target.slots[0], volunteer).blockers
+    ).toEqual([expect.objectContaining({ code: "released" })]);
+  });
+  it("routes a volunteer's exemption or rank exception to a manager instead of blocking", () => {
+    const volunteer = { ...context, mode: "volunteer" as const };
+    const guarded = duty({
+      requirements: {
+        blockingExemptionIds: ["e"],
+        ranks: [{ trackId: "t", minOrder: 3 }],
+      },
+    });
+    const person = soldier({
+      exemptions: [
+        { exemptionId: "e", start: "2026-09-01", end: "2026-09-30" },
+      ],
+      rankHistory: [
+        { effectiveFrom: "2026-01-01", rankId: "r", trackId: "t", order: 1 },
+      ],
+    });
+    expect(
+      evaluateEligibility(person, guarded, guarded.slots[0], context).status
+    ).toBe("blocked");
+    const result = evaluateEligibility(
+      person,
+      guarded,
+      guarded.slots[0],
+      volunteer
+    );
+    expect(result.status).toBe("approval_required");
+    expect(result.approvalsRequired.map((item) => item.code).sort()).toEqual([
+      "exemption",
+      "rank",
+    ]);
   });
   it("checks qualification throughout the execution", () => {
     const long = duty({
@@ -340,6 +405,57 @@ describe("past performance corrections", () => {
       })
     ).toThrow();
   });
+  it("resolves a pending decision by keeping, adjusting with a zero floor or setting the balance", () => {
+    expect(correctionDecision({ balance: 5, choice: "keep" })).toEqual({
+      after: 5,
+      delta: 0,
+      clamped: false,
+      barrier: false,
+    });
+    expect(
+      correctionDecision({ balance: 5, choice: "adjust", value: 3 })
+    ).toEqual({ after: 8, delta: 3, clamped: false, barrier: false });
+    expect(
+      correctionDecision({ balance: 5, choice: "adjust", value: -9 })
+    ).toEqual({ after: 0, delta: -5, clamped: true, barrier: true });
+    expect(correctionDecision({ balance: 5, choice: "set", value: 2 })).toEqual(
+      { after: 2, delta: -3, clamped: false, barrier: true }
+    );
+    expect(() => correctionDecision({ balance: 5, choice: "set" })).toThrow();
+    expect(() =>
+      correctionDecision({ balance: 5, choice: "set", value: -1 })
+    ).toThrow();
+    expect(() =>
+      correctionDecision({ balance: 5, choice: "adjust", value: 1.5 })
+    ).toThrow();
+  });
+  it("names every operation that changes the meaning of a correction", () => {
+    expect(
+      [
+        ["normalization", { operation: "percent" }],
+        ["adjustment", { operation: "set" }],
+        ["adjustment", { operation: "percent" }],
+        ["adjustment", { operation: "subtract" }],
+        ["correction", { barrier: true }],
+        ["import_set", {}],
+        ["import_restore", {}],
+        ["correction_decision", { choice: "set" }],
+        ["correction_decision", { choice: "adjust" }],
+      ].map(([kind, data]) =>
+        barrierLabel(kind as string, data as Record<string, unknown>)
+      )
+    ).toEqual([
+      "נרמול",
+      "קביעת יתרה",
+      "הפחתת אחוזים",
+      "הפחתה שנעצרה באפס",
+      "תיקון ביצוע שנעצר באפס",
+      "קביעת יתרה בייבוא",
+      "קביעת יתרה בשחזור ייבוא",
+      "קביעת יתרה בהכרעת תיקון",
+      "הכרעת תיקון שנעצרה באפס",
+    ]);
+  });
 });
 describe("Israel time boundaries", () => {
   it("uses a calendar month for grace at month end", () =>
@@ -350,5 +466,99 @@ describe("Israel time boundaries", () => {
     expect(resolveLocalTime("2026-10-25", "01:30", 180)).not.toBe(
       resolveLocalTime("2026-10-25", "01:30", 120)
     );
+  });
+  const nightSurcharge = (
+    startTime: string,
+    endTime: string,
+    hours: string
+  ): Pricing => ({
+    ...base,
+    surcharges: [
+      {
+        id: "night",
+        name: "לילה",
+        points: "1",
+        window: { startTime, endTime },
+        threshold: { kind: "minimum_hours", hours },
+        frequency: "per_window",
+      },
+    ],
+  });
+  it("starts a surcharge window at the moment summer time skips its start time", () =>
+    expect(
+      calculatePrice(
+        nightSurcharge("02:30", "06:00", "3"),
+        "2026-03-26T20:00:00+02:00",
+        "2026-03-27T10:00:00+03:00"
+      ).surcharges[0]!.windows
+    ).toEqual(["2026-03-27"]));
+  it("gives a surcharge window its widest meaning when winter time repeats its start time", () =>
+    expect(
+      calculatePrice(
+        nightSurcharge("01:30", "05:00", "4.5"),
+        "2026-10-24T22:00:00+03:00",
+        "2026-10-25T08:00:00+02:00"
+      ).surcharges[0]!.windows
+    ).toEqual(["2026-10-25"]));
+  it("prices a daytime duty on a clock-change date outside the changed hour", () => {
+    const price = calculatePrice(
+      nightSurcharge("02:30", "06:00", "1"),
+      "2026-03-27T10:00:00+03:00",
+      "2026-03-27T18:00:00+03:00"
+    );
+    expect(price.surcharges[0]!.count).toBe(0);
+    expect(price.points).toBe(1);
+  });
+});
+describe("population timeline", () => {
+  const career = soldier({
+    service: {
+      type: "career",
+      basePopulation: "mandatory",
+      graceEligible: false,
+      permanentFrom: "2026-01-01",
+    },
+  });
+  it("merges dates that do not change the effective population", () => {
+    expect(
+      populationTimeline({
+        ...career,
+        service: { ...career.service, officerFrom: "2026-06-01" },
+        populationHistory: [
+          { effectiveFrom: "2025-01-01", population: "mandatory" },
+        ],
+      })
+    ).toEqual([
+      { from: null, population: "mandatory" },
+      { from: "2026-01-01", population: "career" },
+    ]);
+  });
+  it("treats an officer date after the career date as no move", () => {
+    expect(
+      populationMoves(career, {
+        ...career,
+        service: { ...career.service, officerFrom: "2026-06-01" },
+      })
+    ).toBe(false);
+  });
+  it("moves the population for an earlier officer date or a KAMA transition", () => {
+    expect(
+      populationMoves(career, {
+        ...career,
+        service: { ...career.service, officerFrom: "2025-12-31" },
+      })
+    ).toBe(true);
+    const kama = {
+      ...career,
+      populationHistory: [
+        { effectiveFrom: "2026-03-01", population: "academic" as const },
+      ],
+    };
+    expect(populationTimeline(kama)).toEqual([
+      { from: null, population: "mandatory" },
+      { from: "2026-01-01", population: "career" },
+      { from: "2026-03-01", population: "academic" },
+    ]);
+    expect(populationMoves(career, kama)).toBe(true);
   });
 });
