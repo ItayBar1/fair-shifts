@@ -4,7 +4,12 @@ import { eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db } from "../../src/server/db";
 import { user, emailOutbox } from "../../src/server/auth-schema";
-import { soldiers, balances, assignments } from "../../src/server/schema";
+import {
+  soldiers,
+  balances,
+  assignments,
+  duties,
+} from "../../src/server/schema";
 import {
   createInvitedAccount,
   type Actor,
@@ -60,10 +65,15 @@ test.beforeAll(async () => {
     securityEpoch: 1,
   };
 });
-async function command(type: string, payload: Record<string, unknown>) {
+async function command(
+  type: string,
+  payload: Record<string, unknown>,
+  expectedVersion?: number
+) {
   return (await executeAction(manager, {
     type,
     payload,
+    expectedVersion,
     idempotencyKey: randomUUID(),
   })) as { id: string; version: number };
 }
@@ -90,7 +100,7 @@ async function login(page: Page, email: string) {
   ).toBeVisible();
 }
 
-test("a period plan leaves seats it cannot fill and explains each shortfall", async ({
+test("a period plan explains each shortfall, and a changed draw drops its approval form", async ({
   page,
 }) => {
   const type = await command("dutyType.save", {
@@ -137,4 +147,65 @@ test("a period plan leaves seats it cannot fill and explains each shortfall", as
     )
   ).toBe(true);
   await runs.screenshot({ path: "test-results/planning-shortfall-mobile.png" });
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // A waiting proposal whose draw changed drops its approval form without a
+  // manual refresh (same session: one login code per minute).
+  const day = DateTime.now().setZone("Asia/Jerusalem").plus({ days: 14 });
+  await db.update(balances).set({ current: 100 });
+  const id = randomUUID();
+  const data = soldier({
+    id,
+    name: "לפני שחרור",
+    personalNumber: "500004",
+    service: {
+      type: "mandatory",
+      basePopulation: "mandatory",
+      graceEligible: false,
+      releaseDate: day.plus({ days: 10 }).toISODate()!,
+    },
+  });
+  await db
+    .insert(soldiers)
+    .values({ id, name: data.name, personalNumber: data.personalNumber, data });
+  await db.insert(balances).values({ soldierId: id, current: 0 });
+  const releaseType = await command("dutyType.save", {
+    name: "שמירה לפני שחרור",
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "שומר", count: 1 }],
+  });
+  const releaseStart = day.set({
+    hour: 8,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+  });
+  const duty = await command("duty.create", {
+    typeId: releaseType.id,
+    name: "הצעה שמתיישנת",
+    start: releaseStart.toISO(),
+    end: releaseStart.plus({ hours: 8 }).toISO(),
+  });
+  const [row] = await db.select().from(duties).where(eq(duties.id, duty.id));
+  await command(
+    "duty.lottery",
+    { dutyId: duty.id, slotId: row.data.slots[0]!.id },
+    row.version
+  );
+
+  await page.goto(`/duties/${duty.id}`);
+  const approveButton = page.getByRole("button", {
+    name: "אישור המועמד ושיבוץ",
+  });
+  await expect(approveButton).toBeVisible();
+  // Another soldier's score drops into the band: the draw is no longer the same.
+  await db
+    .update(balances)
+    .set({ current: 2 })
+    .where(eq(balances.soldierId, manager.soldierId!));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(approveButton).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: /התיישן — נדרשת הגרלה חדשה/ })
+  ).toBeVisible();
 });

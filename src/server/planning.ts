@@ -146,6 +146,75 @@ function openSeat(state: Unit, seat: NonNullable<ReturnType<typeof seatDraw>>) {
     !occupant(state, seat.slot.id)
   );
 }
+/** A proposal awaiting approval that could still be approved as drawn (decision 181). */
+function stillWaiting(
+  state: Unit,
+  exclusions: Exclusion[],
+  attempt: { data: Record<string, unknown> }
+) {
+  if (attempt.data.status !== "approval_required") return false;
+  const seat = seatDraw(state, exclusions, drawInput.parse(attempt.data));
+  return Boolean(
+    seat &&
+    openSeat(state, seat) &&
+    seat.fingerprint === attempt.data.fingerprint
+  );
+}
+/**
+ * Draws and runs for the managers' screens, as of now: a waiting proposal whose
+ * picture changed shows as stale before the next action records it, and a run
+ * waiting only on such a proposal can continue.
+ */
+export function projectPlanning(
+  state: Unit,
+  workflows: (typeof records.$inferSelect)[]
+) {
+  const exclusions = workflows.filter(
+    (row) => row.kind === "lottery_exclusion"
+  );
+  const attempts = new Map<string, Record<string, unknown> & { id: string }>(
+    workflows
+      .filter((row) => row.kind === "lottery_attempt")
+      .map((row) => {
+        const expired =
+          row.data.status === "approval_required" &&
+          !stillWaiting(state, exclusions, row);
+        return [
+          row.id,
+          {
+            ...(row.data as Record<string, unknown>),
+            id: row.id,
+            version: row.version,
+            subjectId: row.subjectId,
+            status: expired ? "stale" : row.data.status,
+          },
+        ];
+      })
+  );
+  const latest = (proposalId: unknown) => {
+    let attempt = attempts.get(String(proposalId));
+    const seen = new Set<string>();
+    while (attempt?.replacementId && !seen.has(attempt.id)) {
+      seen.add(attempt.id);
+      attempt = attempts.get(String(attempt.replacementId)) ?? attempt;
+    }
+    return attempt;
+  };
+  const runs = workflows
+    .filter((row) => row.kind === "planning_run")
+    .map((row) => ({
+      ...row.data,
+      id: row.id,
+      version: row.version,
+      subjectId: row.subjectId,
+      status:
+        row.data.status === "awaiting_approval" &&
+        latest(row.data.proposalId)?.status !== "approval_required"
+          ? "running"
+          : row.data.status,
+    }));
+  return { lotteryAttempts: [...attempts.values()], planningRuns: runs };
+}
 function response(attempt: Workflow): Record<string, unknown> & {
   proposalId: string;
   version: number;
@@ -464,12 +533,7 @@ export async function stepPlan(
   };
   const waitingFor = latestAttempt(run.data.proposalId);
   if (waitingFor?.data.status === "approval_required") {
-    const seat = seatDraw(state, exclusions, drawInput.parse(waitingFor.data));
-    if (
-      seat &&
-      openSeat(state, seat) &&
-      seat.fingerprint === waitingFor.data.fingerprint
-    )
+    if (stillWaiting(state, exclusions, waitingFor))
       return { ...run.data, id: run.id, version: run.version };
     const stale = await updateRecord(tx, waitingFor, {
       ...waitingFor.data,
@@ -487,6 +551,15 @@ export async function stepPlan(
         reviewConfirmedBy: run.data.reviewConfirmedBy,
         reviewConfirmedAt: run.data.reviewConfirmedAt,
       };
+  // Also before completing: a run never closes over an unconfirmed pending request.
+  const covered = new Set(confirmation.reviewCovers ?? []);
+  invariant(
+    pendingNow.every((key) => covered.has(key)),
+    "pending_review_required",
+    covered.size
+      ? "הוגשו אילוצים ממתינים חדשים מאז אישור ההמשך. נדרש אישור המשך חדש לפני סקירתם"
+      : "נדרש אישור המשך לפני סקירת האילוצים"
+  );
   const reviewPending = pendingNow.length > 0;
   const pendingSlots = state.duties
     .filter(
@@ -594,14 +667,6 @@ export async function stepPlan(
     });
     return { ...done.data, id: done.id, version: done.version };
   }
-  const covered = new Set(confirmation.reviewCovers ?? []);
-  invariant(
-    pendingNow.every((key) => covered.has(key)),
-    "pending_review_required",
-    covered.size
-      ? "הוגשו אילוצים ממתינים חדשים מאז אישור ההמשך. נדרש אישור המשך חדש לפני סקירתם"
-      : "נדרש אישור המשך לפני סקירת האילוצים"
-  );
   const result = await drawLottery(
     tx,
     actor,

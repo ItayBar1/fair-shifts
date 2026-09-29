@@ -456,6 +456,10 @@ describe("approvals while data changes", () => {
     const waiting = await run(plan.id);
     await command("planning.step", { id: plan.id }, waiting.version);
     expect((await run(plan.id)).data.status).toBe("awaiting_approval");
+    expect(await shown(proposal.id, plan.id)).toEqual({
+      proposal: "approval_required",
+      run: "awaiting_approval",
+    });
     await approve(proposal);
     const approved = await run(plan.id);
     await command("planning.step", { id: plan.id }, approved.version);
@@ -467,12 +471,30 @@ describe("approvals while data changes", () => {
     const seats = await db.select().from(assignments);
     expect(seats.map((row) => row.soldierId)).toEqual([leaving.soldierId]);
   });
+  /** What a manager's screen shows for a proposal and a run. */
+  async function shown(proposalId: string, runId: string) {
+    const state = (await readState(second)) as unknown as {
+      lotteryAttempts: { id: string; status: string }[];
+      planningRuns: { id: string; status: string }[];
+    };
+    return {
+      proposal: state.lotteryAttempts.find((row) => row.id === proposalId)
+        ?.status,
+      run: state.planningRuns.find((row) => row.id === runId)?.status,
+    };
+  }
   it("makes a waiting proposal stale when the band changes", async () => {
     const { plan, proposal, next } = await nearRelease();
     await db
       .update(balances)
       .set({ current: 2 })
       .where(eq(balances.soldierId, next.soldierId!));
+    // The managers' screens show it stale right away, before any action records it.
+    expect(await shown(proposal.id, plan.id)).toEqual({
+      proposal: "stale",
+      run: "running",
+    });
+    expect((await run(plan.id)).data.status).toBe("awaiting_approval");
     await expect(approve(proposal)).rejects.toThrow("הנתונים השתנו");
     const waiting = await run(plan.id);
     await command("planning.step", { id: plan.id }, waiting.version);
@@ -536,6 +558,51 @@ describe("approvals while data changes", () => {
     expect(resumed.data.reviewConfirmedBy).toBe(second.id);
     expect(resumed.data.reviewCovers).toHaveLength(2);
     expect(await db.select().from(assignments)).toHaveLength(2);
+  });
+  it("does not complete a confirmed run over a newly pending constraint either", async () => {
+    const early = await invite("הגיש מוקדם", "soldier", 0);
+    const late = await invite("הגיש מאוחר", "soldier", 0);
+    const type = await dutyType(4);
+    const when = at(10);
+    await instance(type.id, when, "מקום יחיד");
+    const round = await command("round.create", {
+      name: "סבב לסיום ריצה",
+      opensAt: new Date(Date.now() - 60_000).toISOString(),
+      closesAt: new Date(Date.now() + 3600_000).toISOString(),
+      targetStart: day(when.start),
+      targetEnd: day(at(40).start),
+    });
+    const submit = (person: Actor, date: string) =>
+      command(
+        "constraint.submit",
+        { roundId: round.id, startDate: date, endDate: date, reason: "סיבה" },
+        undefined,
+        person
+      );
+    await submit(early, day(at(35).start));
+    const plan = await command("planning.run", {
+      start: day(when.start),
+      end: day(when.start),
+      reviewPending: true,
+    });
+    await command("planning.step", { id: plan.id }, plan.version);
+    // The only seat is saved; the next step would only close the run.
+    await submit(late, day(at(36).start));
+    const open = await run(plan.id);
+    expect(open.data.status).toBe("running");
+    await expect(
+      command("planning.step", { id: plan.id }, open.version)
+    ).rejects.toThrow("אילוצים ממתינים חדשים");
+    expect((await run(plan.id)).data.status).toBe("running");
+    await command(
+      "planning.step",
+      { id: plan.id, reviewPending: true },
+      open.version,
+      second
+    );
+    const done = await run(plan.id);
+    expect(done.data.status).toBe("completed");
+    expect(done.data.reviewConfirmedBy).toBe(second.id);
   });
   it("rejects an approval after another manager filled the seat and settles the run truthfully", async () => {
     const { duty, plan, proposal, next } = await nearRelease();
