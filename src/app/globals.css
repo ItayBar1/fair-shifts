@@ -522,6 +522,11 @@ small {
 .import-restore {
   margin-top: 24px;
 }
+.request-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
 .history-row > span:first-child {
   flex: 1 1 180px;
   min-width: 0;

@@ -44,6 +44,7 @@ const statusLabels: Record<string, string> = {
   upcoming: "טרם נפתח",
   open: "פתוח להגשה",
   closed: "נסגר",
+  referred: "הופנתה לטיפול בביצוע",
 };
 export function Status({ value }: { value: unknown }) {
   const status = str(value, "pending");
