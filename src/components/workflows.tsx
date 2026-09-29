@@ -15,7 +15,10 @@ import {
   preferencesPayload,
   reminderHoursText,
 } from "@/client/notifications";
-import { preferenceTypes } from "@/domain/notification-preferences";
+import {
+  managerPreferenceTypes,
+  preferenceTypes,
+} from "@/domain/notification-preferences";
 import {
   Badge,
   Panel,
@@ -123,6 +126,7 @@ export function SettingsView({ state, action }: Props) {
           key={`${str(settings.source)}-${num(settings.version)}-${num(defaults.version)}`}
           values={settings}
           submitLabel="שמירת העדפות אישיות"
+          managerTypes={state.actor.role === "manager"}
           onSubmit={(payload) =>
             action(
               "settings.save",
@@ -173,12 +177,16 @@ function PreferencesForm({
   values,
   submitLabel,
   onSubmit,
+  managerTypes = true,
 }: {
   values: Record<string, unknown>;
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
+  /** Shows the emails only managers receive. */
+  managerTypes?: boolean;
 }) {
   const email = obj(values.email);
+  const hidden = managerTypes ? [] : managerPreferenceTypes;
   return (
     <Form
       submitLabel={submitLabel}
@@ -189,14 +197,16 @@ function PreferencesForm({
           hint: "עד שלוש תזכורות, בשעות שלמות בין 1 ל־168. שדה ריק: ללא תזכורות.",
           value: reminderHoursText(values.reminderHours),
         },
-        ...preferenceTypes.map((type): Field => ({
-          name: `email.${type}`,
-          label: `מייל: ${emailTypeLabels[type]}`,
-          type: "checkbox",
-          value: email[type] !== false,
-        })),
+        ...preferenceTypes
+          .filter((type) => !hidden.includes(type))
+          .map((type): Field => ({
+            name: `email.${type}`,
+            label: `מייל: ${emailTypeLabels[type]}`,
+            type: "checkbox",
+            value: email[type] !== false,
+          })),
       ]}
-      onSubmit={(form) => onSubmit(preferencesPayload(form))}
+      onSubmit={(form) => onSubmit(preferencesPayload(form, hidden, email))}
     />
   );
 }

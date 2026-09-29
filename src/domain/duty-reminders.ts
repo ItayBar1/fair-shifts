@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { UNIT_ZONE } from "./time";
 
 /**
- * Reminders before a published duty (decision 170). The schedule belongs to the
+ * Reminders before a published duty (decision 171). The schedule belongs to the
  * duty's start: a published change that keeps the start keeps the reminders already
  * sent, and a new start opens a new schedule. A reminder time that passed before the
  * soldier knew of the duty (publication, transfer, change, preference change) is

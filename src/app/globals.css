@@ -433,6 +433,9 @@ small {
 .notice > div {
   flex: 1;
 }
+.service-fact {
+  display: block;
+}
 .inline-dismiss {
   float: left;
   border: 0;
