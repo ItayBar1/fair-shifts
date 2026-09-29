@@ -12,6 +12,7 @@ import {
   displayDate,
 } from "@/client/types";
 import { ActionDialog, Form, Notice, Panel, Empty } from "./ui";
+import { callUpFields, callUpValue } from "./call-up";
 export function LotteryButton({
   state,
   action,
@@ -31,15 +32,12 @@ export function LotteryButton({
       payload={{ dutyId: duty.id, slotId }}
       version={duty.version}
       description="הבחירה נשמרת ומוצגת בהסבר ההגרלה. מועמד שדורש אישור לא ישובץ עד להחלטה."
+      transform={(values) => ({
+        reviewPending: values.reviewPending,
+        callUpBonus: callUpValue(values),
+      })}
       fields={[
-        {
-          name: "callUpBonus",
-          label: "תוספת הזנקה למקום זה",
-          type: "number",
-          min: 0,
-          step: "0.01",
-          value: 0,
-        },
+        ...callUpFields(duty, { label: "הזנקה למקום זה" }),
         ...(state.constraints.some((row) => row.pending)
           ? [
               {

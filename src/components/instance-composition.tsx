@@ -92,7 +92,11 @@ export function describePricing(pricing: Row) {
     const threshold = obj(item.threshold);
     return `${str(item.name)}: ${str(item.points)} ${item.frequency === "once" ? "פעם אחת" : "לכל חלון"} (${describeWindow(obj(item.window) as Row)}${threshold.kind === "minimum_hours" ? `, לפחות ${str(threshold.hours)} שעות` : ""})`;
   });
-  return [base, ...extras].join(" · ");
+  const callUp =
+    Number(pricing.callUpPoints) > 0
+      ? [`הזנקה מוצעת: ${str(pricing.callUpPoints)}`]
+      : [];
+  return [base, ...extras, ...callUp].join(" · ");
 }
 export function describeComposition(slots: unknown) {
   return rolesOf(rows(slots))
@@ -175,6 +179,15 @@ export function CompositionEditor({
           value: str(pricing.basePoints),
         },
         {
+          name: "callUpPoints",
+          label: "סכום הזנקה שמור במופע (רשות)",
+          type: "number",
+          min: 0,
+          step: "0.01",
+          value: str(pricing.callUpPoints),
+          hint: "מוצע כשמסמנים הזנקה במקום; אינו חל בלי סימון",
+        },
+        {
           name: "restBeforeMinutes",
           label: "מנוחה לפני (דקות)",
           type: "number",
@@ -204,6 +217,7 @@ export function CompositionEditor({
             pricing: {
               mode: values.mode,
               basePoints: values.basePoints,
+              callUpPoints: values.callUpPoints,
               surcharges: surcharges.map((item) => ({
                 id: item.id,
                 name: item.name,
@@ -481,8 +495,8 @@ export function CompositionEditor({
           הוספת תוספת זמן
         </button>
         <p className="muted">
-          חלון שחוצה חצות נספר לפי יום תחילתו. תוספת אישית, כגון הזנקה, נקבעת
-          לכל מקום בעריכת השיבוצים ואינה משנה את שאר המשתתפים.
+          חלון שחוצה חצות נספר לפי יום תחילתו. הזנקה מסומנת לכל מקום בעריכת
+          השיבוצים ואינה משנה את שאר המשתתפים; הסכום השמור רק מוצע.
         </p>
       </div>
     </Form>

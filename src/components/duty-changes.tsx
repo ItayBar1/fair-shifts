@@ -14,6 +14,7 @@ import {
   displayDate,
 } from "@/client/types";
 import { ActionDialog, Form, Modal, Notice, Panel, type Field } from "./ui";
+import { callUpFields, callUpValue } from "./call-up";
 import {
   CompositionEditor,
   describeComposition,
@@ -223,14 +224,14 @@ function ChangeEditor({
               .map((person) => ({ value: person.id, label: str(person.name) })),
           ],
         },
-        {
-          name: `extra${index}`,
-          label: `תוספת אישית למקום ${index + 1}`,
-          type: "number",
-          min: 0,
-          step: "0.01",
-          value: num(seat?.extraPoints),
-        },
+        ...callUpFields(
+          { id: str(change.id), pricing: proposed.pricing },
+          {
+            prefix: `seat${index}`,
+            label: `הזנקה במקום ${index + 1}`,
+            current: seat?.extraPoints,
+          }
+        ),
       ];
     }),
   ];
@@ -344,7 +345,7 @@ function ChangeEditor({
                       values[`soldier${index}`] === "vacant"
                         ? null
                         : values[`soldier${index}`],
-                    extraPoints: values[`extra${index}`],
+                    extraPoints: callUpValue(values, `seat${index}`),
                   })),
                 },
                 change.version
@@ -440,7 +441,7 @@ function ChangeEditor({
                   <th>מקום</th>
                   <th>בסיס</th>
                   <th>תוספות זמן</th>
-                  <th>תוספת אישית</th>
+                  <th>הזנקה</th>
                   <th>סכום מדויק</th>
                   <th>ניקוד</th>
                 </tr>
@@ -493,7 +494,7 @@ function ChangeEditor({
                 נקודות
               </h3>
               <p>
-                בסיס: {str(obj(check.price).base)} · תוספת אישית:{" "}
+                בסיס: {str(obj(check.price).base)} · הזנקה:{" "}
                 {str(obj(check.price).extras)}
               </p>
               {rows(obj(check.price).surcharges).map((bonus, index) => (

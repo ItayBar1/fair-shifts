@@ -18,6 +18,7 @@ import { invariant } from "./errors";
 import { id, text } from "./validation";
 import {
   assertRequirementReferences,
+  optionalPrice,
   parseMoment,
   requirementsInput,
 } from "./duty-service";
@@ -249,6 +250,7 @@ const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה לא תקי�
 const pricingInput = z.object({
   mode: z.enum(["fixed", "daily"]),
   basePoints: points,
+  callUpPoints: optionalPrice,
   surcharges: z
     .array(
       z.object({
@@ -327,6 +329,9 @@ export async function saveDutyChangeRules(
   const pricing: Pricing = {
     mode: input.pricing.mode,
     basePoints: input.pricing.basePoints,
+    ...(input.pricing.callUpPoints && Number(input.pricing.callUpPoints) > 0
+      ? { callUpPoints: input.pricing.callUpPoints }
+      : {}),
     surcharges: input.pricing.surcharges.map((surcharge) => ({
       ...surcharge,
       id: surcharge.id ?? randomUUID(),

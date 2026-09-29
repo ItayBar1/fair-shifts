@@ -388,6 +388,83 @@ describe("local composition and pricing of one instance", () => {
     expect(proposed.slots.map((slot) => slot.id)).toEqual([occupied.id]);
     expect(seats[0]!.soldierId).toBe(member.soldierId);
   });
+  it("saves a suggested call-up amount on the type and instance without ever applying it by itself", async () => {
+    const type = await command("dutyType.save", {
+      name: "סוג עם הזנקה שמורה",
+      pricing: { mode: "fixed", base: 4, callUp: 2 },
+      roles: [{ name: "תורן", count: 2 }],
+    });
+    const duty = await instance(type.id);
+    expect(duty.data.pricing.callUpPoints).toBe("2");
+    await command(
+      "duty.assign",
+      {
+        dutyId: duty.id,
+        slotId: duty.data.slots[0]!.id,
+        soldierId: member.soldierId,
+      },
+      1
+    );
+    await command(
+      "duty.assign",
+      {
+        dutyId: duty.id,
+        slotId: duty.data.slots[1]!.id,
+        soldierId: other.soldierId,
+        callUpBonus: 2,
+      },
+      2
+    );
+    const points = Object.fromEntries(
+      (await db.select().from(assignments)).map((row) => [
+        row.soldierId,
+        row.points,
+      ])
+    );
+    expect(points).toEqual({ [member.soldierId!]: 4, [other.soldierId!]: 6 });
+    await command(
+      "dutyType.save",
+      {
+        id: type.id,
+        name: "סוג עם הזנקה שמורה",
+        pricing: { mode: "fixed", base: 4, callUp: "" },
+        roles: [{ name: "תורן", count: 2 }],
+      },
+      1
+    );
+    const [kept] = await db.select().from(duties).where(eq(duties.id, duty.id));
+    expect(kept.data.pricing.callUpPoints).toBe("2");
+    const change = await command(
+      "duty.change.create",
+      { dutyId: duty.id, reason: "סכום הזנקה אחר למופע" },
+      3
+    );
+    await command(
+      "duty.change.rules",
+      {
+        id: change.id,
+        roles: [{ name: "תורן", count: 2 }],
+        pricing: {
+          mode: "fixed",
+          basePoints: "4",
+          callUpPoints: "1.5",
+          surcharges: [],
+        },
+        restBeforeMinutes: 0,
+        restAfterMinutes: 0,
+      },
+      1
+    );
+    const { proposed, seats } = await proposal(change.id);
+    expect(proposed.pricing.callUpPoints).toBe("1.5");
+    // The existing call-up stays as it was chosen; the new amount is only a suggestion.
+    expect(seats.map((seat) => seat.extraPoints)).toEqual(["0", "2"]);
+    const [catalog] = await db
+      .select()
+      .from(dutyTypes)
+      .where(eq(dutyTypes.id, type.id));
+    expect(catalog.data.pricing).not.toHaveProperty("callUpPoints");
+  });
   it("rejects stale or competing edits, invalid rules and soldiers", async () => {
     const type = await dutyType([{ name: "תורן", count: 1 }]);
     const duty = await instance(type.id);

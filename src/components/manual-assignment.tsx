@@ -10,6 +10,7 @@ import {
   num,
 } from "@/client/types";
 import { Modal, Form, Notice, type Field } from "./ui";
+import { callUpFields, callUpValue } from "./call-up";
 export function ManualAssignment({
   state,
   action,
@@ -35,14 +36,7 @@ export function ManualAssignment({
         .filter((row) => !row.deletedAt)
         .map((row) => ({ value: row.id, label: str(row.name) })),
     },
-    {
-      name: "callUpBonus",
-      label: "תוספת הזנקה אישית",
-      type: "number",
-      min: 0,
-      step: "0.01",
-      value: 0,
-    },
+    ...callUpFields(duty),
   ];
   if (state.constraints.some((row) => row.pending))
     fields.push({
@@ -66,7 +60,13 @@ export function ManualAssignment({
             <Form
               fields={fields}
               onSubmit={async (values) => {
-                const payload = { ...values, dutyId: duty.id, slotId };
+                const payload = {
+                  soldierId: values.soldierId,
+                  reviewPending: values.reviewPending,
+                  callUpBonus: callUpValue(values),
+                  dutyId: duty.id,
+                  slotId,
+                };
                 const result = await action(
                   "duty.assignment.preview",
                   payload,
@@ -81,7 +81,7 @@ export function ManualAssignment({
               <Notice>
                 השיבוץ יישמר רק לאחר האישור. ניקוד צפוי:{" "}
                 {num(obj(preview.price).points)} נקודות. בסיס:{" "}
-                {str(obj(preview.price).base)}; תוספת אישית:{" "}
+                {str(obj(preview.price).base)}; הזנקה:{" "}
                 {str(obj(preview.price).extras)}.
               </Notice>
               {rows(obj(preview.price).surcharges).map((row) => (

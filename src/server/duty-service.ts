@@ -29,6 +29,11 @@ import { enqueueEmail } from "./operations/email";
 const priceValue = z
   .union([z.number().finite().nonnegative(), z.string().regex(/^\d+(\.\d+)?$/)])
   .transform(String);
+/** An optional amount; an empty or zero value means none is saved. */
+export const optionalPrice = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  priceValue.optional()
+);
 const rankClause = z
   .object({
     trackId: text,
@@ -80,6 +85,7 @@ const catalogInput = z.object({
   pricing: z.object({
     mode: z.enum(["fixed", "daily"]),
     base: priceValue,
+    callUp: optionalPrice,
     supplements: z
       .array(
         z.object({
@@ -145,6 +151,9 @@ export async function saveDutyType(
   const pricing: Pricing = {
     mode: input.pricing.mode,
     basePoints: input.pricing.base,
+    ...(input.pricing.callUp && Number(input.pricing.callUp) > 0
+      ? { callUpPoints: input.pricing.callUp }
+      : {}),
     surcharges: input.pricing.supplements.map((item) => ({
       id: item.id,
       name: item.name,
