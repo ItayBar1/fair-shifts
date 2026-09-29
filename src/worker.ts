@@ -6,8 +6,10 @@ import { deliverNextEmail } from "./server/operations/email";
 import { operationsState } from "./server/auth-schema";
 import { eq } from "drizzle-orm";
 import { refreshRankReminders } from "./server/ranks";
+import { announceDepartures } from "./server/departures";
 import { recordWorkerHeartbeat } from "./server/operations/health";
 import { refreshRoundNotices } from "./server/round-notices";
+import { refreshDutyReminders } from "./server/duty-reminders";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 // The container health check reads this file's age (see compose.production.yaml).
@@ -34,6 +36,8 @@ await boss.work("unit-maintenance", async () => {
     const credited = await settleDue(tx);
     await refreshRankReminders(tx);
     await refreshRoundNotices(tx, now);
+    await announceDepartures(tx, now);
+    await refreshDutyReminders(tx, now);
     await recordWorkerHeartbeat(tx, { now, paused: false, credited });
   });
   await writeFile(heartbeatFile, new Date().toISOString());

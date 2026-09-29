@@ -11,6 +11,10 @@ import { LotteryButton, LotteryHistory } from "./planning";
 import { ScoreDecisions } from "./score-decisions";
 import { TransferOffer } from "./transfers";
 import {
+  CancellationRequestButton,
+  CancellationRequests,
+} from "./cancellation-requests";
+import {
   CalendarDays,
   UsersRound,
   Clock3,
@@ -21,6 +25,7 @@ import {
   ArrowLeft,
   MapPin,
   AlertTriangle,
+  UserX,
   Scale,
   Filter,
 } from "lucide-react";
@@ -475,12 +480,22 @@ export function Dashboard({
   const pending = state.constraints.filter((c) => c.status === "pending");
   const requests = state.requests.filter(
     (r) =>
-      !["completed", "rejected", "cancelled", "declined", "expired"].includes(
-        str(r.status)
-      )
+      ![
+        "completed",
+        "rejected",
+        "cancelled",
+        "declined",
+        "expired",
+        "referred",
+        "closed",
+      ].includes(str(r.status))
   );
   const decisions = rows(state.scoreDecisions).filter(
     (row) => row.status === "pending"
+  );
+  // Derived from the dates, so a departure shows even before the worker's notice.
+  const departed = state.soldiers.filter(
+    (s) => !s.deletedAt && s.serviceStatus === "service_ended"
   );
   const concerns = state.assignments.filter(
     (a) =>
@@ -551,6 +566,34 @@ export function Dashboard({
             </span>
             <ArrowLeft size={18} />
           </Link>
+          {departed.map((s) => {
+            const notice = rows(state.departures).find(
+              (row) =>
+                row.subjectId === s.id && row.releaseDate === s.releaseDate
+            );
+            return (
+              <Link
+                className="task-item"
+                href="/manage/soldiers"
+                key={`departed-${s.id}`}
+              >
+                <span className="task-symbol amber">
+                  <UserX size={20} />
+                </span>
+                <span>
+                  <strong>{str(s.name)} — השירות הסתיים</strong>
+                  <small>
+                    יום אחרון {displayDate(s.releaseDate)} · הגישה חסומה
+                    {notice
+                      ? ` · הודעה נשלחה ${displayDate(notice.detectedAt, true)}`
+                      : ""}
+                    . הרשומה נשמרת עד החלטת אחראי.
+                  </small>
+                </span>
+                <ChevronLeft size={18} />
+              </Link>
+            );
+          })}
           {concerns.map((a) => (
             <Link className="task-item" href={`/duties/${a.dutyId}`} key={a.id}>
               <span className="task-symbol amber">
@@ -697,6 +740,7 @@ export function DutyDetail({
           </Notice>
         )}
         <TransferOffer state={state} action={action} duty={duty} />
+        <CancellationRequestButton state={state} action={action} duty={duty} />
         {manager && (
           <div className="panel-actions">
             {dutyStatus(duty) === "draft" && future && (
@@ -857,6 +901,9 @@ export function DutyDetail({
             </div>
           </div>
         </Panel>
+      )}
+      {manager && (
+        <CancellationRequests state={state} action={action} dutyId={id} />
       )}
       {manager &&
         future &&

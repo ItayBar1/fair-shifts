@@ -40,6 +40,10 @@ async function defaultsRecord(tx: DbTransaction) {
   return row as Workflow | undefined;
 }
 
+function latest(...dates: (Date | undefined)[]) {
+  const times = dates.flatMap((date) => (date ? [date.getTime()] : []));
+  return times.length ? new Date(Math.max(...times)) : undefined;
+}
 export async function effectivePreferences(
   tx: DbTransaction,
   accountId: string
@@ -48,10 +52,16 @@ export async function effectivePreferences(
     personalRecord(tx, accountId),
     defaultsRecord(tx),
   ]);
+  const resolved = resolvePreferences(personal?.data, unit?.data);
   return {
-    ...resolvePreferences(personal?.data, unit?.data),
+    ...resolved,
     version: personal?.version,
     defaultsVersion: unit?.version,
+    // When the preferences in effect were last saved or reset to the defaults.
+    changedAt: latest(
+      personal?.updatedAt,
+      resolved.source === "unit" ? unit?.updatedAt : undefined
+    ),
   };
 }
 

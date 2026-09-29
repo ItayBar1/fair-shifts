@@ -65,6 +65,6 @@ AFK: כללי המוצר סגורים, וניתן לעבוד לאחר סגירת
 
 ## הכרעות ושער שחרור
 
-מדיניות שחזור קליטות חדשות הוכרעה ב־29.09.2026 בהכרעה 170 ([#8](https://github.com/ItayBar1/fair-shifts/issues/8)); המימוש ב־[#9](https://github.com/ItayBar1/fair-shifts/issues/9), והאפשרות למחוק שורה עם פעילות נוספת בשחזור בכרטיס [#33](https://github.com/ItayBar1/fair-shifts/issues/33). חשבונות ספקים, שרת ודומיין משלימים בכרטיסי HITL מחוץ למאגר.
+מדיניות שחזור קליטות חדשות הוכרעה ב־29.09.2026 בהכרעה 173 ([#8](https://github.com/ItayBar1/fair-shifts/issues/8)); המימוש ב־[#9](https://github.com/ItayBar1/fair-shifts/issues/9), והאפשרות למחוק שורה עם פעילות נוספת בשחזור בכרטיס [#33](https://github.com/ItayBar1/fair-shifts/issues/33). חשבונות ספקים, שרת ודומיין משלימים בכרטיסי HITL מחוץ למאגר.
 
 [#36](https://github.com/ItayBar1/fair-shifts/issues/36) מתאר את הפריסה האוטומטית ל־Ubuntu/Docker/Cloudflare Tunnel לאחר כניסת גרסה ל־main ובדיקתה. יצירתו אינה מפעילה פריסה. [#39](https://github.com/ItayBar1/fair-shifts/issues/39) מרכז את שער הפיילוט: מלוא הגרסה, בדיקות, מחיקה, גיבוי ושחזור, ספקים, ערכי יחידה ותנאי הפעלה. אין תאריך שחרור מבוסס.

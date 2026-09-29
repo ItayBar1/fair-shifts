@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { db, pool } from "../../src/server/db";
 import { emailOutbox, emailQuota } from "../../src/server/auth-schema";
 import {
@@ -24,6 +24,7 @@ import {
 } from "../../src/server/operations/email";
 import type { EmailKind } from "../../src/domain/notification-preferences";
 import { roundEventKey } from "../../src/domain/round-notices";
+import { dutyReminderKey } from "../../src/domain/duty-reminders";
 import { soldier } from "../fixtures";
 
 if (
@@ -85,6 +86,7 @@ const allEmail = {
   roundClosing: true,
   publication: true,
   transfer: true,
+  departure: true,
 };
 async function queue(
   actor: Actor,
@@ -125,6 +127,41 @@ async function outbox(eventKey: string) {
     .from(emailOutbox)
     .where(eq(emailOutbox.eventKey, eventKey));
   return row;
+}
+
+/** A published two-seat duty for the member and the other soldier. */
+async function publishedDuty() {
+  const type = await command(manager, "dutyType.save", {
+    name: "שמירה סינתטית",
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: 2 }],
+  });
+  const duty = await command(manager, "duty.create", {
+    typeId: type.id,
+    name: "תורנות לבדיקה",
+    start: new Date(Date.now() + 86_400_000).toISOString(),
+    end: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+  });
+  const [row] = await db.select().from(duties).where(eq(duties.id, duty.id));
+  let version = row.version;
+  for (const [index, person] of [member, other].entries())
+    await command(
+      manager,
+      "duty.assign",
+      {
+        dutyId: row.id,
+        slotId: row.data.slots[index].id,
+        soldierId: person.soldierId,
+      },
+      version++
+    );
+  await command(
+    manager,
+    "duty.publish",
+    { id: row.id, confirmed: true },
+    version
+  );
+  return row.id;
 }
 
 beforeEach(async () => {
@@ -318,8 +355,15 @@ describe("notification preferences and defaults", () => {
   });
 
   it("rechecks type and timing preferences after scheduling and before delivery", async () => {
-    await queue(member, "duty-reminder", "reminder-24", 24);
-    await queue(member, "duty-reminder", "reminder-2", 2);
+    // Duty reminders are delivered only for a real published seat.
+    const dutyId = await publishedDuty();
+    await db.delete(emailOutbox).where(like(emailOutbox.eventKey, "publish:%"));
+    const [duty] = await db.select().from(duties).where(eq(duties.id, dutyId));
+    const start = Date.parse(duty.data.start);
+    const reminder24 = dutyReminderKey(dutyId, start, 24, member.id);
+    const reminder2 = dutyReminderKey(dutyId, start, 2, member.id);
+    await queue(member, "duty-reminder", reminder24, 24);
+    await queue(member, "duty-reminder", reminder2, 2);
     // A round email is delivered only for a real, still-open round.
     const round = await command(manager, "round.create", {
       name: "סבב סינתטי",
@@ -346,12 +390,10 @@ describe("notification preferences and defaults", () => {
       },
       saved.version
     );
-    expect(await deliverAll()).toEqual([
-      "invitation",
-      "publication-later",
-      "reminder-2",
-    ]);
-    for (const key of ["reminder-24", roundKey])
+    expect(await deliverAll()).toEqual(
+      ["invitation", "publication-later", reminder2].sort()
+    );
+    for (const key of [reminder24, roundKey])
       expect(await outbox(key)).toMatchObject({
         status: "cancelled",
         error: "preference_disabled",
@@ -361,40 +403,6 @@ describe("notification preferences and defaults", () => {
 });
 
 describe("site notifications, reading and hiding", () => {
-  async function publishedDuty() {
-    const type = await command(manager, "dutyType.save", {
-      name: "שמירה סינתטית",
-      pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 2 }],
-    });
-    const duty = await command(manager, "duty.create", {
-      typeId: type.id,
-      name: "תורנות לבדיקה",
-      start: new Date(Date.now() + 86_400_000).toISOString(),
-      end: new Date(Date.now() + 2 * 86_400_000).toISOString(),
-    });
-    const [row] = await db.select().from(duties).where(eq(duties.id, duty.id));
-    let version = row.version;
-    for (const [index, person] of [member, other].entries())
-      await command(
-        manager,
-        "duty.assign",
-        {
-          dutyId: row.id,
-          slotId: row.data.slots[index].id,
-          soldierId: person.soldierId,
-        },
-        version++
-      );
-    await command(
-      manager,
-      "duty.publish",
-      { id: row.id, confirmed: true },
-      version
-    );
-    return row.id;
-  }
-
   it("keeps the site notification when email is off and never treats delivery as reading", async () => {
     await command(member, "settings.save", {
       reminderHours: [24, 2],

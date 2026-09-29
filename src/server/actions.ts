@@ -68,6 +68,13 @@ import { previewImport, applyImport, getImport } from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
 import { offerTransfer, respondTransfer, withdrawTransfer } from "./transfers";
 import {
+  prepareCancellationChange,
+  referCancellationRequest,
+  rejectCancellationRequest,
+  submitCancellationRequest,
+  withdrawCancellationRequest,
+} from "./cancellation-requests";
+import {
   markNotification,
   resetPreferences,
   saveDefaults,
@@ -287,6 +294,46 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "transfer.withdraw":
         result = await withdrawTransfer(tx, actor, payload, expectedVersion);
+        break;
+      case "cancellation.submit":
+        result = await submitCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.withdraw":
+        result = await withdrawCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.reject":
+        result = await rejectCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.refer":
+        result = await referCancellationRequest(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "cancellation.prepare":
+        result = await prepareCancellationChange(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
         break;
       case "score.preview":
         result = await previewScore(tx, actor, payload);
