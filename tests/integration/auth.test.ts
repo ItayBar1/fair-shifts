@@ -4973,6 +4973,7 @@ describe("first duty vertical slice", () => {
             roundClosing: true,
             publication: true,
             transfer: false,
+            departure: true,
           },
         },
         undefined,

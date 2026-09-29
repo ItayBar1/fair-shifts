@@ -15,6 +15,7 @@ import { soldier } from "../fixtures";
 
 const hoursLabel = "שעות לפני תורנות, מופרדות בפסיק";
 const publicationLabel = "מייל: שיבוץ, שינוי או ביטול של תורנות שפורסמה";
+const departureLabel = "מייל: סיום שירות של חייל (לאחראים)";
 const people = [
   ["אחראי העדפות", "prefs-manager@example.invalid", "manager", "000101"],
   ["חייל העדפות", "prefs-soldier@example.invalid", "soldier", "000102"],
@@ -93,6 +94,9 @@ test("unit defaults reach soldiers without personal preferences; a saved persona
   await expect(
     member.getByRole("heading", { name: "ברירות מחדל להודעות ביחידה" })
   ).toHaveCount(0);
+  // The departure email reaches managers only, so a soldier's form omits it.
+  await expect(own.getByLabel(departureLabel)).toHaveCount(0);
+  await expect(defaults.getByLabel(departureLabel)).toBeChecked();
 
   // The form explains a rejected timing in Hebrew and keeps the defaults.
   await own.getByLabel(hoursLabel).fill("0, 2");

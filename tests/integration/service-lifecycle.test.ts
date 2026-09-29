@@ -21,6 +21,7 @@ import {
 import { requestCode } from "../../src/server/auth/otp";
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
+import { deliverNextEmail } from "../../src/server/operations/email";
 import { settleDue } from "../../src/server/scoring";
 import { refreshRankReminders } from "../../src/server/ranks";
 import { announceDepartures } from "../../src/server/departures";
@@ -175,6 +176,7 @@ describe("end of service", () => {
           roundClosing: true,
           publication: true,
           transfer: true,
+          departure: true,
         },
       })
     ).rejects.toMatchObject({ status: 401 });
@@ -276,6 +278,81 @@ describe("end of service", () => {
     expect(held.data.needsAttention).toContain("released");
     // Other roles see neither the departure nor the notice.
     expect((await readState(other)).departures).toEqual([]);
+  });
+
+  it("emails each manager once, subject to the departure switch at delivery", async () => {
+    // The first manager turns the switch off after the email was queued.
+    await command(manager, "settings.save", {
+      reminderHours: [24, 2],
+      email: {
+        dutyReminder: true,
+        roundOpening: true,
+        roundClosing: true,
+        publication: true,
+        transfer: true,
+        departure: true,
+      },
+    });
+    await setService(member, { releaseDate: israelDate(-1) });
+    expect(await announce()).toBe(1);
+    expect(await announce()).toBe(0);
+    const queued = await db
+      .select()
+      .from(emailOutbox)
+      .where(eq(emailOutbox.kind, "departure"));
+    expect(queued.map((row) => row.recipientAccountId).sort()).toEqual(
+      [manager.id, secondManager.id].sort()
+    );
+    const [saved] = await db
+      .select()
+      .from(records)
+      .where(eq(records.kind, "settings"));
+    await command(
+      manager,
+      "settings.save",
+      {
+        reminderHours: [24, 2],
+        email: {
+          dutyReminder: true,
+          roundOpening: true,
+          roundClosing: true,
+          publication: true,
+          transfer: true,
+          departure: false,
+        },
+      },
+      saved.version
+    );
+    const sent: string[] = [];
+    for (let index = 0; index < 5; index++) {
+      const result = await deliverNextEmail(
+        async (message) => {
+          sent.push(message.eventKey);
+          return `synthetic-${message.eventKey}`;
+        },
+        new Date(Date.now() + 1000)
+      );
+      if (result.status === "idle") break;
+    }
+    expect(sent.filter((key) => key.startsWith("departure:"))).toEqual([
+      expect.stringContaining(secondManager.id),
+    ]);
+    const [off] = await db
+      .select()
+      .from(emailOutbox)
+      .where(
+        and(
+          eq(emailOutbox.kind, "departure"),
+          eq(emailOutbox.recipientAccountId, manager.id)
+        )
+      );
+    expect(off).toMatchObject({
+      status: "cancelled",
+      error: "preference_disabled",
+    });
+    // The site notice stays for both managers.
+    expect(await notices(manager)).toHaveLength(1);
+    expect(await notices(secondManager)).toHaveLength(1);
   });
 
   it("announces again only for a new release date once that date passes", async () => {
