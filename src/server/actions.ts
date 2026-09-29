@@ -13,7 +13,7 @@ import {
 } from "./auth/accounts";
 import { currentVersion } from "./repository";
 import { invariant, AppError } from "./errors";
-import { saveSoldier } from "./people";
+import { previewSoldierUpdate, saveSoldier } from "./people";
 import {
   saveDutyType,
   createDuty,
@@ -132,6 +132,15 @@ export async function executeAction(actor: Actor, value: unknown) {
           "יצירת חייל אינה כוללת מזהה קיים"
         );
         result = await saveSoldier(tx, actor, payload);
+        break;
+      case "soldier.update.preview":
+        id.parse(payload.id);
+        result = await previewSoldierUpdate(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
         break;
       case "soldier.update":
         id.parse(payload.id);
