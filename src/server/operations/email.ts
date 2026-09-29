@@ -16,6 +16,8 @@ import {
 } from "../auth-schema";
 import { invariant } from "../errors";
 import { effectivePreferences } from "../notifications";
+import { roundEmailRelevant } from "../round-recipients";
+import { dutyReminderRelevant } from "../duty-reminder-checks";
 import {
   emailAllowed,
   type EmailKind,
@@ -173,6 +175,23 @@ export async function deliverNextEmail(
         !recipient.lockedAt
       );
     }
+    if (
+      relevant &&
+      (message.kind === "round-opening" || message.kind === "round-closing")
+    )
+      relevant = await roundEmailRelevant(
+        tx,
+        message.eventKey,
+        message.recipientAccountId,
+        now
+      );
+    if (relevant && message.kind === "duty-reminder")
+      relevant = await dutyReminderRelevant(
+        tx,
+        message.eventKey,
+        message.recipientAccountId,
+        now
+      );
     // Preferences are read again at delivery time, never frozen when the message was queued.
     const allowed =
       !relevant ||

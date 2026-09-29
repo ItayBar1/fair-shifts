@@ -568,7 +568,12 @@ export async function publishDuty(
   await tx
     .update(duties)
     .set({
-      data: { ...row.data, status: "published", version },
+      data: {
+        ...row.data,
+        status: "published",
+        version,
+        publishedAt: new Date().toISOString(),
+      },
       version,
       updatedAt: new Date(),
     })

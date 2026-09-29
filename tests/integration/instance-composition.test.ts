@@ -20,6 +20,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
 import type { Duty, PriceBreakdown } from "../../src/domain/types";
+import type { AuditEntry } from "../../src/server/audit-log";
 import { soldier } from "../fixtures";
 
 if (
@@ -257,6 +258,14 @@ describe("local composition and pricing of one instance", () => {
     expect(untouched.data).toEqual(sibling.data);
     expect(await db.select().from(emailOutbox)).toHaveLength(0);
     expect((await readState(member)).duties).toHaveLength(0);
+    const entry = ((await readState(manager)).audit as AuditEntry[]).find(
+      (item) => item.action === "duty.change.rules"
+    );
+    expect(entry).toMatchObject({
+      label: "עריכת הרכב ותמחור בהצעת שינוי",
+      reason: "הזנקה למקום השני בלבד",
+      dutyId: duty.id,
+    });
   });
   it("releases an occupied seat of a published instance only when it is chosen explicitly, and only on update and publish", async () => {
     const type = await dutyType([{ name: "תורן", count: 2 }]);

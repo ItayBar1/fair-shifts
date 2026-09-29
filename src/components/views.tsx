@@ -8,7 +8,12 @@ import {
   performanceOf,
 } from "./performance-corrections";
 import { LotteryButton, LotteryHistory } from "./planning";
+import { ScoreDecisions } from "./score-decisions";
 import { TransferOffer } from "./transfers";
+import {
+  CancellationRequestButton,
+  CancellationRequests,
+} from "./cancellation-requests";
 import {
   CalendarDays,
   UsersRound,
@@ -20,6 +25,7 @@ import {
   ArrowLeft,
   MapPin,
   AlertTriangle,
+  UserX,
   Scale,
   Filter,
 } from "lucide-react";
@@ -59,6 +65,7 @@ import {
   QuickAction,
   Notice,
 } from "./ui";
+import { AuditLink } from "./audit";
 export const dutyStart = (d: Row) => str(d.start ?? d.startsAt);
 export const dutyEnd = (d: Row) => str(d.end ?? d.endsAt);
 export const dutyStatus = (d: Row) => d.status ?? d.publicationStatus;
@@ -474,9 +481,22 @@ export function Dashboard({
   const pending = state.constraints.filter((c) => c.status === "pending");
   const requests = state.requests.filter(
     (r) =>
-      !["completed", "rejected", "cancelled", "declined", "expired"].includes(
-        str(r.status)
-      )
+      ![
+        "completed",
+        "rejected",
+        "cancelled",
+        "declined",
+        "expired",
+        "referred",
+        "closed",
+      ].includes(str(r.status))
+  );
+  const decisions = rows(state.scoreDecisions).filter(
+    (row) => row.status === "pending"
+  );
+  // Derived from the dates, so a departure shows even before the worker's notice.
+  const departed = state.soldiers.filter(
+    (s) => !s.deletedAt && s.serviceStatus === "service_ended"
   );
   const concerns = state.assignments.filter(
     (a) =>
@@ -502,8 +522,8 @@ export function Dashboard({
         />
         <Stat
           label="ממתינים להחלטה"
-          value={pending.length + requests.length}
-          detail="אילוצים, החלפות ובקשות"
+          value={pending.length + requests.length + decisions.length}
+          detail="אילוצים, החלפות, בקשות ותיקוני יתרה"
           icon={Clock3}
           tone="amber"
         />
@@ -547,6 +567,34 @@ export function Dashboard({
             </span>
             <ArrowLeft size={18} />
           </Link>
+          {departed.map((s) => {
+            const notice = rows(state.departures).find(
+              (row) =>
+                row.subjectId === s.id && row.releaseDate === s.releaseDate
+            );
+            return (
+              <Link
+                className="task-item"
+                href="/manage/soldiers"
+                key={`departed-${s.id}`}
+              >
+                <span className="task-symbol amber">
+                  <UserX size={20} />
+                </span>
+                <span>
+                  <strong>{str(s.name)} — השירות הסתיים</strong>
+                  <small>
+                    יום אחרון {displayDate(s.releaseDate)} · הגישה חסומה
+                    {notice
+                      ? ` · הודעה נשלחה ${displayDate(notice.detectedAt, true)}`
+                      : ""}
+                    . הרשומה נשמרת עד החלטת אחראי.
+                  </small>
+                </span>
+                <ChevronLeft size={18} />
+              </Link>
+            );
+          })}
           {concerns.map((a) => (
             <Link className="task-item" href={`/duties/${a.dutyId}`} key={a.id}>
               <span className="task-symbol amber">
@@ -589,6 +637,7 @@ export function Dashboard({
           </div>
         </Panel>
       </div>
+      {decisions.length > 0 && <ScoreDecisions state={state} action={action} />}
       <Panel
         title="טיוטות משותפות"
         actions={
@@ -692,8 +741,10 @@ export function DutyDetail({
           </Notice>
         )}
         <TransferOffer state={state} action={action} duty={duty} />
+        <CancellationRequestButton state={state} action={action} duty={duty} />
         {manager && (
           <div className="panel-actions">
+            <AuditLink id={id} label="יומן הפעולות של התורנות" />
             {dutyStatus(duty) === "draft" && future && (
               <ActionDialog
                 title="פרסום התורנות"
@@ -782,6 +833,7 @@ export function DutyDetail({
                     {assignment.needsReview === true && (
                       <Badge tone="warning">דורש טיפול</Badge>
                     )}
+                    {manager && <AuditLink id={assignment.id} />}
                   </>
                 ) : (
                   manager &&
@@ -853,6 +905,9 @@ export function DutyDetail({
           </div>
         </Panel>
       )}
+      {manager && (
+        <CancellationRequests state={state} action={action} dutyId={id} />
+      )}
       {manager &&
         future &&
         ["published", "draft"].includes(str(dutyStatus(duty))) && (
@@ -861,6 +916,7 @@ export function DutyDetail({
       {manager && dutyStatus(duty) === "published" && !future && (
         <PerformanceCorrections state={state} action={action} duty={duty} />
       )}
+      {manager && <ScoreDecisions state={state} action={action} dutyId={id} />}
       {manager && <LotteryHistory state={state} action={action} dutyId={id} />}
     </>
   );
