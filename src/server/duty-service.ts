@@ -48,7 +48,7 @@ const rankClause = z
       ),
     "נדרש תנאי דרגה תקין בתוך מסלול"
   );
-const requirementsInput = z.object({
+export const requirementsInput = z.object({
   populations: z.array(population).min(1).optional(),
   ranks: z.array(rankClause).optional(),
   qualificationIds: z.array(id).optional(),
@@ -96,6 +96,44 @@ const catalogInput = z.object({
       .default([]),
   }),
 });
+/** Rank, qualification, exemption and capability conditions must name existing catalog entries. */
+export async function assertRequirementReferences(
+  tx: DbTransaction,
+  conditions: Requirements[]
+) {
+  const catalog = await tx.select().from(records);
+  for (const condition of conditions) {
+    for (const clause of condition.ranks ?? []) {
+      const track = catalog.filter(
+        (row) =>
+          row.kind === "rank_catalog" && row.data.track === clause.trackId
+      );
+      invariant(
+        track.length &&
+          (!clause.rankIds ||
+            clause.rankIds.every((id) => track.some((row) => row.id === id))),
+        "invalid_rank_requirement",
+        "תנאי הדרגה חייב להתייחס לדרגות קיימות באותו מסלול"
+      );
+    }
+    for (const [kind, ids] of [
+      ["qualification", condition.qualificationIds],
+      ["exemption", condition.blockingExemptionIds],
+      ["capability", condition.capabilityIds],
+    ] as const)
+      for (const id of ids ?? [])
+        invariant(
+          catalog.some(
+            (row) =>
+              row.id === id &&
+              row.kind === "eligibility_catalog" &&
+              row.data.kind === kind
+          ),
+          "invalid_requirement",
+          "תנאי הכשירות, הפטור או היכולת אינו קיים בקטלוג"
+        );
+  }
+}
 export async function saveDutyType(
   tx: DbTransaction,
   actor: Actor,
@@ -136,41 +174,10 @@ export async function saveDutyType(
     genders: input.genders,
     capabilityIds: input.capabilityIds,
   };
-  const catalog = await tx.select().from(records);
-  for (const condition of [
+  await assertRequirementReferences(tx, [
     requirements,
     ...input.roles.map((role) => role.requirements ?? {}),
-  ]) {
-    for (const clause of condition.ranks ?? []) {
-      const track = catalog.filter(
-        (row) =>
-          row.kind === "rank_catalog" && row.data.track === clause.trackId
-      );
-      invariant(
-        track.length &&
-          (!clause.rankIds ||
-            clause.rankIds.every((id) => track.some((row) => row.id === id))),
-        "invalid_rank_requirement",
-        "תנאי הדרגה חייב להתייחס לדרגות קיימות באותו מסלול"
-      );
-    }
-    for (const [kind, ids] of [
-      ["qualification", condition.qualificationIds],
-      ["exemption", condition.blockingExemptionIds],
-      ["capability", condition.capabilityIds],
-    ] as const)
-      for (const id of ids ?? [])
-        invariant(
-          catalog.some(
-            (row) =>
-              row.id === id &&
-              row.kind === "eligibility_catalog" &&
-              row.data.kind === kind
-          ),
-          "invalid_requirement",
-          "תנאי הכשירות, הפטור או היכולת אינו קיים בקטלוג"
-        );
-  }
+  ]);
   const data = { ...input, pricing, uiPricing: input.pricing, requirements };
   if (input.id) {
     const [existing] = await tx

@@ -14,6 +14,11 @@ import {
   displayDate,
 } from "@/client/types";
 import { ActionDialog, Form, Modal, Notice, Panel, type Field } from "./ui";
+import {
+  CompositionEditor,
+  describeComposition,
+  describePricing,
+} from "./instance-composition";
 
 export function CatalogImpact({
   state,
@@ -156,6 +161,7 @@ function ChangeEditor({
 }) {
   const draft = duty.status === "draft";
   const [editing, setEditing] = useState(false);
+  const [editingRules, setEditingRules] = useState(false);
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [reviewPending, setReviewPending] = useState(false);
   const proposed = obj(change.proposed);
@@ -268,6 +274,12 @@ function ChangeEditor({
           <button className="btn secondary" onClick={() => setEditing(true)}>
             עריכת ההצעה והשיבוצים
           </button>
+          <button
+            className="btn secondary"
+            onClick={() => setEditingRules(true)}
+          >
+            עריכת הרכב ותמחור למופע
+          </button>
           <Form
             fields={[
               {
@@ -298,6 +310,20 @@ function ChangeEditor({
         payload={{ id: change.id }}
         version={change.version}
       />
+      {editingRules && (
+        <Modal
+          title="הרכב ותמחור למופע זה"
+          wide
+          onClose={() => setEditingRules(false)}
+        >
+          <CompositionEditor
+            state={state}
+            action={action}
+            change={change}
+            onDone={() => setEditingRules(false)}
+          />
+        </Modal>
+      )}
       {editing && (
         <Modal title="עריכת הצעת שינוי" wide onClose={() => setEditing(false)}>
           <Form
@@ -366,20 +392,15 @@ function ChangeEditor({
                   <th>הרכב</th>
                   {[preview.before, preview.after].map((snapshot, index) => (
                     <td key={index}>
-                      {rows(obj(snapshot).slots)
-                        .map((slot) => str(slot.role))
-                        .join(", ")}
+                      {describeComposition(obj(snapshot).slots)}
                     </td>
                   ))}
                 </tr>
                 <tr>
-                  <th>תעריף בסיס</th>
+                  <th>תמחור</th>
                   {[preview.before, preview.after].map((snapshot, index) => (
                     <td key={index}>
-                      {str(obj(obj(snapshot).pricing).basePoints)}{" "}
-                      {obj(obj(snapshot).pricing).mode === "daily"
-                        ? "ל־24 שעות"
-                        : "לביצוע"}
+                      {describePricing(obj(obj(snapshot).pricing) as Row)}
                     </td>
                   ))}
                 </tr>
@@ -408,6 +429,55 @@ function ChangeEditor({
               </tbody>
             </table>
           </div>
+          <h3>פירוט הניקוד לכל מקום</h3>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>מקום</th>
+                  <th>בסיס</th>
+                  <th>תוספות זמן</th>
+                  <th>תוספת אישית</th>
+                  <th>סכום מדויק</th>
+                  <th>ניקוד</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows(preview.seatPrices).map((seat) => {
+                  const price = obj(seat.price);
+                  const surcharges = rows(
+                    obj(obj(preview.after).pricing).surcharges
+                  );
+                  return (
+                    <tr key={str(seat.slotId)}>
+                      <th>
+                        {str(seat.role)} ·{" "}
+                        {seat.soldierId
+                          ? personName(state, seat.soldierId)
+                          : "פנוי"}
+                      </th>
+                      <td>{str(price.base)}</td>
+                      <td>
+                        {rows(price.surcharges)
+                          .filter((item) => num(item.count))
+                          .map(
+                            (item) =>
+                              `${str(surcharges.find((rule) => rule.id === item.id)?.name, "תוספת")}: ${num(item.count)} ${num(item.count) === 1 ? "חלון" : "חלונות"} = ${str(item.subtotal)}`
+                          )
+                          .join("; ") || "—"}
+                      </td>
+                      <td>{str(price.extras)}</td>
+                      <td>{str(price.totalExact)}</td>
+                      <td>{num(price.points)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted">
+            הרכיבים מחוברים בדיוק ומעוגלים פעם אחת, חצי כלפי מעלה.
+          </p>
           {preview.pendingReviewRequired ? (
             <Notice tone="danger">
               יש לחזור ולאשר המשך לפני סקירת האילוצים הממתינים.

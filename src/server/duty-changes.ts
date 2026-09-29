@@ -16,13 +16,17 @@ import {
 } from "./repository";
 import { invariant } from "./errors";
 import { id, text } from "./validation";
-import { parseMoment } from "./duty-service";
+import {
+  assertRequirementReferences,
+  parseMoment,
+  requirementsInput,
+} from "./duty-service";
 import { instant, interval } from "../domain/time";
 import { calculatePrice } from "../domain/pricing";
 import { evaluateEligibility } from "../domain/eligibility";
+import { recompose, type RoleQuota, type Seat } from "../domain/composition";
 import type {
   Assignment,
-  DutySlot,
   Pricing,
   Requirements,
   SpecificApproval,
@@ -31,7 +35,6 @@ import { enqueueEmail } from "./operations/email";
 import { closeTransfersForDuty } from "./transfers";
 
 type SavedDuty = (typeof duties.$inferSelect)["data"];
-type Seat = { slotId: string; soldierId: string | null; extraPoints: string };
 type Change = {
   dutyId: string;
   baseVersion: number;
@@ -80,35 +83,32 @@ async function openChange(
   const live = await liveDuty(tx, change.dutyId, change.baseVersion);
   return { row, change, live };
 }
+/**
+ * The instance with the catalog's current rules. A reduced quota keeps occupied
+ * slots before vacant ones; seats that still do not fit are removed and shown
+ * in the impact preview before anything is saved.
+ */
 function catalogSnapshot(
   source: SavedDuty,
+  seats: Seat[],
   catalog: typeof dutyTypes.$inferSelect
-): SavedDuty {
-  const unused = [...source.slots];
-  const slots: DutySlot[] = (
-    catalog.data.roles as {
-      name: string;
-      count: number;
-      requirements?: Requirements;
-    }[]
-  ).flatMap((role) =>
-    Array.from({ length: role.count }, () => {
-      const index = unused.findIndex((slot) => slot.role === role.name);
-      const previous = index < 0 ? undefined : unused.splice(index, 1)[0];
-      return {
-        id: previous?.id ?? randomUUID(),
-        role: role.name,
-        requirements: role.requirements,
-      };
-    })
-  );
+): { duty: SavedDuty; seats: Seat[] } {
+  const roles = catalog.data.roles as RoleQuota[];
+  const result = recompose(source.slots, seats, roles, {
+    overflow: "drop",
+    newId: randomUUID,
+  });
+  invariant(result.ok, "invalid_composition", "ההרכב מהקטלוג אינו תקין");
   return {
-    ...source,
-    slots,
-    pricing: catalog.data.pricing as Pricing,
-    requirements: catalog.data.requirements as Requirements,
-    restBeforeMinutes: Number(catalog.data.restBeforeMinutes),
-    restAfterMinutes: Number(catalog.data.restAfterMinutes),
+    duty: {
+      ...source,
+      slots: result.slots,
+      pricing: catalog.data.pricing as Pricing,
+      requirements: catalog.data.requirements as Requirements,
+      restBeforeMinutes: Number(catalog.data.restBeforeMinutes),
+      restAfterMinutes: Number(catalog.data.restAfterMinutes),
+    },
+    seats: result.seats,
   };
 }
 export async function createDutyChange(
@@ -131,23 +131,13 @@ export async function createDutyChange(
     version: live.version + 1,
     rulesVersion: (live.data.rulesVersion ?? live.version) + 1,
   };
-  let catalogVersion: number | undefined;
-  if (input.applyCatalog) {
-    const [catalog] = await tx
-      .select()
-      .from(dutyTypes)
-      .where(eq(dutyTypes.id, live.typeId));
-    invariant(catalog, "not_found", "סוג התורנות לא נמצא", 404);
-    proposed = catalogSnapshot(proposed, catalog);
-    catalogVersion = catalog.version;
-  }
   const current = await tx
     .select()
     .from(assignments)
     .where(
       and(eq(assignments.dutyId, live.id), eq(assignments.status, "reserved"))
     );
-  const seats: Seat[] = proposed.slots.map((slot) => {
+  let seats: Seat[] = proposed.slots.map((slot) => {
     const assigned = current.find((row) => row.slotId === slot.id);
     return {
       slotId: slot.id,
@@ -155,6 +145,16 @@ export async function createDutyChange(
       extraPoints: assigned?.data.extraPoints ?? "0",
     };
   });
+  let catalogVersion: number | undefined;
+  if (input.applyCatalog) {
+    const [catalog] = await tx
+      .select()
+      .from(dutyTypes)
+      .where(eq(dutyTypes.id, live.typeId));
+    invariant(catalog, "not_found", "סוג התורנות לא נמצא", 404);
+    ({ duty: proposed, seats } = catalogSnapshot(proposed, seats, catalog));
+    catalogVersion = catalog.version;
+  }
   const row = await createRecord(tx, "duty_change", {
     dutyId: live.id,
     baseVersion: live.version,
@@ -233,6 +233,140 @@ export async function saveDutyChange(
   await audit(tx, actor, "duty.change.save", row.id, {
     dutyId: change.dutyId,
     version: updated.version,
+  });
+  return { id: updated.id, version: updated.version };
+}
+const points = z
+  .union([z.number().nonnegative().finite(), z.string().regex(/^\d+(\.\d+)?$/)])
+  .transform(String);
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה לא תקינה");
+const pricingInput = z.object({
+  mode: z.enum(["fixed", "daily"]),
+  basePoints: points,
+  surcharges: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(100).optional(),
+        name: text,
+        points,
+        window: z.object({
+          startTime: clock,
+          endTime: clock,
+          weekdays: z
+            .array(z.number().int().min(1).max(7))
+            .min(1)
+            .max(7)
+            .optional(),
+        }),
+        threshold: z.discriminatedUnion("kind", [
+          z.object({ kind: z.literal("any_overlap") }),
+          z.object({ kind: z.literal("minimum_hours"), hours: points }),
+        ]),
+        frequency: z.enum(["once", "per_window"]),
+      })
+    )
+    .max(20),
+});
+const minutes = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(14 * 24 * 60);
+/**
+ * Edits the composition, role conditions, pricing and rest of one proposal.
+ * The catalog and other instances are untouched. Occupied slots that no longer
+ * fit their role's quota must be released explicitly in `releaseSlotIds`.
+ */
+export async function saveDutyChangeRules(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const input = z
+    .object({
+      id,
+      roles: z
+        .array(
+          z.object({
+            name: text,
+            count: z.number().int().min(1).max(120),
+            requirements: requirementsInput.optional(),
+          })
+        )
+        .min(1)
+        .max(30),
+      releaseSlotIds: z.array(id).default([]),
+      pricing: pricingInput,
+      restBeforeMinutes: minutes,
+      restAfterMinutes: minutes,
+    })
+    .parse(payload);
+  const { row, change } = await openChange(tx, input.id, expectedVersion);
+  invariant(
+    new Set(input.roles.map((role) => role.name)).size === input.roles.length,
+    "duplicate_role",
+    "לכל תפקיד בהרכב נדרש שם ייחודי"
+  );
+  invariant(
+    input.roles.reduce((sum, role) => sum + role.count, 0) <= 120,
+    "too_many_slots",
+    "מספר המקומות במופע חורג מ־120"
+  );
+  await assertRequirementReferences(
+    tx,
+    input.roles.map((role) => role.requirements ?? {})
+  );
+  const pricing: Pricing = {
+    mode: input.pricing.mode,
+    basePoints: input.pricing.basePoints,
+    surcharges: input.pricing.surcharges.map((surcharge) => ({
+      ...surcharge,
+      id: surcharge.id ?? randomUUID(),
+    })),
+  };
+  try {
+    // Validates windows, thresholds and the supported integer range for this instance.
+    calculatePrice(pricing, change.proposed.start, change.proposed.end);
+  } catch (error) {
+    invariant(
+      false,
+      "invalid_pricing",
+      error instanceof Error ? error.message : "התמחור אינו תקין"
+    );
+  }
+  const result = recompose(change.proposed.slots, change.seats, input.roles, {
+    release: input.releaseSlotIds,
+    overflow: "reject",
+    newId: randomUUID,
+  });
+  if (!result.ok)
+    invariant(
+      false,
+      result.reason,
+      result.reason === "occupied_reduction"
+        ? "המכסה החדשה קטנה ממספר המשובצים. יש לבחור במפורש אילו שיבוצים לשחרר"
+        : "אפשר לשחרר רק מקום תפוס בהצעה",
+      409,
+      result.reason === "occupied_reduction" ? result.occupied : result.slotIds
+    );
+  const proposed: SavedDuty = {
+    ...change.proposed,
+    slots: result.slots,
+    pricing,
+    restBeforeMinutes: input.restBeforeMinutes,
+    restAfterMinutes: input.restAfterMinutes,
+  };
+  const updated = await updateRecord(tx, row, {
+    ...row.data,
+    proposed,
+    seats: result.seats,
+  });
+  await audit(tx, actor, "duty.change.rules", row.id, {
+    dutyId: change.dutyId,
+    version: updated.version,
+    released: input.releaseSlotIds,
   });
   return { id: updated.id, version: updated.version };
 }
@@ -335,6 +469,20 @@ async function inspectChange(
       })
     )
     .digest("hex");
+  const seatPrices = change.proposed.slots.map((slot) => {
+    const seat = change.seats.find((seat) => seat.slotId === slot.id);
+    return {
+      slotId: slot.id,
+      role: slot.role,
+      soldierId: seat?.soldierId ?? null,
+      price: calculatePrice(
+        change.proposed.pricing,
+        change.proposed.start,
+        change.proposed.end,
+        seat?.extraPoints ?? "0"
+      ),
+    };
+  });
   const affectedIds = [
     ...new Set([
       ...original.map((item) => item.soldierId),
@@ -361,6 +509,7 @@ async function inspectChange(
     pendingReviewRequired,
     previewToken,
     affected,
+    seatPrices,
   };
 }
 export async function previewDutyChange(
@@ -382,6 +531,7 @@ export async function previewDutyChange(
     after: checked.change.proposed,
     checks: checked.checks,
     affected: checked.affected,
+    seatPrices: checked.seatPrices,
     pendingReviewRequired: checked.pendingReviewRequired,
     previewToken: checked.previewToken,
   };
@@ -762,49 +912,53 @@ export async function previewCatalogImpact(
         instant(duty.start).toMillis() > Date.now()
     )
     .map((duty) => {
-      const proposed = catalogSnapshot(
+      const held = state.assignments.filter(
+        (item) => item.dutyId === duty.id && item.status !== "cancelled"
+      );
+      const { duty: proposed } = catalogSnapshot(
         { ...duty, rulesVersion: (duty.rulesVersion ?? duty.version) + 1 },
+        held.map((item) => ({
+          slotId: item.slotId,
+          soldierId: item.soldierId,
+          extraPoints: item.extraPoints ?? "0",
+        })),
         catalog
       );
-      const checks = state.assignments
-        .filter(
-          (item) => item.dutyId === duty.id && item.status !== "cancelled"
-        )
-        .map((item) => {
-          const slot = proposed.slots.find((slot) => slot.id === item.slotId);
-          const person = state.soldiers.find(
-            (person) => person.id === item.soldierId
-          )!;
-          const result = slot
-            ? evaluateEligibility(person, proposed, slot, {
-                duties: state.duties.map((row) =>
-                  row.id === duty.id ? proposed : row
-                ),
-                assignments: state.assignments,
-                mode: "manual",
-                ignoreAssignmentIds: [item.id],
-                pendingReviewConfirmed: true,
-              })
-            : null;
-          return {
-            soldierId: item.soldierId,
-            slotId: item.slotId,
-            removed: !slot,
-            beforePoints: item.points,
-            afterPoints: slot
-              ? calculatePrice(
-                  proposed.pricing,
-                  proposed.start,
-                  proposed.end,
-                  item.extraPoints
-                ).points
-              : 0,
-            status: result?.status ?? "removed",
-            reasons: result
-              ? [...result.blockers, ...result.approvalsRequired]
-              : [],
-          };
-        });
+      const checks = held.map((item) => {
+        const slot = proposed.slots.find((slot) => slot.id === item.slotId);
+        const person = state.soldiers.find(
+          (person) => person.id === item.soldierId
+        )!;
+        const result = slot
+          ? evaluateEligibility(person, proposed, slot, {
+              duties: state.duties.map((row) =>
+                row.id === duty.id ? proposed : row
+              ),
+              assignments: state.assignments,
+              mode: "manual",
+              ignoreAssignmentIds: [item.id],
+              pendingReviewConfirmed: true,
+            })
+          : null;
+        return {
+          soldierId: item.soldierId,
+          slotId: item.slotId,
+          removed: !slot,
+          beforePoints: item.points,
+          afterPoints: slot
+            ? calculatePrice(
+                proposed.pricing,
+                proposed.start,
+                proposed.end,
+                item.extraPoints
+              ).points
+            : 0,
+          status: result?.status ?? "removed",
+          reasons: result
+            ? [...result.blockers, ...result.approvalsRequired]
+            : [],
+        };
+      });
       return {
         id: duty.id,
         name: duty.name,

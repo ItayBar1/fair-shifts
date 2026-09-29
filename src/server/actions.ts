@@ -56,6 +56,7 @@ import { drawLottery, decideLottery, createPlan, stepPlan } from "./planning";
 import {
   createDutyChange,
   saveDutyChange,
+  saveDutyChangeRules,
   previewDutyChange,
   publishDutyChange,
   applyDraftDutyChange,
@@ -257,6 +258,9 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "duty.change.save":
         result = await saveDutyChange(tx, actor, payload, expectedVersion);
+        break;
+      case "duty.change.rules":
+        result = await saveDutyChangeRules(tx, actor, payload, expectedVersion);
         break;
       case "duty.change.preview":
         result = await previewDutyChange(tx, actor, payload, expectedVersion);
