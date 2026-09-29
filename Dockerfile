@@ -30,5 +30,8 @@ RUN pnpm build
 FROM builder AS production
 ENV NODE_ENV=production
 RUN chown -R postgres:postgres /app/.next
+# Site and worker share one image; the health check compares their versions.
+ARG APP_VERSION=development
+ENV APP_VERSION=$APP_VERSION
 USER postgres
 CMD ["pnpm", "start", "--hostname", "0.0.0.0"]

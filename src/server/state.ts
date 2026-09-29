@@ -6,6 +6,7 @@ import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { emailOutbox, operationsState, user } from "./auth-schema";
 import { populationAt, rankAt } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
+import { readHealth } from "./operations/health";
 import { projectRequests } from "./transfers";
 import { effectivePreferences } from "./notifications";
 import { resolvePreferences } from "../domain/notification-preferences";
@@ -99,10 +100,14 @@ export async function readState(actor: Actor) {
         ...base,
         settings: await preferencesState(tx, actor),
         accounts,
+        // The worker heartbeat is presented through `health`.
         operations: [
           ...mail,
-          ...operations.map((row) => ({ id: row.key, ...row.data })),
+          ...operations
+            .filter((row) => row.key !== "worker")
+            .map((row) => ({ id: row.key, ...row.data })),
         ],
+        health: await readHealth(tx),
       };
     }
     const state = await loadDomain(tx);
