@@ -34,6 +34,7 @@ const statusLabels: Record<string, string> = {
   needs_review: "דורש טיפול",
   transferred: "הועבר",
   declined: "נדחתה",
+  manager_rejected: "נדחתה בידי אחראי",
   expired: "פגה",
   waiting_manager: "ממתינה לאחראי",
   preview: "תצוגה מקדימה",
