@@ -5125,8 +5125,8 @@ describe("past performance corrections", () => {
     const preview = await run("score.preview", input);
     await run("score.apply", { ...input, token: preview.token });
   }
-  /** A published four-point duty that ended yesterday and was credited to the soldier. */
-  async function credited(soldierId: string) {
+  /** A published four-point duty that ended yesterday and was credited to the soldier, optionally drawn by lottery. */
+  async function credited(soldierId: string, lottery = false) {
     const type = await run("dutyType.save", {
       name: "שמירה סינתטית",
       pricing: { mode: "fixed", base: 4 },
@@ -5142,12 +5142,38 @@ describe("past performance corrections", () => {
       .select()
       .from(duties)
       .where(eq(duties.id, created.id));
+    if (lottery) {
+      // Everyone else sits far above the band, so the draw deterministically picks the soldier.
+      for (const other of await db.select().from(soldiers))
+        if (other.id !== soldierId)
+          await db
+            .update(balances)
+            .set({ current: 100 })
+            .where(eq(balances.soldierId, other.id));
+      const drawn = await run(
+        "duty.lottery",
+        { dutyId: row.id, slotId: row.data.slots[0].id },
+        1
+      );
+      expect(drawn).toMatchObject({
+        status: "assigned",
+        candidateId: soldierId,
+      });
+    } else
+      await run(
+        "duty.assign",
+        { dutyId: row.id, slotId: row.data.slots[0].id, soldierId },
+        1
+      );
+    const [assigned] = await db
+      .select()
+      .from(duties)
+      .where(eq(duties.id, row.id));
     await run(
-      "duty.assign",
-      { dutyId: row.id, slotId: row.data.slots[0].id, soldierId },
-      1
+      "duty.publish",
+      { id: row.id, confirmed: true },
+      assigned.version
     );
-    await run("duty.publish", { id: row.id, confirmed: true }, 2);
     const [published] = await db
       .select()
       .from(duties)
@@ -5530,6 +5556,399 @@ describe("past performance corrections", () => {
         current.version
       )
     ).rejects.toMatchObject({ code: "stale_preview" });
+  });
+
+  /** A credited duty, a normalization after it and a correction that therefore waits for a decision. */
+  async function pendingDecision(lottery = false) {
+    const soldier = await member();
+    const { assignment, start, end } = await credited(
+      soldier.soldierId,
+      lottery
+    );
+    await adjust(
+      [soldier.soldierId, manager.soldierId!],
+      "percent",
+      50,
+      "נרמול סינתטי"
+    );
+    expect(await balance(soldier.soldierId)).toBe(2);
+    const input = {
+      assignmentId: assignment.id,
+      start,
+      end,
+      points: 8,
+      reason: "הביצוע נמשך יותר מהרישום",
+    };
+    const preview = await run(
+      "performance.correction.preview",
+      input,
+      assignment.version
+    );
+    const applied = await run(
+      "performance.correction.apply",
+      { ...input, token: preview.token },
+      assignment.version
+    );
+    const [decision] = (await db.select().from(records)).filter(
+      (row) => row.kind === "score_decision"
+    );
+    expect(decision.data).toMatchObject({ status: "pending" });
+    return { soldier, assignment, start, end, applied, decision };
+  }
+  async function decide(
+    decisionId: string,
+    payload: Record<string, unknown>,
+    version: number,
+    actor = manager,
+    key = randomUUID()
+  ) {
+    const input = { decisionId, ...payload };
+    const preview = await run("score.decision.preview", input, version, actor);
+    return {
+      preview,
+      result: await run(
+        "score.decision.apply",
+        { ...input, token: preview.token },
+        version,
+        actor,
+        key
+      ),
+    };
+  }
+
+  it("shows the decision in the handling center, keeps the balance once and lets a later correction weigh only the new difference", async () => {
+    const { soldier, assignment, start, end, applied, decision } =
+      await pendingDecision(true);
+    const attempts = async () =>
+      (await db.select().from(records))
+        .filter((row) => row.kind === "lottery_attempt")
+        .map((row) => ({ version: row.version, data: row.data }));
+    const snapshot = await attempts();
+    expect(snapshot).toHaveLength(1);
+    const managed = await readState(manager);
+    const [shown] = managed.scoreDecisions as Record<string, unknown>[];
+    expect(shown).toMatchObject({
+      id: decision.id,
+      soldierId: soldier.soldierId,
+      historyPoints: 8,
+      reflectedPoints: 4,
+      barriers: [{ label: "נרמול", before: 4, after: 2 }],
+    });
+    const visible = await readState(soldier);
+    expect(visible.scoreDecisions).toEqual([]);
+    expect(JSON.stringify(visible)).not.toContain("נרמול סינתטי");
+    for (const actor of [soldier, technical])
+      await expect(
+        run(
+          "score.decision.preview",
+          { decisionId: decision.id, choice: "keep", reason: "ניסיון" },
+          decision.version,
+          actor
+        )
+      ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      run(
+        "score.decision.preview",
+        { decisionId: decision.id, choice: "keep" },
+        decision.version
+      )
+    ).rejects.toBeTruthy();
+    const key = randomUUID();
+    const { preview, result } = await decide(
+      decision.id,
+      { choice: "keep", reason: "הנרמול כבר איזן את התקופה" },
+      decision.version,
+      manager,
+      key
+    );
+    expect(preview).toMatchObject({
+      balance: 2,
+      after: 2,
+      delta: 0,
+      historyPoints: 8,
+      reflectedPoints: 4,
+      historyDelta: 4,
+      drawPoints: 4,
+      performance: { performerId: soldier.soldierId, points: 8 },
+    });
+    expect(result).toMatchObject({ status: "decided", balance: 2 });
+    expect(
+      await run(
+        "score.decision.apply",
+        {
+          decisionId: decision.id,
+          choice: "keep",
+          reason: "הנרמול כבר איזן את התקופה",
+          token: preview.token,
+        },
+        decision.version,
+        manager,
+        key
+      )
+    ).toEqual(result);
+    await expect(
+      decide(decision.id, { choice: "adjust", value: 1, reason: "שוב" }, 2)
+    ).rejects.toMatchObject({ code: "already_decided", status: 409 });
+    expect(await balance(soldier.soldierId)).toBe(2);
+    expect(
+      (await db.select().from(ledger)).filter((row) =>
+        ["correction", "correction_decision"].includes(row.kind)
+      )
+    ).toHaveLength(0);
+    const [closed] = await db
+      .select()
+      .from(records)
+      .where(eq(records.id, decision.id));
+    expect(closed.data).toMatchObject({
+      status: "decided",
+      decidedBy: manager.id,
+      decidedByName: manager.name,
+      resolution: {
+        choice: "keep",
+        balanceBefore: 2,
+        balanceAfter: 2,
+        reason: "הנרמול כבר איזן את התקופה",
+        barriers: [{ label: "נרמול" }],
+      },
+    });
+    const [saved] = await db
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, assignment.id));
+    expect(saved.points).toBe(4);
+    expect(saved.data.performance).toMatchObject({
+      points: 8,
+      corrections: 1,
+      reflected: { [soldier.soldierId]: 8 },
+    });
+    expect(await attempts()).toEqual(snapshot);
+    expect(
+      (await db.select().from(records)).filter(
+        (row) => row.kind === "audit" && row.data.action === "score.decision"
+      )
+    ).toHaveLength(1);
+    const next = {
+      assignmentId: assignment.id,
+      start,
+      end,
+      points: 10,
+      reason: "תיקון נוסף אחרי ההכרעה",
+    };
+    const again = await run(
+      "performance.correction.preview",
+      next,
+      saved.version
+    );
+    expect(again.effects).toMatchObject([
+      { status: "decision_required", rawDelta: 2, reflected: 8 },
+    ]);
+    await run(
+      "performance.correction.apply",
+      { ...next, token: again.token },
+      saved.version
+    );
+    const decisions = (await db.select().from(records)).filter(
+      (row) => row.kind === "score_decision"
+    );
+    expect(decisions.map((row) => row.data.status).sort()).toEqual([
+      "decided",
+      "pending",
+    ]);
+    expect(
+      decisions.find((row) => row.data.status === "pending")!.data
+    ).toMatchObject({ historyPoints: 10, reflectedPoints: 8, rawDelta: 2 });
+    expect(applied.version).toBeLessThan(saved.version);
+  });
+
+  it("adjusts with a zero floor or sets the balance once when two managers compete, and rejects obsolete or empty choices", async () => {
+    const { soldier, decision } = await pendingDecision();
+    const other = await invite(
+      "אחראי שני",
+      "manager",
+      "second-manager@example.invalid",
+      "00003"
+    );
+    const second: Actor = {
+      id: other.id,
+      name: other.name,
+      role: "manager",
+      soldierId: other.soldierId!,
+      securityEpoch: 1,
+    };
+    const base = { decisionId: decision.id, reason: "הכרעה לבדיקה" };
+    expect(
+      await run(
+        "score.decision.preview",
+        { ...base, choice: "adjust", value: -10 },
+        decision.version
+      )
+    ).toMatchObject({ balance: 2, after: 0, delta: -2, clamped: true });
+    for (const [payload, code] of [
+      [{ choice: "adjust", value: 0 }, "no_change"],
+      [{ choice: "set", value: 2 }, "no_change"],
+      [{ choice: "set" }, "invalid_decision"],
+      [{ choice: "set", value: -1 }, "invalid_decision"],
+    ] as const)
+      await expect(
+        run("score.decision.preview", { ...base, ...payload }, decision.version)
+      ).rejects.toMatchObject({ code });
+    const stale = await run(
+      "score.decision.preview",
+      { ...base, choice: "adjust", value: 3 },
+      decision.version
+    );
+    await adjust([soldier.soldierId], "add", 1, "שינוי מקביל ביתרה");
+    await expect(
+      run(
+        "score.decision.apply",
+        { ...base, choice: "adjust", value: 3, token: stale.token },
+        decision.version
+      )
+    ).rejects.toMatchObject({ code: "stale_preview", status: 409 });
+    expect(await balance(soldier.soldierId)).toBe(3);
+    const setInput = { ...base, choice: "set", value: 7 };
+    const addInput = { ...base, choice: "adjust", value: 3 };
+    const [a, b] = await Promise.all([
+      run("score.decision.preview", setInput, decision.version),
+      run("score.decision.preview", addInput, decision.version, second),
+    ]);
+    const results = await Promise.allSettled([
+      run(
+        "score.decision.apply",
+        { ...setInput, token: a.token },
+        decision.version
+      ),
+      run(
+        "score.decision.apply",
+        { ...addInput, token: b.token },
+        decision.version,
+        second
+      ),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    const entries = (await db.select().from(ledger)).filter(
+      (row) => row.kind === "correction_decision"
+    );
+    expect(entries).toHaveLength(1);
+    const final = await balance(soldier.soldierId);
+    expect([6, 7]).toContain(final);
+    expect(entries[0]).toMatchObject({
+      soldierId: soldier.soldierId,
+      before: 3,
+      after: final,
+      data: {
+        decisionId: decision.id,
+        choice: final === 7 ? "set" : "adjust",
+        barrier: final === 7,
+      },
+    });
+    const [closed] = await db
+      .select()
+      .from(records)
+      .where(eq(records.id, decision.id));
+    expect(closed.data.decidedBy).toBe(final === 7 ? manager.id : second.id);
+    const loser = results.find((result) => result.status === "rejected") as
+      PromiseRejectedResult | undefined;
+    expect(loser?.reason).toMatchObject({ status: 409 });
+    const shown = (await readState(second)).scoreDecisions as Record<
+      string,
+      unknown
+    >[];
+    expect(shown).toMatchObject([
+      {
+        id: decision.id,
+        status: "decided",
+        decidedByName: closed.data.decidedByName,
+      },
+    ]);
+  });
+
+  it("lists intervening actions by effective time, not recording order, and blocks a deleted account", async () => {
+    const soldier = await member();
+    const { assignment, start, end } = await credited(soldier.soldierId);
+    await adjust([soldier.soldierId], "percent", 50, "הפחתה שחלה לפני הסיום");
+    await adjust([soldier.soldierId], "set", 20, "קביעה שנרשמה ראשונה");
+    await adjust(
+      [soldier.soldierId, manager.soldierId!],
+      "subtract",
+      1,
+      "נרמול שנרשם אחרון"
+    );
+    const entries = await db
+      .select()
+      .from(ledger)
+      .where(eq(ledger.soldierId, soldier.soldierId));
+    const byReason = (reason: string) =>
+      entries.find((row) => row.reason === reason)!;
+    const ended = new Date(end).getTime();
+    // A historical reduction effective before the performance ended, and a set recorded before a normalization yet effective after it.
+    await db
+      .update(ledger)
+      .set({ effectiveAt: new Date(ended - 3_600_000) })
+      .where(eq(ledger.id, byReason("הפחתה שחלה לפני הסיום").id));
+    await db
+      .update(ledger)
+      .set({ effectiveAt: new Date(ended + 2 * 3_600_000) })
+      .where(eq(ledger.id, byReason("קביעה שנרשמה ראשונה").id));
+    await db
+      .update(ledger)
+      .set({ effectiveAt: new Date(ended + 3_600_000) })
+      .where(eq(ledger.id, byReason("נרמול שנרשם אחרון").id));
+    const input = {
+      assignmentId: assignment.id,
+      start,
+      end,
+      points: 6,
+      reason: "תיקון אחרי פעולות מתערבות",
+    };
+    const preview = await run(
+      "performance.correction.preview",
+      input,
+      assignment.version
+    );
+    await run(
+      "performance.correction.apply",
+      { ...input, token: preview.token },
+      assignment.version
+    );
+    const [decision] = (await db.select().from(records)).filter(
+      (row) => row.kind === "score_decision"
+    );
+    const view = await run(
+      "score.decision.preview",
+      { decisionId: decision.id, choice: "keep", reason: "בדיקת סדר" },
+      decision.version
+    );
+    expect(
+      (view.barriers as { label: string; reason: string }[]).map((row) => [
+        row.label,
+        row.reason,
+      ])
+    ).toEqual([
+      ["נרמול", "נרמול שנרשם אחרון"],
+      ["קביעת יתרה", "קביעה שנרשמה ראשונה"],
+    ]);
+    const [shown] = (await readState(manager)).scoreDecisions as {
+      barriers: { reason: string }[];
+    }[];
+    expect(shown.barriers.map((row) => row.reason)).toEqual([
+      "נרמול שנרשם אחרון",
+      "קביעה שנרשמה ראשונה",
+    ]);
+    await db
+      .update(soldiers)
+      .set({ deletedAt: new Date() })
+      .where(eq(soldiers.id, soldier.soldierId));
+    await expect(
+      run(
+        "score.decision.preview",
+        { decisionId: decision.id, choice: "keep", reason: "חשבון שנמחק" },
+        decision.version
+      )
+    ).rejects.toMatchObject({ code: "deleted_soldier" });
   });
 });
 describe("gender, capability and personal hours conditions", () => {

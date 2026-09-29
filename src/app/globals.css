@@ -1517,3 +1517,11 @@ tbody tr:last-child td {
     grid-column: auto;
   }
 }
+.plain-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
