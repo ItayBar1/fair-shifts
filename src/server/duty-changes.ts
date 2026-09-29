@@ -29,6 +29,11 @@ import type {
 } from "../domain/types";
 import { enqueueEmail } from "./operations/email";
 import { closeTransfersForDuty } from "./transfers";
+import {
+  linkedRequest,
+  settleAfterCancelledDuty,
+  settleAfterPublishedChange,
+} from "./cancellation-requests";
 import { cancelStaleDutyReminders } from "./duty-reminder-checks";
 
 type SavedDuty = (typeof duties.$inferSelect)["data"];
@@ -385,6 +390,7 @@ export async function previewDutyChange(
     affected: checked.affected,
     pendingReviewRequired: checked.pendingReviewRequired,
     previewToken: checked.previewToken,
+    request: await linkedRequest(tx, checked.row.data.requestId),
   };
 }
 async function applyDutyChange(
@@ -546,6 +552,19 @@ async function applyDutyChange(
       ),
     });
   }
+  if (mode === "published")
+    await settleAfterPublishedChange(tx, actor, {
+      dutyId: live.id,
+      changeId: row.id,
+      requestId: row.data.requestId,
+      reason: change.reason,
+      assignedAfter: simulated.map((item) => item.soldierId),
+      rescheduled:
+        instant(change.proposed.start).toMillis() !==
+          instant(live.data.start).toMillis() ||
+        instant(change.proposed.end).toMillis() !==
+          instant(live.data.end).toMillis(),
+    });
   const closed = await updateRecord(tx, row, {
     ...row.data,
     status: mode === "published" ? "published" : "applied",
@@ -615,7 +634,12 @@ export async function cancelDuty(
 ) {
   manager(actor);
   const input = z
-    .object({ id, reason: text, confirmed: z.literal(true) })
+    .object({
+      id,
+      reason: text,
+      confirmed: z.literal(true),
+      requestId: id.optional(),
+    })
     .parse(payload);
   const [live] = await tx.select().from(duties).where(eq(duties.id, input.id));
   invariant(live, "not_found", "תורנות לא נמצאה", 404);
@@ -642,6 +666,13 @@ export async function cancelDuty(
     "נדרש טיפול בביצוע לפני ביטול זה"
   );
   const version = live.version + 1;
+  await settleAfterCancelledDuty(
+    tx,
+    actor,
+    live.id,
+    input.reason,
+    input.requestId
+  );
   const revision = await createRecord(tx, "duty_revision", {
     dutyId: live.id,
     duty: live.data,

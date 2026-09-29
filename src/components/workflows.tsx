@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   type AppState,
   type Action,
@@ -14,11 +15,9 @@ import {
   emailTypeLabels,
   preferencesPayload,
   reminderHoursText,
+  hiddenPreferenceTypes,
 } from "@/client/notifications";
-import {
-  managerPreferenceTypes,
-  preferenceTypes,
-} from "@/domain/notification-preferences";
+import { preferenceTypes } from "@/domain/notification-preferences";
 import {
   Badge,
   Panel,
@@ -32,20 +31,18 @@ import {
 import { TransferRequests } from "./transfers";
 import { AuditLink, ledgerSource } from "./audit";
 import { effectiveDiffers } from "@/domain/time";
+import { CancellationRequests } from "./cancellation-requests";
+import { BackupsView, BackupFreshnessBadge } from "./backups";
 type Props = { state: AppState; action: Action };
-const building = (
-  <Notice>
-    המסלול הזה נמצא בבנייה. הוא ייפתח לאחר השלמת השמירה ובדיקות התהליך.
-  </Notice>
-);
 export { ConstraintsView } from "./constraints";
 export function RequestsView({ state, action }: Props) {
   return (
     <>
       <Notice>
-        העברת תורנות בהסכמה לפני התחלה זמינה. החלפה הדדית, בקשת ביטול או דחייה
+        העברת תורנות בהסכמה ובקשות ביטול או דחייה לפני התחלה זמינות. החלפה הדדית
         והחלפה במהלך ביצוע נמצאות עדיין בבנייה.
       </Notice>
+      <CancellationRequests state={state} action={action} />
       <TransferRequests state={state} action={action} />
     </>
   );
@@ -127,8 +124,8 @@ export function SettingsView({ state, action }: Props) {
         <PreferencesForm
           key={`${str(settings.source)}-${num(settings.version)}-${num(defaults.version)}`}
           values={settings}
+          role={state.actor.role}
           submitLabel="שמירת העדפות אישיות"
-          managerTypes={state.actor.role === "manager"}
           onSubmit={(payload) =>
             action(
               "settings.save",
@@ -159,6 +156,7 @@ export function SettingsView({ state, action }: Props) {
           <PreferencesForm
             key={`defaults-${num(defaults.version)}`}
             values={defaults}
+            role="manager"
             submitLabel="שמירת ברירות המחדל"
             onSubmit={(payload) =>
               action(
@@ -177,18 +175,17 @@ export function SettingsView({ state, action }: Props) {
 }
 function PreferencesForm({
   values,
+  role,
   submitLabel,
   onSubmit,
-  managerTypes = true,
 }: {
   values: Record<string, unknown>;
+  role: unknown;
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
-  /** Shows the emails only managers receive. */
-  managerTypes?: boolean;
 }) {
   const email = obj(values.email);
-  const hidden = managerTypes ? [] : managerPreferenceTypes;
+  const hidden = hiddenPreferenceTypes(role);
   return (
     <Form
       submitLabel={submitLabel}
@@ -347,13 +344,10 @@ export function TechnicalView({
   if (path.endsWith("/backups"))
     return (
       <>
-        {building}
-        <Panel title="גיבוי ושחזור">
-          <Empty
-            title="אין גיבויים מאומתים"
-            text="אין להשתמש בנתוני אמת לפני השלמת שחזור בדיקה."
-          />
-        </Panel>
+        <BackupsView state={state} action={action} />
+        <Notice>
+          שחזור מגיבוי למסד מבודד ובדיקת הנתונים לפני פתיחה נמצאים עדיין בבנייה.
+        </Notice>
       </>
     );
   if (path.endsWith("/recovery"))
@@ -386,7 +380,13 @@ export function TechnicalView({
   );
   return (
     <>
-      {path === "/technical" && <HealthPanel health={obj(state.health)} />}
+      {path === "/technical" && (
+        <HealthPanel
+          health={obj(state.health)}
+          backups={obj(state.backups)}
+          now={new Date(str(state.serverNow)).getTime()}
+        />
+      )}
       <AccountsPanel accounts={accounts} action={action} />
     </>
   );
@@ -422,7 +422,15 @@ function HealthRow({
     </div>
   );
 }
-function HealthPanel({ health }: { health: Record<string, unknown> }) {
+function HealthPanel({
+  health,
+  backups,
+  now,
+}: {
+  health: Record<string, unknown>;
+  backups: Record<string, unknown>;
+  now: number;
+}) {
   const worker = obj(health.worker);
   return (
     <Panel
@@ -445,6 +453,12 @@ function HealthPanel({ health }: { health: Record<string, unknown> }) {
         <Badge tone={worker.sameVersion ? "success" : "danger"}>
           {worker.sameVersion ? "זהה לאתר" : "שונה מהאתר"}
         </Badge>
+      </HealthRow>
+      <HealthRow label="גיבוי אחרון">
+        <BackupFreshnessBadge backups={backups} now={now} />
+        <Link className="text-link" href="/technical/backups">
+          {displayDate(backups.lastVerifiedAt, true)}
+        </Link>
       </HealthRow>
       {worker.status !== "ok" && (
         <Notice tone="warning">

@@ -44,6 +44,7 @@ const statusLabels: Record<string, string> = {
   upcoming: "טרם נפתח",
   open: "פתוח להגשה",
   closed: "נסגר",
+  referred: "הופנתה לטיפול בביצוע",
   service_ended: "השירות הסתיים",
   inactive_period: "באי־פעילות",
   grace: "בחודש חסד",

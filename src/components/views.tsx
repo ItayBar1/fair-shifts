@@ -11,6 +11,10 @@ import { LotteryButton, LotteryHistory } from "./planning";
 import { ScoreDecisions } from "./score-decisions";
 import { TransferOffer } from "./transfers";
 import {
+  CancellationRequestButton,
+  CancellationRequests,
+} from "./cancellation-requests";
+import {
   CalendarDays,
   UsersRound,
   Clock3,
@@ -477,9 +481,15 @@ export function Dashboard({
   const pending = state.constraints.filter((c) => c.status === "pending");
   const requests = state.requests.filter(
     (r) =>
-      !["completed", "rejected", "cancelled", "declined", "expired"].includes(
-        str(r.status)
-      )
+      ![
+        "completed",
+        "rejected",
+        "cancelled",
+        "declined",
+        "expired",
+        "referred",
+        "closed",
+      ].includes(str(r.status))
   );
   const decisions = rows(state.scoreDecisions).filter(
     (row) => row.status === "pending"
@@ -731,6 +741,7 @@ export function DutyDetail({
           </Notice>
         )}
         <TransferOffer state={state} action={action} duty={duty} />
+        <CancellationRequestButton state={state} action={action} duty={duty} />
         {manager && (
           <div className="panel-actions">
             <AuditLink id={id} label="יומן הפעולות של התורנות" />
@@ -893,6 +904,9 @@ export function DutyDetail({
             </div>
           </div>
         </Panel>
+      )}
+      {manager && (
+        <CancellationRequests state={state} action={action} dutyId={id} />
       )}
       {manager &&
         future &&

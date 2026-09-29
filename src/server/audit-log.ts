@@ -93,6 +93,13 @@ const labels: Record<string, string> = {
   "transfer.accept.pending": "הסכמה להעברה שממתינה לאחראי",
   "transfer.complete": "השלמת העברת תורנות",
   "transfer.withdraw": "משיכת הצעת העברה",
+  "cancellation.submit": "בקשת ביטול או דחייה",
+  "cancellation.withdraw": "משיכת בקשת ביטול או דחייה",
+  "cancellation.prepare": "הכנת שינוי לבקשת ביטול או דחייה",
+  "cancellation.rejected": "דחיית בקשת ביטול או דחייה",
+  "cancellation.completed": "השלמת בקשת ביטול או דחייה",
+  "cancellation.referred": "הפניית בקשה לטיפול בביצוע",
+  "backup.request": "בקשת גיבוי ידני",
   "account.email.request": "בקשה לשינוי מייל",
   "account.email.confirm": "אישור שינוי מייל",
   "role:manager": "הענקת הרשאת אחראי",
@@ -146,6 +153,17 @@ const drawResults: Record<string, string> = {
   approval_required: "נבחר מועמד שממתין לאישור",
   unfilled: "אין מועמד מתאים",
   manual_only: "שיבוץ ידני בלבד",
+};
+const requestKinds: Record<string, string> = {
+  cancel: "ביטול",
+  postpone: "דחייה",
+};
+const requestOutcomes: Record<string, string> = {
+  rejected: "נדחתה",
+  removed: "החייל הוסר מהשיבוץ",
+  rescheduled: "מועד התורנות שונה",
+  duty_cancelled: "התורנות בוטלה",
+  referred: "הופנתה לטיפול בביצוע",
 };
 const operations: Record<string, string> = {
   add: "הוספה",
@@ -534,6 +552,20 @@ export function projectAudit(
               );
           break;
         }
+        case "cancellation.submit":
+          add("סוג", requestKinds[String(envelope.kind ?? target.kind)]);
+          reason = text(target.reason);
+          break;
+        case "cancellation.prepare":
+        case "cancellation.rejected":
+        case "cancellation.completed":
+        case "cancellation.referred":
+          add("תוצאה", requestOutcomes[String(envelope.outcome)]);
+          reason =
+            action === "cancellation.prepare"
+              ? undefined
+              : (text(data(target.decision).reason) ?? text(envelope.reason));
+          break;
         case "transfer.offer":
           add(
             "מועמדים",
