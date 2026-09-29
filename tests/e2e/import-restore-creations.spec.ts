@@ -186,7 +186,9 @@ test("cancels a new soldier without activity and waits for a decision on one who
     .set({ phone: "0500000399" })
     .where(eq(soldierContacts.soldierId, activePerson.id));
   await keep();
-  await expect(page.getByText(/נתונים השתנו מאז תצוגת השחזור/)).toBeVisible();
+  await expect(
+    page.getByText(/נתונים השתנו מאז תצוגת השחזור/).first()
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
     .click();
