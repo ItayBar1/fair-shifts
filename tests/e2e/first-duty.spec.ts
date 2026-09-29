@@ -82,6 +82,14 @@ test("technical account lands on its own overview after login", async ({
   await expect(
     page.getByRole("link", { name: "תמונת מצב", exact: true })
   ).toHaveAttribute("aria-current", "page");
+  // No worker runs beside the E2E server, so the panel must say so in words.
+  const health = page.locator("section.panel", {
+    has: page.getByRole("heading", { name: "מצב המערכת", exact: true }),
+  });
+  await expect(health).toBeVisible();
+  await expect(health.getByText("מסד הנתונים")).toBeVisible();
+  await expect(health.getByText("לא דיווח")).toBeVisible();
+  await expect(health.getByText("שונה מהאתר")).toBeVisible();
 });
 test("manager invites, assigns and publishes; soldier sees only published duties", async ({
   page,

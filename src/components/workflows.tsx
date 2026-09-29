@@ -1,14 +1,14 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   type AppState,
   type Action,
   str,
   num,
   rows,
+  obj,
   displayDate,
   personName,
-  obj,
 } from "@/client/types";
 import {
   emailTypeLabels,
@@ -17,6 +17,7 @@ import {
 } from "@/client/notifications";
 import { preferenceTypes } from "@/domain/notification-preferences";
 import {
+  Badge,
   Panel,
   Empty,
   Form,
@@ -383,6 +384,85 @@ export function TechnicalView({
   const accounts = state.accounts.filter(
     (row) => !path.endsWith("/locked") || row.lockedAt
   );
+  return (
+    <>
+      {path === "/technical" && <HealthPanel health={obj(state.health)} />}
+      <AccountsPanel accounts={accounts} action={action} />
+    </>
+  );
+}
+
+const healthLabels: Record<string, [string, string]> = {
+  ok: ["תקין", "success"],
+  degraded: ["דורש בדיקה", "warning"],
+  unavailable: ["לא זמין", "danger"],
+  paused: ["מושהה לשחזור", "warning"],
+  stale: ["מתעכב", "danger"],
+  missing: ["לא דיווח", "danger"],
+};
+function HealthBadge({ value }: { value: unknown }) {
+  const [label, tone] = healthLabels[str(value)] ?? [
+    str(value, "—"),
+    "neutral",
+  ];
+  return <Badge tone={tone}>{label}</Badge>;
+}
+// Values sit in one wrapper so task-item's second-child rule does not stretch badges.
+function HealthRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="task-item">
+      <strong className="grow">{label}</strong>
+      <div className="inline">{children}</div>
+    </div>
+  );
+}
+function HealthPanel({ health }: { health: Record<string, unknown> }) {
+  const worker = obj(health.worker);
+  return (
+    <Panel
+      title="מצב המערכת"
+      subtitle={`נבדק ${displayDate(health.checkedAt, true)}`}
+      actions={<HealthBadge value={health.status} />}
+    >
+      <HealthRow label="גרסת האתר">
+        <span dir="ltr">{str(health.version, "—")}</span>
+      </HealthRow>
+      <HealthRow label="מסד הנתונים">
+        <HealthBadge value={health.database} />
+      </HealthRow>
+      <HealthRow label="עובד הרקע">
+        <HealthBadge value={worker.status} />
+        <span>פעימה אחרונה: {displayDate(worker.lastBeatAt, true)}</span>
+      </HealthRow>
+      <HealthRow label="גרסת העובד">
+        <span dir="ltr">{str(worker.version, "—")}</span>
+        <Badge tone={worker.sameVersion ? "success" : "danger"}>
+          {worker.sameVersion ? "זהה לאתר" : "שונה מהאתר"}
+        </Badge>
+      </HealthRow>
+      {worker.status !== "ok" && (
+        <Notice tone="warning">
+          משימות רקע כמו זקיפה, תזכורות ומשלוח מייל אינן רצות כסדרן. יש לבדוק את
+          קונטיינר העובד ואת יומן ההפעלה.
+        </Notice>
+      )}
+    </Panel>
+  );
+}
+
+function AccountsPanel({
+  accounts,
+  action,
+}: {
+  accounts: AppState["accounts"];
+  action: Action;
+}) {
   return (
     <Panel title="חשבונות והרשאות">
       <Notice>החשבון הטכני נפרד מרשימת החיילים ומנהל את הרשאות האחראים.</Notice>
