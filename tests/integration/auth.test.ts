@@ -265,9 +265,10 @@ describe("durable email queue", () => {
   });
   it("does not exceed the shared quota when workers compete", async () => {
     const now = new Date();
+    // One business slot is left: the last 10 of the 300 are kept for codes (decision 177).
     await db
       .insert(emailQuota)
-      .values({ day: now.toISOString().slice(0, 10), used: 299 });
+      .values({ day: now.toISOString().slice(0, 10), used: 289 });
     await db.transaction(async (tx) => {
       for (const eventKey of ["one", "two"])
         await enqueueEmail(tx, {
@@ -292,7 +293,7 @@ describe("durable email queue", () => {
       }, deliveryTime),
     ]);
     expect(sent).toBe(1);
-    expect((await db.select().from(emailQuota))[0].used).toBe(300);
+    expect((await db.select().from(emailQuota))[0].used).toBe(290);
   });
 });
 
@@ -4564,6 +4565,540 @@ describe("first duty vertical slice", () => {
     ).toHaveLength(0);
     const viewed = await command("import.get", { id: batch.id });
     expect(JSON.stringify(viewed)).not.toContain("0500000007");
+  });
+  describe("restore of soldiers created by the import (decision 174)", () => {
+    async function importNew(
+      people: { number: string; name: string; email: string; score?: number }[]
+    ) {
+      const preview = await command("import.preview", {
+        filename: "new-soldiers.xlsx",
+        rows: people.map((person, index) => ({
+          rowNumber: index + 2,
+          values: {
+            personalNumber: person.number,
+            name: person.name,
+            email: person.email,
+            phone: `05000001${String(index).padStart(2, "0")}`,
+            address: "כתובת סינתטית מהייבוא",
+            currentScore: person.score ?? 7,
+          },
+        })),
+      });
+      return command(
+        "import.apply",
+        { id: preview.id, confirmed: true, reason: "קליטה לבדיקה" },
+        1
+      );
+    }
+    async function personByNumber(number: string) {
+      const [person] = await db
+        .select()
+        .from(soldiers)
+        .where(eq(soldiers.personalNumber, number));
+      return person;
+    }
+    async function actorOf(number: string): Promise<Actor> {
+      const person = await personByNumber(number);
+      const [login] = await db
+        .select()
+        .from(user)
+        .where(eq(user.soldierId, person.id));
+      return {
+        id: login.id,
+        name: login.name,
+        role: "soldier",
+        soldierId: person.id,
+        securityEpoch: login.securityEpoch,
+      };
+    }
+    const creationOf = (
+      preview: Awaited<ReturnType<typeof previewImportRestore>>,
+      name: string
+    ) => preview.rows.find((row) => row.name === name)!;
+    it("cancels a new soldier without activity: removes every trace, frees the number and keeps the row", async () => {
+      const { row: duty, actor: member } = await fixtureDuty();
+      const batch = await importNew([
+        {
+          number: "000031",
+          name: "קליטה לביטול",
+          email: "cancel@example.invalid",
+          score: 50,
+        },
+      ]);
+      const person = await personByNumber("000031");
+      const [login] = await db
+        .select()
+        .from(user)
+        .where(eq(user.soldierId, person.id));
+      expect(
+        await db
+          .select()
+          .from(emailOutbox)
+          .where(eq(emailOutbox.recipientAccountId, login.id))
+      ).toHaveLength(1);
+      // Only a candidate in a lottery picture: not activity (user decision).
+      const draw = (await command(
+        "duty.lottery",
+        { dutyId: duty.id, slotId: duty.data.slots[0].id },
+        1
+      )) as unknown as { status: string; candidateId: string };
+      expect(draw.candidateId).not.toBe(person.id);
+      const [attempt] = await db
+        .select()
+        .from(records)
+        .where(eq(records.kind, "lottery_attempt"));
+      expect(JSON.stringify(attempt.data.candidates)).toContain(person.id);
+      // A later file that was only previewed is not an edit.
+      const later = await command("import.preview", {
+        filename: "later.xlsx",
+        rows: [
+          {
+            rowNumber: 2,
+            values: { personalNumber: "000031", name: "רק תצוגה" },
+          },
+        ],
+      });
+      await expect(
+        executeAction(member, {
+          type: "import.restore.preview",
+          payload: { id: batch.id },
+          expectedVersion: 2,
+          idempotencyKey: randomUUID(),
+        })
+      ).rejects.toThrow("אחראי");
+      const preview = await restoration(batch.id);
+      expect(creationOf(preview, "קליטה לביטול")).toMatchObject({
+        pendingNew: true,
+        personalNumber: "000031",
+        creation: { status: "cancel", activity: [] },
+      });
+      const result = await command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: preview.token,
+          confirmed: true,
+          reason: "קובץ שגוי",
+        },
+        2
+      );
+      expect(result).toMatchObject({ status: "restored", version: 3 });
+      expect(await personByNumber("000031")).toBeUndefined();
+      expect(
+        await db
+          .select()
+          .from(soldierContacts)
+          .where(eq(soldierContacts.soldierId, person.id))
+      ).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(balances)
+          .where(eq(balances.soldierId, person.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select().from(ledger).where(eq(ledger.soldierId, person.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select().from(user).where(eq(user.id, login.id))
+      ).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(emailOutbox)
+          .where(eq(emailOutbox.recipientAccountId, login.id))
+      ).toHaveLength(0);
+      const [detail] = (
+        await db.select().from(records).where(eq(records.kind, "import_row"))
+      ).filter((item) => item.data.batchId === batch.id);
+      expect(detail.subjectId).toBeNull();
+      expect(detail.data).toMatchObject({
+        rowNumber: 2,
+        name: "קליטה לביטול",
+        values: { personalNumber: "000031" },
+        newRowRestored: { action: "cancelled", reason: "קובץ שגוי" },
+      });
+      const stored = JSON.stringify(detail.data);
+      for (const secret of [
+        "cancel@example.invalid",
+        "0500000100",
+        "כתובת סינתטית",
+      ])
+        expect(stored).not.toContain(secret);
+      // The lottery picture is history and stays as it was.
+      const [kept] = await db
+        .select()
+        .from(records)
+        .where(eq(records.id, attempt.id));
+      expect(kept.data.candidates).toEqual(attempt.data.candidates);
+      // The previewed later file is now stale; the number is free again.
+      await expect(
+        command(
+          "import.apply",
+          { id: later.id, confirmed: true, reason: "ישן" },
+          1
+        )
+      ).rejects.toThrow();
+      const again = await command("import.preview", {
+        filename: "again.xlsx",
+        rows: [
+          {
+            rowNumber: 2,
+            values: {
+              personalNumber: "000031",
+              name: "קליטה חוזרת",
+              email: "cancel@example.invalid",
+            },
+          },
+        ],
+      });
+      expect(
+        (again as unknown as { rows: { mode: string }[] }).rows[0].mode
+      ).toBe("create");
+      await expect(
+        command("import.restore.preview", { id: batch.id }, 3)
+      ).rejects.toThrow("נסגר");
+    });
+    it("shows each kind of activity as a conflict, including an edit that was reverted, and closes the batch only when every row is handled", async () => {
+      const { row: duty } = await fixtureDuty();
+      const batch = await importNew([
+        { number: "000041", name: "עם שיבוץ", email: "a@example.invalid" },
+        {
+          number: "000042",
+          name: "עם עריכה שהוחזרה",
+          email: "b@example.invalid",
+        },
+        { number: "000043", name: "עם כניסה", email: "c@example.invalid" },
+        { number: "000044", name: "עם הצהרה", email: "d@example.invalid" },
+        {
+          number: "000045",
+          name: "עם ייבוא מאוחר",
+          email: "e@example.invalid",
+        },
+      ]);
+      await command(
+        "duty.assign",
+        {
+          dutyId: duty.id,
+          slotId: duty.data.slots[0].id,
+          soldierId: (await personByNumber("000041")).id,
+        },
+        1
+      );
+      const edited = await personByNumber("000042");
+      for (const name of ["שם ביניים", edited.name])
+        await db
+          .update(soldiers)
+          .set({ name })
+          .where(eq(soldiers.id, edited.id));
+      const signer = await actorOf("000043");
+      await requestCode("c@example.invalid");
+      await verifyCode("c@example.invalid", await storedCode(signer.id));
+      const declarer = await actorOf("000044");
+      const round = await command("round.create", {
+        name: "סבב לבדיקת שחזור",
+        opensAt: new Date(Date.now() - 60_000).toISOString(),
+        closesAt: new Date(Date.now() + 3600_000).toISOString(),
+        targetStart: duty.data.start.slice(0, 10),
+        targetEnd: duty.data.end.slice(0, 10),
+      });
+      await command(
+        "constraint.submit",
+        { roundId: round.id, none: true },
+        undefined,
+        declarer
+      );
+      const second = await command("import.preview", {
+        filename: "later.xlsx",
+        rows: [
+          {
+            rowNumber: 2,
+            values: { personalNumber: "000045", name: "שם מאוחר" },
+          },
+        ],
+      });
+      await command(
+        "import.apply",
+        {
+          id: second.id,
+          confirmed: true,
+          overwriteConfirmed: true,
+          reason: "עדכון",
+        },
+        1
+      );
+      const preview = await restoration(batch.id);
+      const expected: Record<string, string> = {
+        "עם שיבוץ": "שיבוץ",
+        "עם עריכה שהוחזרה": "עריכה בנתוני החייל",
+        "עם כניסה": "כניסה לחשבון",
+        "עם הצהרה": "אילוץ או הצהרת ״אין לי אילוצים״",
+        "שם מאוחר": "עדכון בייבוא מאוחר",
+      };
+      for (const [name, label] of Object.entries(expected)) {
+        const row = creationOf(preview, name);
+        expect(row.creation?.status, name).toBe("activity");
+        expect(row.creation?.activity, name).toContain(label);
+      }
+      const payload = {
+        id: batch.id,
+        token: preview.token,
+        confirmed: true,
+        reason: "שחזור עם פעילות",
+      };
+      await expect(command("import.restore", payload, 2)).rejects.toThrow(
+        "להכרעה"
+      );
+      await expect(
+        command(
+          "import.restore",
+          {
+            ...payload,
+            creations: [
+              { rowId: creationOf(preview, "עם שיבוץ").id, action: "keep" },
+              { rowId: creationOf(preview, "עם שיבוץ").id, action: "keep" },
+            ],
+          },
+          2
+        )
+      ).rejects.toThrow("כפולה");
+      const partial = await command(
+        "import.restore",
+        {
+          ...payload,
+          creations: [
+            { rowId: creationOf(preview, "עם שיבוץ").id, action: "keep" },
+          ],
+        },
+        2
+      );
+      expect(partial).toMatchObject({ status: "partially_restored" });
+      for (const number of ["000041", "000042", "000043", "000044", "000045"])
+        expect(await personByNumber(number), number).toBeDefined();
+      expect(
+        (await db.select().from(assignments)).filter(
+          (item) => item.status === "reserved"
+        )
+      ).toHaveLength(1);
+      const rest = await restoration(batch.id, 3);
+      const pending = rest.rows.filter((row) => row.creation);
+      expect(pending.map((row) => row.name).sort()).toEqual(
+        ["עם עריכה שהוחזרה", "עם כניסה", "עם הצהרה", "שם מאוחר"].sort()
+      );
+      const done = await command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: rest.token,
+          confirmed: true,
+          reason: "משאירים את כולם",
+          creations: pending.map((row) => ({ rowId: row.id, action: "keep" })),
+        },
+        3
+      );
+      expect(done).toMatchObject({ status: "restored" });
+      const outcomes = (
+        await db.select().from(records).where(eq(records.kind, "import_row"))
+      )
+        .filter((item) => item.data.batchId === batch.id)
+        .map((item) => (item.data.newRowRestored as { action: string }).action);
+      expect(outcomes).toEqual(["kept", "kept", "kept", "kept", "kept"]);
+    });
+    it("rechecks activity at save: a sign-in after the preview is stale, the first sign-in is durable and competing restores apply once", async () => {
+      const batch = await importNew([
+        {
+          number: "000051",
+          name: "נכנס אחרי תצוגה",
+          email: "late@example.invalid",
+        },
+        {
+          number: "000052",
+          name: "ללא פעילות",
+          email: "quiet@example.invalid",
+        },
+      ]);
+      const preview = await restoration(batch.id);
+      expect(creationOf(preview, "נכנס אחרי תצוגה").creation?.status).toBe(
+        "cancel"
+      );
+      const late = await actorOf("000051");
+      await requestCode("late@example.invalid");
+      const response = await getAuth().handler(
+        new Request("http://localhost:3000/api/auth/verify-code", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            email: "late@example.invalid",
+            code: await storedCode(late.id),
+          }),
+        })
+      );
+      expect(response.status).toBe(200);
+      const payload = {
+        id: batch.id,
+        token: preview.token,
+        confirmed: true,
+        reason: "תמונה ישנה",
+      };
+      await expect(command("import.restore", payload, 2)).rejects.toThrow(
+        "השתנו"
+      );
+      expect(await personByNumber("000052")).toBeDefined();
+      // Sign-out and clearing the verified flag do not erase the first sign-in.
+      await db.delete(session).where(eq(session.userId, late.id));
+      await db
+        .update(user)
+        .set({ emailVerified: false })
+        .where(eq(user.id, late.id));
+      const [signed] = await db.select().from(user).where(eq(user.id, late.id));
+      expect(signed.firstSignInAt).toBeInstanceOf(Date);
+      const fresh = await restoration(batch.id);
+      expect(creationOf(fresh, "נכנס אחרי תצוגה").creation).toEqual({
+        status: "activity",
+        activity: ["כניסה לחשבון"],
+      });
+      const racing = { ...payload, token: fresh.token, reason: "ביטול במקביל" };
+      const key = randomUUID();
+      const results = await Promise.allSettled([
+        command("import.restore", racing, 2, manager, key),
+        command("import.restore", racing, 2),
+      ]);
+      expect(
+        results.filter((item) => item.status === "fulfilled")
+      ).toHaveLength(1);
+      expect(await personByNumber("000052")).toBeUndefined();
+      expect(await personByNumber("000051")).toBeDefined();
+      expect(
+        (
+          await db.select().from(records).where(eq(records.kind, "audit"))
+        ).filter(
+          (item) =>
+            item.data.action === "import.restore.row" &&
+            item.data.creation === "cancelled"
+        )
+      ).toHaveLength(1);
+      const [batchRow] = await db
+        .select()
+        .from(records)
+        .where(eq(records.id, batch.id));
+      expect(batchRow.data.status).toBe("partially_restored");
+    });
+    it("cancels a new soldier whose rank came from the same import, and counts a later rank change", async () => {
+      const rank = await command("rank.catalog.save", {
+        name: "טוראי סינתטי",
+        track: "חובה",
+        order: 1,
+        source: "סינתטי",
+      });
+      const higher = await command("rank.catalog.save", {
+        name: "רב־טוראי סינתטי",
+        track: "חובה",
+        order: 2,
+        source: "סינתטי",
+      });
+      const preview = await command("import.preview", {
+        filename: "rank.xlsx",
+        rows: ["000071", "000072"].map((number, index) => ({
+          rowNumber: index + 2,
+          values: {
+            personalNumber: number,
+            name: `עם דרגה ${index + 1}`,
+            email: `rank${index}@example.invalid`,
+            rankName: "טוראי סינתטי",
+            rankTrack: "חובה",
+            rankEffectiveDate: "2026-01-01",
+          },
+        })),
+      });
+      const batch = await command(
+        "import.apply",
+        { id: preview.id, confirmed: true, reason: "קליטה עם דרגה" },
+        1
+      );
+      const promoted = await personByNumber("000072");
+      expect(promoted.data.rankHistory[0].rankId).toBe(rank.id);
+      await command(
+        "rank.set",
+        {
+          soldierId: promoted.id,
+          rankId: higher.id,
+          effectiveDate: "2026-06-01",
+          reason: "עדכון מאוחר",
+        },
+        promoted.version
+      );
+      const restore = await restoration(batch.id);
+      expect(creationOf(restore, "עם דרגה 1").creation).toEqual({
+        status: "cancel",
+        activity: [],
+      });
+      expect(creationOf(restore, "עם דרגה 2").creation?.activity).toContain(
+        "עריכה בנתוני החייל"
+      );
+      await command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: restore.token,
+          confirmed: true,
+          reason: "ביטול קליטה עם דרגה",
+        },
+        2
+      );
+      expect(await personByNumber("000071")).toBeUndefined();
+      expect(await personByNumber("000072")).toBeDefined();
+    });
+    it("closes the row of a soldier erased through deletion without reviving or removing the kept identity", async () => {
+      const batch = await importNew([
+        {
+          number: "000061",
+          name: "נמחק במסלול",
+          email: "gone@example.invalid",
+        },
+      ]);
+      const person = await personByNumber("000061");
+      await db
+        .update(soldiers)
+        .set({ deletedAt: new Date() })
+        .where(eq(soldiers.id, person.id));
+      await db
+        .delete(soldierContacts)
+        .where(eq(soldierContacts.soldierId, person.id));
+      const preview = await restoration(batch.id);
+      expect(preview.rows[0].creation).toEqual({
+        status: "erased",
+        activity: [],
+      });
+      const result = await command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: preview.token,
+          confirmed: true,
+          reason: "סגירה",
+        },
+        2
+      );
+      expect(result).toMatchObject({ status: "restored" });
+      const [still] = await db
+        .select()
+        .from(soldiers)
+        .where(eq(soldiers.id, person.id));
+      expect(still).toMatchObject({
+        name: "נמחק במסלול",
+        personalNumber: "000061",
+      });
+      expect(still.deletedAt).toBeInstanceOf(Date);
+      expect(
+        await db
+          .select()
+          .from(soldierContacts)
+          .where(eq(soldierContacts.soldierId, person.id))
+      ).toHaveLength(0);
+    });
   });
   type RestorePreview = Awaited<ReturnType<typeof previewImportRestore>>;
   async function restorationWith(

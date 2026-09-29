@@ -12,11 +12,25 @@ import {
 } from "lucide-react";
 import { Notice } from "@/components/ui";
 const subscribe = () => () => {};
+// Better Auth returns a refused Google sign-in here with an error code only;
+// a locked account and an uninvited Google account must not look alike to others.
+function providerError(search: string) {
+  const code = new URLSearchParams(search).get("error");
+  if (!code) return "";
+  if (code === "unable_to_create_session")
+    return "לא ניתן להיכנס לחשבון הזה כרגע. אם החשבון ננעל, חייל פונה לאחראי התורנויות ואחראי למנהל הטכני.";
+  return "הכניסה עם Google לא הושלמה. הכניסה אפשרית רק לחשבון Google של כתובת שהוזמנה ביחידה.";
+}
 export default function LoginPage() {
   const ready = useSyncExternalStore(
     subscribe,
     () => true,
     () => false
+  );
+  const search = useSyncExternalStore(
+    subscribe,
+    () => window.location.search,
+    () => ""
   );
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -26,8 +40,15 @@ export default function LoginPage() {
   const [pending, setPending] = useState(false);
   const [resendAt, setResendAt] = useState(0);
   const [recovery, setRecovery] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const [notice, setNotice] = useState("");
+  // System-wide only: the same for every address (decision 177).
+  const [mailDelayed, setMailDelayed] = useState(false);
+  const shownError = error || (touched ? "" : providerError(search));
   async function post(path: string, body: Record<string, string>) {
     setError("");
+    setNotice("");
+    setTouched(true);
     setPending(true);
     try {
       const response = await fetch(path, {
@@ -111,7 +132,14 @@ export default function LoginPage() {
                 ? `אם הכתובת ${email} מורשית, יישלח אליה קוד כניסה. הקוד תקף לעשר דקות.`
                 : "הכניסה מיועדת לחשבונות שהוזמנו על ידי אחראי התורנויות."}
           </p>
-          {error && <Notice tone="danger">{error}</Notice>}
+          {shownError && <Notice tone="danger">{shownError}</Notice>}
+          {notice && <Notice tone="success">{notice}</Notice>}
+          {sent && !recovery && mailDelayed && (
+            <Notice tone="warning">
+              משלוח המיילים מתעכב כרגע. אם הקוד לא מגיע תוך כמה דקות, פנו לאחראי
+              התורנויות.
+            </Notice>
+          )}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -123,7 +151,7 @@ export default function LoginPage() {
                 if (result) {
                   setRecovery(false);
                   setCode("");
-                  setError(
+                  setNotice(
                     "הגישה שוחזרה. יש להתחבר מחדש עם קוד למייל או Google."
                   );
                 }
@@ -137,6 +165,7 @@ export default function LoginPage() {
                 const result = await post("/api/auth/request-code", { email });
                 if (result) {
                   setSent(true);
+                  setMailDelayed(result.mailDelayed === true);
                   setResendAt(Date.now() + 60000);
                 }
               }
@@ -202,7 +231,10 @@ export default function LoginPage() {
                   const result = await post("/api/auth/request-code", {
                     email,
                   });
-                  if (result) setResendAt(Date.now() + 60000);
+                  if (result) {
+                    setMailDelayed(result.mailDelayed === true);
+                    setResendAt(Date.now() + 60000);
+                  }
                 }}
                 disabled={!ready || pending}
               >
@@ -232,6 +264,7 @@ export default function LoginPage() {
                     const result = await post("/api/auth/sign-in/social", {
                       provider: "google",
                       callbackURL: "/",
+                      errorCallbackURL: "/login",
                     });
                     if (result?.url) window.location.assign(result.url);
                   }}
@@ -279,6 +312,7 @@ export default function LoginPage() {
               setSent(false);
               setCode("");
               setError("");
+              setTouched(true);
             }}
           >
             {recovery ? "חזרה לכניסה רגילה" : "שחזור חשבון מנהל טכני"}

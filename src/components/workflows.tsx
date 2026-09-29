@@ -24,7 +24,6 @@ import {
   Empty,
   Form,
   QuickAction,
-  Status,
   Notice,
   type Field,
 } from "./ui";
@@ -32,6 +31,7 @@ import { TransferRequests } from "./transfers";
 import { AuditLink, ledgerSource } from "./audit";
 import { effectiveDiffers } from "@/domain/time";
 import { CancellationRequests } from "./cancellation-requests";
+import { MailHealthRow, MailPanel } from "./mail-operations";
 import { BackupsView, BackupFreshnessBadge } from "./backups";
 type Props = { state: AppState; action: Action };
 export { ConstraintsView } from "./constraints";
@@ -354,27 +354,17 @@ export function TechnicalView({
     return (
       <Panel title="שחזור גישה">
         <p>
-          קודי שחזור חד־פעמיים מופקים בעת הקמת המנהל הטכני ונשמרים בנפרד. לאחר
-          שימוש בקוד יש להתחבר מחדש.
+          קודי שחזור חד־פעמיים מופקים בעת הקמת המנהל הטכני ונשמרים בנפרד. כל קוד
+          תקף פעם אחת, משחרר נעילה ומחייב התחברות מחדש.
+        </p>
+        <p>
+          אם אין קוד זמין, מפעיל השרת מריץ שחזור מתועד עם סיבה (
+          <code dir="ltr">pnpm recover</code>). השחזור מנתק את כל החיבורים, מבטל
+          את הקודים הקודמים ומפיק קודים חדשים.
         </p>
       </Panel>
     );
-  if (path.endsWith("/mail"))
-    return (
-      <Panel title="משלוחי מייל">
-        {state.operations.length ? (
-          state.operations.map((row) => (
-            <div className="task-item" key={row.id}>
-              <strong>{str(row.kind)}</strong>
-              <Status value={row.status} />
-              <span>{num(row.attempts)} ניסיונות</span>
-            </div>
-          ))
-        ) : (
-          <Empty title="אין משלוחים" />
-        )}
-      </Panel>
-    );
+  if (path.endsWith("/mail")) return <MailPanel mail={obj(state.mail)} />;
   const accounts = state.accounts.filter(
     (row) => !path.endsWith("/locked") || row.lockedAt
   );
@@ -384,6 +374,7 @@ export function TechnicalView({
         <HealthPanel
           health={obj(state.health)}
           backups={obj(state.backups)}
+          mail={obj(state.mail)}
           now={new Date(str(state.serverNow)).getTime()}
         />
       )}
@@ -425,10 +416,12 @@ function HealthRow({
 function HealthPanel({
   health,
   backups,
+  mail,
   now,
 }: {
   health: Record<string, unknown>;
   backups: Record<string, unknown>;
+  mail: Record<string, unknown>;
   now: number;
 }) {
   const worker = obj(health.worker);
@@ -466,6 +459,7 @@ function HealthPanel({
           קונטיינר העובד ואת יומן ההפעלה.
         </Notice>
       )}
+      <MailHealthRow mail={mail} />
     </Panel>
   );
 }
@@ -514,6 +508,7 @@ function AccountsPanel({
               action={action}
             />
           )}
+          {row.lockedAt ? <Badge tone="danger">נעול</Badge> : null}
           {row.lockedAt && row.role === "manager" ? (
             <QuickAction
               action={action}
@@ -523,6 +518,10 @@ function AccountsPanel({
             >
               שחרור חשבון
             </QuickAction>
+          ) : row.lockedAt && row.role === "soldier" ? (
+            <small>שחרור בידי אחראי התורנויות</small>
+          ) : row.lockedAt ? (
+            <small>שחרור בקוד שחזור או דרך השרת</small>
           ) : null}
         </div>
       ))}

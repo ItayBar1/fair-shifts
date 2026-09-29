@@ -160,7 +160,7 @@ test("a restore that moves the population shows its assignments per the chosen d
     .first()
     .click();
   await page
-    .getByRole("button", { name: "בדיקת שחזור עדכונים", exact: true })
+    .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
     .click();
   await expect(page.getByText("השתנה מאז", { exact: true })).toBeVisible();
   const region = page.getByRole("region", {
@@ -175,7 +175,7 @@ test("a restore that moves the population shows its assignments per the chosen d
   await page.getByLabel("סיבת השחזור וההכרעות").fill("ביטול תאריך הקבע");
   await page.getByLabel("בדקתי את השדות ואת ההחלטות ומאשר/ת את השחזור").check();
   const save = page.getByRole("button", {
-    name: "אישור שחזור העדכונים",
+    name: "אישור השחזור",
     exact: true,
   });
   await expect(save).toBeDisabled();
@@ -211,7 +211,7 @@ test("a restore that moves the population shows its assignments per the chosen d
     .where(eq(soldiers.id, person.id));
   expect(before.data.service.permanentFrom).toBe(edited.toISODate());
   await save.click();
-  await expect(page.getByText(/שחזור העדכונים הושלם/)).toBeVisible();
+  await expect(page.getByText(/שחזור הייבוא הושלם/)).toBeVisible();
   const [after] = await db
     .select()
     .from(soldiers)

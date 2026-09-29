@@ -12,17 +12,34 @@ import {
   OTP_RESEND_MS,
   OTP_TTL_MS,
 } from "./policy";
-import { enqueueEmail } from "../operations/email";
+import { codeDeliveryDelayed, enqueueEmail } from "../operations/email";
+
+// A soldier is released by a manager, a manager by the technical account, and
+// the technical account by its own recovery codes.
+function releaseGuidance(role: string) {
+  if (role === "technical")
+    return "יש להשתמש בקוד שחזור חד־פעמי או בשחזור דרך השרת";
+  return `יש לפנות ${role === "soldier" ? "לאחראי התורנויות" : "למנהל הטכני"} לשחרור`;
+}
+function remainingWarning(remaining: number | undefined) {
+  if (remaining === 2) return ". נותרו שני ניסיונות לפני נעילת החשבון";
+  if (remaining === 1) return ". נותר ניסיון אחד לפני נעילת החשבון";
+  return "";
+}
 
 export async function requestCode(email: string, now = new Date()) {
   return db.transaction(async (tx) => {
+    // The same answer for every address, registered or not (decision 177).
+    const result = {
+      success: true,
+      ...((await codeDeliveryDelayed(tx, now)) && { mailDelayed: true }),
+    };
     const [person] = await tx
       .select()
       .from(user)
       .where(eq(user.email, normalizeEmail(email)))
       .for("update");
-    if (!person || !(await accountAvailable(person, tx)))
-      return { success: true };
+    if (!person || !(await accountAvailable(person, tx))) return result;
     const [old] = await tx
       .select()
       .from(loginCode)
@@ -53,7 +70,7 @@ export async function requestCode(email: string, now = new Date()) {
       expiresAt,
       eventKey: `login:${person.id}:${now.toISOString()}`,
     });
-    return { success: true };
+    return result;
   });
 }
 
@@ -72,7 +89,7 @@ export async function verifyCode(
     if (!(await accountAvailable(person, tx)))
       return {
         error: person.lockedAt
-          ? `החשבון נעול. יש לפנות ${person.role === "soldier" ? "לאחראי התורנויות" : "למנהל הטכני"} לשחרור`
+          ? `החשבון נעול. ${releaseGuidance(person.role)}`
           : "החשבון אינו זמין לכניסה",
         locked: true,
       };
@@ -100,8 +117,8 @@ export async function verifyCode(
       if (failure.locked) await revokeAccess(tx, person.id);
       return {
         error: failure.locked
-          ? `החשבון ננעל. יש לפנות ${person.role === "soldier" ? "לאחראי התורנויות" : "למנהל הטכני"} לשחרור`
-          : `קוד לא תקין${failure.remaining === undefined ? "" : `. נותרו ${failure.remaining} ניסיונות`}`,
+          ? `החשבון ננעל. ${releaseGuidance(person.role)}`
+          : `קוד לא תקין${remainingWarning(failure.remaining)}`,
         locked: failure.locked,
       };
     }

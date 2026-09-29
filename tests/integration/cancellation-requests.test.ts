@@ -354,9 +354,16 @@ describe("cancellation and postponement requests", () => {
     const emails = await requestEmails(request.id);
     expect(emails).toHaveLength(1);
     expect(emails[0].kind).toBe("transfer");
-    expect(
-      (await readState(member)).notifications.filter(aboutRequest(request.id))
-    ).toHaveLength(1);
+    // The mail omits the free-text reason; the site notice keeps it (decision 177).
+    expect(emails[0].body).not.toContain(decision.reason);
+    expect(emails[0].body).toContain("הסיבה מופיעה באתר");
+    const notices = (await readState(member)).notifications.filter(
+      aboutRequest(request.id)
+    );
+    expect(notices).toHaveLength(1);
+    expect(String((notices[0] as Record<string, unknown>).body)).toContain(
+      decision.reason
+    );
   });
 
   it("completes a removal only through update and publish, frees the seat and its reserved points", async () => {
@@ -610,6 +617,7 @@ describe("cancellation and postponement requests", () => {
     expect(await reserved(duty.id)).toHaveLength(2);
     const emails = await requestEmails(request.id);
     expect(emails.map((row) => row.kind)).toEqual(["transfer"]);
+    expect(emails[0].body).not.toContain("יתועד בתקופות הביצוע");
   });
 
   it("closes the owner's request when the seat moves to another soldier by consent", async () => {

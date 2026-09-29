@@ -31,7 +31,7 @@ import { closeRequestsOfTransferredSeat } from "./cancellation-requests";
 import { cancelStaleDutyReminders } from "./duty-reminder-checks";
 
 // Consensual transfer of a published seat before it starts (decisions 108-109, 149, 163),
-// and the manager's decision on a transfer that needs one (decision 176).
+// and the manager's decision on a transfer that needs one (decision 178).
 type CandidateStatus = "pending" | "declined" | "accepted" | "closed";
 type TransferStatus =
   | "awaiting_consent"
@@ -506,7 +506,7 @@ export async function respondTransfer(
 
 /**
  * Releases the original seat and gives its full value to the replacement in one transaction.
- * Shared by an automatic acceptance and a manager's approval (decisions 163, 176).
+ * Shared by an automatic acceptance and a manager's approval (decisions 163, 178).
  */
 async function completeTransfer(
   tx: DbTransaction,
@@ -688,7 +688,7 @@ export async function withdrawTransfer(
   const row = await findRecord(tx, "request", input.id);
   const data = row.data as TransferData;
   const offerer = data.fromSoldierId === actor.soldierId;
-  // Either side may back out until a manager decides (decision 176); only the offerer before consent.
+  // Either side may back out until a manager decides (decision 178); only the offerer before consent.
   const replacement =
     data.status === "awaiting_manager" && data.acceptedBy === actor.soldierId;
   invariant(
@@ -860,7 +860,7 @@ export async function reviewTransfer(
   };
 }
 
-/** A manager approves a transfer that needs exceptions, or rejects it with a reason visible to both sides (decision 176). */
+/** A manager approves a transfer that needs exceptions, or rejects it with a reason visible to both sides (decision 178). */
 export async function decideTransfer(
   tx: DbTransaction,
   actor: Actor,
@@ -1085,7 +1085,7 @@ export function projectRequests(
         createdAt: data.createdAt,
         closedAt: data.closedAt,
       };
-      // The manager's decision and its reason reach both sides, never other candidates (decision 176).
+      // The manager's decision and its reason reach both sides, never other candidates (decision 178).
       const decision = {
         decidedByName: data.decidedByName,
         decidedAt: data.decidedAt,

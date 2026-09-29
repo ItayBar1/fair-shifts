@@ -162,7 +162,11 @@ export function LotteryHistory({
                   <tbody>
                     {rows(row.candidates).map((candidate) => (
                       <tr key={candidate.id}>
-                        <td>{personName(state, candidate.id)}</td>
+                        <td>
+                          {state.soldiers.some((s) => s.id === candidate.id)
+                            ? personName(state, candidate.id)
+                            : "קליטה שבוטלה"}
+                        </td>
                         <td>{num(candidate.score)}</td>
                         <td>
                           {Array.isArray(row.band) &&
