@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Soldier } from "../domain/types";
-import { populationAt } from "../domain/eligibility";
+import { populationAt, populationMoves } from "../domain/eligibility";
 import type { DbTransaction } from "./db";
 import { user } from "./auth-schema";
 import { balances, records, soldierContacts, soldiers } from "./schema";
@@ -12,6 +12,7 @@ import {
   createRecord,
   currentVersion,
   findRecord,
+  loadDomain,
   manager,
   updateRecord,
   type Actor,
@@ -24,7 +25,12 @@ import {
   type ImportValues,
 } from "./import-workbook";
 import { profileInput, id, text } from "./validation";
-import { effectiveToday } from "./personnel";
+import {
+  effectiveToday,
+  impactOf,
+  populationChange,
+  type DomainState,
+} from "./personnel";
 import { saveSoldier } from "./people";
 import { setSoldierRank } from "./ranks";
 import { postScore, settleDue } from "./scoring";
@@ -52,7 +58,15 @@ type PlannedRow = {
   profile: z.infer<typeof profileInput>;
   changes: ImportChange[];
   rank?: { id: string; version: number; effectiveDate: string };
+  populationImpact?: PopulationImpact;
 };
+/**
+ * A row that moves the soldier's population carries the reviewed impact on
+ * that soldier's reserved assignments. It is part of the preview fingerprint,
+ * so a change in those assignments between preview and approval is stale.
+ */
+type PopulationImpact = ReturnType<typeof populationChange> &
+  ReturnType<typeof impactOf>;
 
 const fieldLabels: Record<string, string> = {
   name: "שם מלא",
@@ -181,6 +195,7 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
     .select()
     .from(records)
     .where(eq(records.kind, "rank_catalog"));
+  let domain: DomainState | undefined;
   const planned: PlannedRow[] = [];
   const problems: ImportProblem[] = [];
   const numbers = new Set<string>();
@@ -304,12 +319,24 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
         "יש לתקן את תאריכי השירות"
       );
     let changes: ImportChange[];
+    let populationImpact: PopulationImpact | undefined;
     if (person) {
+      const proposed = proposedPerson(
+        person,
+        profile,
+        rank,
+        values.rankEffectiveDate
+      );
+      if (populationMoves(person.data, proposed)) {
+        domain ??= await loadDomain(tx);
+        populationImpact = {
+          ...populationChange(person.data, proposed),
+          ...impactOf(domain, person.id, proposed),
+        };
+      }
       changes = differences(
         personImportFields(person.data),
-        personImportFields(
-          proposedPerson(person, profile, rank, values.rankEffectiveDate)
-        ),
+        personImportFields(proposed),
         person.fieldVersions,
         "person"
       );
@@ -380,6 +407,7 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
               effectiveDate: values.rankEffectiveDate,
             }
           : undefined,
+      populationImpact,
     });
   }
   invariant(
@@ -462,6 +490,7 @@ export async function previewImport(
     updated: planned.filter(
       (row) => row.mode === "update" && row.changes.length > 0
     ).length,
+    populationMoves: planned.filter((row) => row.populationImpact).length,
   });
   const details = [];
   for (const row of planned)
@@ -487,6 +516,7 @@ export async function applyImport(
       id,
       confirmed: z.literal(true),
       overwriteConfirmed: z.boolean().default(false),
+      populationImpactConfirmed: z.boolean().default(false),
       reason: text,
     })
     .parse(payload);
@@ -520,6 +550,12 @@ export async function applyImport(
     "overwrite_confirmation_required",
     "יש לאשר במפורש את דריסת השדות והיתרות הקיימים"
   );
+  invariant(
+    !planned.some((row) => row.populationImpact) ||
+      input.populationImpactConfirmed,
+    "population_impact_confirmation_required",
+    "יש לאשר במפורש את מעבר האוכלוסייה ואת השיבוצים שהוא משפיע עליהם"
+  );
   for (const row of planned) {
     const detail = details.find(
       (item) => item.data.rowNumber === row.rowNumber
@@ -532,11 +568,13 @@ export async function applyImport(
         (change) => change.source !== "score" && change.key !== "rankHistory"
       )
     ) {
+      // The batch fingerprint already binds this save to the reviewed impact.
       const result = await saveSoldier(
         tx,
         actor,
         row.profile,
-        row.personVersion
+        row.personVersion,
+        { populationReviewed: true }
       );
       personId = result.id;
       version = result.version;

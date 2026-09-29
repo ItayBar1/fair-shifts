@@ -590,6 +590,18 @@ small {
 .detail-grid small {
   color: var(--muted);
 }
+.population-change {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 20px;
+}
+.population-change ul {
+  margin: 6px 0 0;
+  padding-inline-start: 20px;
+}
+.population-change strong {
+  display: inline;
+}
 .duty-hero {
   display: flex;
   align-items: center;
