@@ -9,6 +9,7 @@ import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
 import { backupState } from "./operations/backup";
 import { projectRequests } from "./transfers";
+import { projectCancellationRequests } from "./cancellation-requests";
 import { effectivePreferences } from "./notifications";
 import { resolvePreferences } from "../domain/notification-preferences";
 import type { DbTransaction } from "./db";
@@ -99,7 +100,7 @@ export async function readState(actor: Actor) {
         })
         .from(emailOutbox);
       const operations = await tx.select().from(operationsState);
-      // Operational alerts are addressed to each technical account (decision 172).
+      // Operational alerts are addressed to each technical account (decision 173).
       const notices = await tx
         .select()
         .from(records)
@@ -260,7 +261,14 @@ export async function readState(actor: Actor) {
       // Delivery bookkeeping (who was reached) is operational: managers only.
       roundNotices: managing ? workflow("round_notice") : [],
       constraints: managing ? workflow("constraint") : own("constraint"),
-      requests: projectRequests(workflows, actor, managing),
+      requests: [
+        ...projectRequests(
+          workflows.filter((row) => row.data.type !== "cancellation"),
+          actor,
+          managing
+        ),
+        ...projectCancellationRequests(workflows, actor, managing),
+      ],
       // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
       notifications: workflows
         .filter(

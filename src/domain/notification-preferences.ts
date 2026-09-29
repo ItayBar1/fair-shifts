@@ -39,7 +39,7 @@ export const preferencesSchema = z
         publication: z.boolean(),
         transfer: z.boolean(),
         departure: z.boolean(),
-        // Added with decision 172; a form sent without it keeps the default.
+        // Added with decision 173; a form sent without it keeps the default.
         operations: z.boolean().default(true),
       })
       .strict(),
@@ -60,7 +60,7 @@ export const systemDefaults: Preferences = {
   },
 };
 
-/** Operational alerts go to the technical account only (decision 172). */
+/** Operational alerts go to the technical account only (decision 173). */
 export const technicalPreferenceTypes: readonly PreferenceType[] = [
   "operations",
 ];
@@ -84,7 +84,7 @@ const preferenceByKind = {
 export type EmailKind =
   (typeof mandatoryEmailKinds)[number] | keyof typeof preferenceByKind;
 
-/** Types added after preferences were first stored (decisions 163, 170 and 172). */
+/** Types added after preferences were first stored (decisions 163, 170 and 173). */
 const newTypeDefaults: Partial<Preferences["email"]> = {
   transfer: systemDefaults.email.transfer,
   departure: systemDefaults.email.departure,
@@ -112,7 +112,7 @@ function storedPreferences(value: unknown, requireCustom = true) {
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
   if (requireCustom && data.custom !== true) return null;
-  // A form saved before a type existed keeps its choices; the new type starts from the system default (decisions 163, 170 and 172).
+  // A form saved before a type existed keeps its choices; the new type starts from the system default (decisions 163, 170 and 173).
   const parsed = preferencesSchema.safeParse({
     reminderHours: data.reminderHours,
     email:

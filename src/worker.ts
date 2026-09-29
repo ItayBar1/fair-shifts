@@ -48,7 +48,7 @@ await boss.work("unit-maintenance", async () => {
   }
 });
 // Backups run in their own queue so a long dump never delays the minute's maintenance.
-// The run table, not the queue, decides whether a backup is due (decision 172).
+// The run table, not the queue, decides whether a backup is due (decision 173).
 await boss.createQueue("backup", {
   policy: "stately",
   retryLimit: 0,
