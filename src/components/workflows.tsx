@@ -30,6 +30,7 @@ import {
   type Field,
 } from "./ui";
 import { TransferRequests } from "./transfers";
+import { CancellationRequests } from "./cancellation-requests";
 type Props = { state: AppState; action: Action };
 const building = (
   <Notice>
@@ -41,9 +42,10 @@ export function RequestsView({ state, action }: Props) {
   return (
     <>
       <Notice>
-        העברת תורנות בהסכמה לפני התחלה זמינה. החלפה הדדית, בקשת ביטול או דחייה
+        העברת תורנות בהסכמה ובקשות ביטול או דחייה לפני התחלה זמינות. החלפה הדדית
         והחלפה במהלך ביצוע נמצאות עדיין בבנייה.
       </Notice>
+      <CancellationRequests state={state} action={action} />
       <TransferRequests state={state} action={action} />
     </>
   );
