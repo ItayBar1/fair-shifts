@@ -13,7 +13,7 @@ import {
   retryAt,
 } from "../../src/domain/mail-delivery";
 
-describe("mail delivery rules (decision 173)", () => {
+describe("mail delivery rules (decision 176)", () => {
   it("keeps the last ten messages of the 300 for sign-in and address codes", () => {
     expect(DAILY_QUOTA - CODE_RESERVE).toBe(290);
     expect(quotaAllows("duty-reminder", 289)).toBe(true);

@@ -102,7 +102,7 @@ async function notifySoldier(
     title: string;
     body: string;
     email: boolean;
-    /** The mail omits free-text reasons, which stay on the site (decision 173). */
+    /** The mail omits free-text reasons, which stay on the site (decision 176). */
     emailBody?: string;
   }
 ) {
@@ -198,7 +198,8 @@ async function close(
     actor,
     `cancellation.${status}`,
     row.id,
-    { dutyId: data.dutyId, outcome, reason, ...(changeId && { changeId }) },
+    // The reason stays in the request record, which is erased with the soldier.
+    { dutyId: data.dutyId, outcome, ...(changeId && { changeId }) },
     data.soldierId
   );
   return updated;

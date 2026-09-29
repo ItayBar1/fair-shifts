@@ -2,6 +2,8 @@ import {
   MAX_REMINDERS,
   MAX_REMINDER_HOURS,
   preferenceTypes,
+  managerPreferenceTypes,
+  technicalPreferenceTypes,
   type PreferenceType,
 } from "../domain/notification-preferences";
 
@@ -12,6 +14,7 @@ export const emailTypeLabels: Record<PreferenceType, string> = {
   publication: "שיבוץ, שינוי או ביטול של תורנות שפורסמה",
   transfer: "החלפות והעברות של תורנויות",
   departure: "סיום שירות של חייל (לאחראים)",
+  operations: "תקלות תפעול, כמו גיבוי שנכשל",
 };
 
 type Row = Record<string, unknown>;
@@ -68,4 +71,16 @@ export function preferencesPayload(
       ])
     ),
   };
+}
+
+/**
+ * Types a role's form does not show: departure emails reach managers only
+ * (decision 170), operational alerts the technical account only (decision 173).
+ */
+export function hiddenPreferenceTypes(role: unknown): PreferenceType[] {
+  return preferenceTypes.filter(
+    (type) =>
+      (managerPreferenceTypes.includes(type) && role !== "manager") ||
+      (technicalPreferenceTypes.includes(type) && role !== "technical")
+  );
 }

@@ -354,7 +354,7 @@ describe("cancellation and postponement requests", () => {
     const emails = await requestEmails(request.id);
     expect(emails).toHaveLength(1);
     expect(emails[0].kind).toBe("transfer");
-    // The mail omits the free-text reason; the site notice keeps it (decision 173).
+    // The mail omits the free-text reason; the site notice keeps it (decision 176).
     expect(emails[0].body).not.toContain(decision.reason);
     expect(emails[0].body).toContain("הסיבה מופיעה באתר");
     const notices = (await readState(member)).notifications.filter(

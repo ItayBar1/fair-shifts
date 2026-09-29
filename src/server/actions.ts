@@ -67,6 +67,7 @@ import {
 import { previewImport, applyImport, getImport } from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
 import { offerTransfer, respondTransfer, withdrawTransfer } from "./transfers";
+import { requestBackup } from "./operations/backup";
 import {
   prepareCancellationChange,
   referCancellationRequest,
@@ -433,6 +434,9 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "notification.defaults.save":
         result = await saveDefaults(tx, actor, payload, expectedVersion);
+        break;
+      case "backup.request":
+        result = await requestBackup(tx, actor);
         break;
       default:
         throw new AppError(

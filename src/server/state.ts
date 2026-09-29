@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { projectAudit, technicalScope, type AuditAccount } from "./audit-log";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
 import { loadDomain } from "./repository";
@@ -8,6 +9,7 @@ import { populationAt, rankAt, serviceSummary } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
 import { readMailStatus } from "./operations/email";
+import { backupState } from "./operations/backup";
 import { projectRequests } from "./transfers";
 import { projectCancellationRequests } from "./cancellation-requests";
 import { effectivePreferences } from "./notifications";
@@ -28,6 +30,17 @@ function unitDefaults(workflows: (typeof records.$inferSelect)[]) {
     ...resolvePreferences(null, row?.data).preferences,
     version: row?.version,
   };
+}
+
+async function auditAccountsOf(tx: DbTransaction): Promise<AuditAccount[]> {
+  return tx
+    .select({
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      soldierId: user.soldierId,
+    })
+    .from(user);
 }
 
 export async function readState(actor: Actor) {
@@ -90,10 +103,41 @@ export async function readState(actor: Actor) {
         })
         .from(user);
       const operations = await tx.select().from(operationsState);
+      const auditAccounts = await auditAccountsOf(tx);
+      // Operational alerts are addressed to each technical account (decision 173).
+      const notices = await tx
+        .select()
+        .from(records)
+        .where(
+          and(
+            eq(records.kind, "notification"),
+            sql`${records.data}->>'accountId' = ${actor.id}`
+          )
+        );
       return {
         ...base,
+        notifications: notices
+          .filter((row) => !row.data.hiddenAt)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .map((row) => ({ ...row.data, id: row.id, version: row.version })),
+        backups: await backupState(tx),
         settings: await preferencesState(tx, actor),
         accounts,
+        // Account operations within technical authority; no soldier data is resolved.
+        audit: projectAudit(
+          {
+            workflows: await tx
+              .select()
+              .from(records)
+              .where(eq(records.kind, "audit")),
+            soldiers: [],
+            duties: [],
+            dutyTypes: [],
+            assignments: [],
+            accounts: auditAccounts,
+          },
+          technicalScope(auditAccounts)
+        ),
         // The worker heartbeat and mail state are presented through `health` and `mail`.
         operations: operations
           .filter((row) => row.key !== "worker" && row.key !== "mail")
@@ -267,7 +311,16 @@ export async function readState(actor: Actor) {
               effectiveAt: row.effectiveAt,
               kind: row.kind,
             })),
-      audit: managing ? workflow("audit") : [],
+      audit: managing
+        ? projectAudit({
+            workflows,
+            soldiers: state.soldiers,
+            duties: state.duties,
+            dutyTypes: catalog,
+            assignments: state.assignments,
+            accounts: await auditAccountsOf(tx),
+          })
+        : [],
       imports: managing ? workflow("import") : [],
       accounts: managing
         ? await tx

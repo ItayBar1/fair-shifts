@@ -265,7 +265,7 @@ describe("durable email queue", () => {
   });
   it("does not exceed the shared quota when workers compete", async () => {
     const now = new Date();
-    // One business slot is left: the last 10 of the 300 are kept for codes (decision 173).
+    // One business slot is left: the last 10 of the 300 are kept for codes (decision 176).
     await db
       .insert(emailQuota)
       .values({ day: now.toISOString().slice(0, 10), used: 289 });
