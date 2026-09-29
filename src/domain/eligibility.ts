@@ -106,13 +106,58 @@ export function canAccessAfterService(soldier: Soldier, now: string): boolean {
   );
 }
 
+/** The first day of the calendar month before release, in which a selection needs approval. */
+export function preReleaseFrom(releaseDate: string): string {
+  return localDate(releaseDate).minus({ months: 1 }).toISODate()!;
+}
+
 export function isNearRelease(soldier: Soldier, duty: Duty): boolean {
   if (!soldier.service.releaseDate) return false;
   const start = instant(duty.start);
   return (
-    start >= localDate(soldier.service.releaseDate).minus({ months: 1 }) &&
+    start >= localDate(preReleaseFrom(soldier.service.releaseDate)) &&
     start < instant(releaseBoundary(soldier.service.releaseDate))
   );
+}
+
+export type ServiceStatus =
+  "service_ended" | "inactive_period" | "grace" | "pre_release" | "active";
+/**
+ * The service dates a manager sees for a soldier at a moment. Derived from the
+ * stored dates only, so it is current even when the worker has not run. An
+ * inactive period limits assignment only; it is not an access state.
+ */
+export function serviceSummary(
+  soldier: Soldier,
+  now: string
+): {
+  status: ServiceStatus;
+  graceUntil?: string;
+  preReleaseFrom?: string;
+} {
+  const today = instant(now).toISODate()!;
+  const { arrivalDate, releaseDate, graceEligible } = soldier.service;
+  const graceUntil =
+    graceEligible && arrivalDate ? graceEnd(arrivalDate) : undefined;
+  const preRelease = releaseDate ? preReleaseFrom(releaseDate) : undefined;
+  const status: ServiceStatus =
+    releaseDate &&
+    !canAccessAfterService({ ...soldier, deletedAt: undefined }, now)
+      ? "service_ended"
+      : soldier.inactivePeriods.some(
+            (period) => period.start <= today && today <= period.end
+          )
+        ? "inactive_period"
+        : graceUntil && arrivalDate! <= today && today < graceUntil
+          ? "grace"
+          : preRelease && preRelease <= today
+            ? "pre_release"
+            : "active";
+  return {
+    status,
+    ...(graceUntil && { graceUntil }),
+    ...(preRelease && { preReleaseFrom: preRelease }),
+  };
 }
 
 function populationFits(

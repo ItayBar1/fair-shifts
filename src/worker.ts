@@ -6,6 +6,7 @@ import { deliverNextEmail } from "./server/operations/email";
 import { operationsState } from "./server/auth-schema";
 import { eq } from "drizzle-orm";
 import { refreshRankReminders } from "./server/ranks";
+import { announceDepartures } from "./server/departures";
 import { recordWorkerHeartbeat } from "./server/operations/health";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -32,6 +33,7 @@ await boss.work("unit-maintenance", async () => {
     }
     const credited = await settleDue(tx);
     await refreshRankReminders(tx);
+    await announceDepartures(tx, now);
     await recordWorkerHeartbeat(tx, { now, paused: false, credited });
   });
   await writeFile(heartbeatFile, new Date().toISOString());
