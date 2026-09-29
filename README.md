@@ -7,7 +7,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.25](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.28](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [מצב השלבים, חלוקת עבודה בצוות ושער השחרור](docs/team-roadmap.md).
@@ -64,7 +64,7 @@ sh scripts/install-hooks.sh
 
 להדגמה מקומית, לאחר הפעלת השירותים ובניית tools, מריצים `sh scripts/docker.sh run --rm tools pnpm seed:demo`. במסך הכניסה מזינים `manager@example.invalid` ומבקשים קוד. קוראים את הקוד באמצעות `sh scripts/docker.sh run --rm tools pnpm demo:code manager@example.invalid`, ואז מזינים אותו במסך. זהו אותו קוד חד־פעמי ואותו אימות; הכלי מסרב לפעול ב־production, במשלוח מייל פעיל או בכתובת שאינה example.invalid.
 
-שחזור טכני דרך השרת: `pnpm recover` בשירות הכלים, עם `RECOVERY_EMAIL` ו־`RECOVERY_REASON`. הוא מבטל חיבורים, משחרר את החשבון הטכני ומנפיק קודי שחזור חדשים, עם אירוע ביקורת. נדרשת לאחריו התחברות חדשה.
+שחזור טכני דרך השרת: `pnpm recover` בשירות הכלים, עם `RECOVERY_EMAIL` ו־`RECOVERY_REASON` (חמישה תווים לפחות). הוא מבטל חיבורים, משחרר את החשבון הטכני, מבטל את כל קודי השחזור הקודמים ומנפיק שמונה חדשים, עם אירוע ביומן הפעולות. נדרשת לאחריו התחברות חדשה.
 
 דוגמת הרצת כלי, אחרי `sh scripts/docker.sh build tools`:
 

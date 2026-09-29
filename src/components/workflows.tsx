@@ -354,8 +354,13 @@ export function TechnicalView({
     return (
       <Panel title="שחזור גישה">
         <p>
-          קודי שחזור חד־פעמיים מופקים בעת הקמת המנהל הטכני ונשמרים בנפרד. לאחר
-          שימוש בקוד יש להתחבר מחדש.
+          קודי שחזור חד־פעמיים מופקים בעת הקמת המנהל הטכני ונשמרים בנפרד. כל קוד
+          תקף פעם אחת, משחרר נעילה ומחייב התחברות מחדש.
+        </p>
+        <p>
+          אם אין קוד זמין, מפעיל השרת מריץ שחזור מתועד עם סיבה (
+          <code dir="ltr">pnpm recover</code>). השחזור מנתק את כל החיבורים, מבטל
+          את הקודים הקודמים ומפיק קודים חדשים.
         </p>
       </Panel>
     );
@@ -503,6 +508,7 @@ function AccountsPanel({
               action={action}
             />
           )}
+          {row.lockedAt ? <Badge tone="danger">נעול</Badge> : null}
           {row.lockedAt && row.role === "manager" ? (
             <QuickAction
               action={action}
@@ -512,6 +518,10 @@ function AccountsPanel({
             >
               שחרור חשבון
             </QuickAction>
+          ) : row.lockedAt && row.role === "soldier" ? (
+            <small>שחרור בידי אחראי התורנויות</small>
+          ) : row.lockedAt ? (
+            <small>שחרור בקוד שחזור או דרך השרת</small>
           ) : null}
         </div>
       ))}

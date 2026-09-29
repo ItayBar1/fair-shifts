@@ -102,7 +102,7 @@ async function notifySoldier(
     title: string;
     body: string;
     email: boolean;
-    /** The mail omits free-text reasons, which stay on the site (decision 176). */
+    /** The mail omits free-text reasons, which stay on the site (decision 177). */
     emailBody?: string;
   }
 ) {

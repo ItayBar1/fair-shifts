@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { db, type DbTransaction } from "../db";
+import { z } from "zod";
+import { db, unitTransaction, type DbTransaction } from "../db";
 import {
   user,
   session,
@@ -367,6 +368,46 @@ export async function useRecoveryCode(email: string, code: string) {
     await revokeAccess(tx, target.id);
     await audit(tx, target.id, target.id, "recovery-code");
     return { success: true };
+  });
+}
+/** Server-side fallback for a technical account without a usable recovery code. */
+export async function recoverTechnicalAccess(email: string, reason: string) {
+  const input = z
+    .object({ email: z.email(), reason: z.string().trim().min(5) })
+    .parse({ email, reason });
+  return unitTransaction(async (tx) => {
+    const [target] = await tx
+      .select()
+      .from(user)
+      .where(eq(user.email, normalizeEmail(input.email)))
+      .for("update");
+    invariant(
+      target && target.role === "technical" && !target.deletedAt,
+      "not_found",
+      "חשבון טכני לא נמצא"
+    );
+    await tx
+      .update(user)
+      .set({
+        failedAttempts: 0,
+        lockedAt: null,
+        securityEpoch: target.securityEpoch + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, target.id));
+    await revokeAccess(tx, target.id);
+    await tx.insert(records).values({
+      id: randomUUID(),
+      kind: "audit",
+      data: {
+        actorId: "server-operator",
+        actorName: "מפעיל השרת",
+        targetId: target.id,
+        action: "technical.server-recovery",
+        reason: input.reason,
+      },
+    });
+    return issueRecoveryCodes(target.id, tx);
   });
 }
 export async function applyVerifiedEmailChange(

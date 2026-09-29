@@ -1,5 +1,5 @@
 /**
- * Mail delivery rules (decision 176): one shared daily quota, a reserve for codes,
+ * Mail delivery rules (decision 177): one shared daily quota, a reserve for codes,
  * growing retry delays within 24 hours, and failure categories that never carry
  * provider text, addresses or secrets.
  */
