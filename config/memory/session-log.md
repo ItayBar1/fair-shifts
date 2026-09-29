@@ -6,7 +6,7 @@
 
 **בוצע:** `src/server/cancellation-requests.ts` ורכיב `src/components/cancellation-requests.tsx`. חיבורים מינימליים ב־`duty-changes.ts` (השלמה בפרסום ובביטול, `requestId` בתצוגה), ב־`transfers.ts` (סגירה אחרי העברה), ב־`state.ts` (הקרנה בלי שם המחליט לחייל), ב־`actions.ts`, ב־`views.tsx` וב־`workflows.tsx`. האפיון עודכן ל־1.21 וה־HTML סונכרן ב־Docker; יומן ההכרעות ומפות הכיסוי עודכנו.
 
-**אומת ב־Docker:** טיפוסים, lint, 8 בדיקות PostgreSQL חדשות ו־E2E חדש, כולל צילומי אחראי וחייל בנייד. בדיקת מוטציה הכשילה 3 בדיקות, והקוד שוחזר.
+**אומת ב־Docker:** טיפוסים, lint, 8 בדיקות PostgreSQL חדשות ו־E2E חדש, כולל צילומי אחראי וחייל בנייד. בדיקת מוטציה הכשילה 3 בדיקות, והקוד שוחזר. ה־hook המלא עבר ב־commit ‏`8c91e64`: ‏80 בדיקות יחידה, 111 PostgreSQL, build ו־12 E2E. PR [#62](https://github.com/ItayBar1/fair-shifts/pull/62), מסומן Related to #17.
 
 **סביבה:** בסביבת הענן dockerd הופעל ידנית עם מראה `mirror.gcr.io`, ונבנו מקומית תמונות בסיס (postgres ו־Playwright) עם תעודת ה־proxy, כי npm נכשל ב־`SELF_SIGNED_CERT_IN_CHAIN`. אין בכך שינוי בקבצי הפרויקט.
 
