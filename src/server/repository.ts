@@ -66,18 +66,41 @@ export async function updateRecord(
     throw new AppError("stale_version", "המידע השתנה בזמן השמירה", 409);
   return result;
 }
+/**
+ * Records an audit envelope: who, what and references only. It outlives an
+ * account erasure, so personal text never goes in `data`. Such text is either
+ * already in a business record the envelope points to (`recordId`), or passed
+ * as `detail`, which is stored as an `audit_detail` record of the soldier and
+ * is erased with the soldier's other sensitive records.
+ */
 export async function audit(
   tx: DbTransaction,
   actor: Actor,
   action: string,
   targetId: string,
   data: Record<string, unknown> = {},
-  subjectId?: string
+  subjectId?: string,
+  detail?: Record<string, unknown>
 ) {
+  invariant(
+    !detail || subjectId,
+    "audit_detail_subject",
+    "פירוט רגיש ביומן חייב להיות משויך לחייל"
+  );
+  const stored = detail
+    ? await createRecord(tx, "audit_detail", detail, subjectId)
+    : undefined;
   return createRecord(
     tx,
     "audit",
-    { actorId: actor.id, actorName: actor.name, action, targetId, ...data },
+    {
+      actorId: actor.id,
+      actorName: actor.name,
+      action,
+      targetId,
+      ...data,
+      ...(stored && { detailId: stored.id }),
+    },
     subjectId
   );
 }
