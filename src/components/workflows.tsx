@@ -24,7 +24,6 @@ import {
   Empty,
   Form,
   QuickAction,
-  Status,
   Notice,
   type Field,
 } from "./ui";
@@ -32,6 +31,7 @@ import { TransferRequests } from "./transfers";
 import { AuditLink, ledgerSource } from "./audit";
 import { effectiveDiffers } from "@/domain/time";
 import { CancellationRequests } from "./cancellation-requests";
+import { MailHealthRow, MailPanel } from "./mail-operations";
 import { BackupsView, BackupFreshnessBadge } from "./backups";
 type Props = { state: AppState; action: Action };
 export { ConstraintsView } from "./constraints";
@@ -364,22 +364,7 @@ export function TechnicalView({
         </p>
       </Panel>
     );
-  if (path.endsWith("/mail"))
-    return (
-      <Panel title="משלוחי מייל">
-        {state.operations.length ? (
-          state.operations.map((row) => (
-            <div className="task-item" key={row.id}>
-              <strong>{str(row.kind)}</strong>
-              <Status value={row.status} />
-              <span>{num(row.attempts)} ניסיונות</span>
-            </div>
-          ))
-        ) : (
-          <Empty title="אין משלוחים" />
-        )}
-      </Panel>
-    );
+  if (path.endsWith("/mail")) return <MailPanel mail={obj(state.mail)} />;
   const accounts = state.accounts.filter(
     (row) => !path.endsWith("/locked") || row.lockedAt
   );
@@ -389,6 +374,7 @@ export function TechnicalView({
         <HealthPanel
           health={obj(state.health)}
           backups={obj(state.backups)}
+          mail={obj(state.mail)}
           now={new Date(str(state.serverNow)).getTime()}
         />
       )}
@@ -430,10 +416,12 @@ function HealthRow({
 function HealthPanel({
   health,
   backups,
+  mail,
   now,
 }: {
   health: Record<string, unknown>;
   backups: Record<string, unknown>;
+  mail: Record<string, unknown>;
   now: number;
 }) {
   const worker = obj(health.worker);
@@ -471,6 +459,7 @@ function HealthPanel({
           קונטיינר העובד ואת יומן ההפעלה.
         </Notice>
       )}
+      <MailHealthRow mail={mail} />
     </Panel>
   );
 }

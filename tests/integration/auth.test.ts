@@ -265,9 +265,10 @@ describe("durable email queue", () => {
   });
   it("does not exceed the shared quota when workers compete", async () => {
     const now = new Date();
+    // One business slot is left: the last 10 of the 300 are kept for codes (decision 177).
     await db
       .insert(emailQuota)
-      .values({ day: now.toISOString().slice(0, 10), used: 299 });
+      .values({ day: now.toISOString().slice(0, 10), used: 289 });
     await db.transaction(async (tx) => {
       for (const eventKey of ["one", "two"])
         await enqueueEmail(tx, {
@@ -292,7 +293,7 @@ describe("durable email queue", () => {
       }, deliveryTime),
     ]);
     expect(sent).toBe(1);
-    expect((await db.select().from(emailQuota))[0].used).toBe(300);
+    expect((await db.select().from(emailQuota))[0].used).toBe(290);
   });
 });
 
