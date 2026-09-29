@@ -30,6 +30,32 @@ async function authOperation<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+type SessionIssuer<T> = {
+  createSession(
+    userId: string,
+    dontRememberMe: boolean,
+    override: { securityEpoch: number },
+    overrideAll: boolean
+  ): Promise<T>;
+};
+/**
+ * Opens a session only while the epoch proven by the code is still current.
+ * Better Auth spreads additional-field defaults over a partial override, which
+ * would reset the proof to 0 and let a session outlive a revocation that
+ * committed between the code check and this call; overrideAll keeps it.
+ */
+export function createProvenSession<T>(
+  adapter: SessionIssuer<T>,
+  proof: { user: { id: string }; epoch: number }
+) {
+  return adapter.createSession(
+    proof.user.id,
+    false,
+    { securityEpoch: proof.epoch },
+    true
+  );
+}
+
 function configureAuth() {
   return betterAuth({
     secret: secret("BETTER_AUTH_SECRET"),
@@ -81,6 +107,7 @@ function configureAuth() {
                 .for("update");
               if (!person || !(await accountAvailable(person, tx)))
                 return false;
+              // Epochs start at 1; 0 is the default of a provider sign-in, which proves nothing.
               const proofEpoch = (
                 value as typeof value & { securityEpoch?: number }
               ).securityEpoch;
@@ -126,10 +153,9 @@ function configureAuth() {
               const proof = await authOperation(() =>
                 verifyCode(ctx.body.email, ctx.body.code)
               );
-              const session = await ctx.context.internalAdapter.createSession(
-                proof.user.id,
-                false,
-                { securityEpoch: proof.epoch }
+              const session = await createProvenSession(
+                ctx.context.internalAdapter,
+                proof
               );
               if (!session)
                 throw new AppError("unauthorized", "יש להתחבר מחדש", 401);

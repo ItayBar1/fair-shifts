@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { projectAudit, technicalScope, type AuditAccount } from "./audit-log";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
@@ -100,7 +100,8 @@ export async function readState(actor: Actor) {
           lockedAt: user.lockedAt,
           version: user.securityEpoch,
         })
-        .from(user);
+        .from(user)
+        .where(isNull(user.deletedAt));
       const mail = await tx
         .select({
           id: emailOutbox.id,
@@ -343,7 +344,7 @@ export async function readState(actor: Actor) {
               version: user.securityEpoch,
             })
             .from(user)
-            .where(eq(user.role, "soldier"))
+            .where(and(eq(user.role, "soldier"), isNull(user.deletedAt)))
         : [],
       eligibilityCatalog: managing ? workflow("eligibility_catalog") : [],
       rankCatalog: managing ? workflow("rank_catalog") : [],
