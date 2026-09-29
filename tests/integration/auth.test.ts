@@ -3530,16 +3530,17 @@ describe("first duty vertical slice", () => {
   /** An Israeli date some days ahead, so the duty is still in the future. */
   const israeliDay = (days: number) =>
     DateTime.now().setZone("Asia/Jerusalem").plus({ days }).toISODate()!;
-  /** Assigns the soldier to a duty open to mandatory soldiers only. */
+  /** Assigns the soldier to a duty open to mandatory soldiers only, by default. */
   async function mandatoryDuty(
     soldierId: string,
     start: DateTime,
     end: DateTime,
-    name = "תורנות לחובה בלבד"
+    name = "תורנות לחובה בלבד",
+    populations = ["mandatory"]
   ) {
     const type = await command("dutyType.save", {
       name: `סוג ${name}`,
-      populations: ["mandatory"],
+      populations,
       pricing: { mode: "fixed", base: 4 },
       roles: [{ name: "תורן", count: 1 }],
     });
@@ -4192,7 +4193,10 @@ describe("first duty vertical slice", () => {
     ).rejects.toThrow("אחראי");
     expect((await readState(actor)).imports).toEqual([]);
   });
-  async function importUpdate(values: Record<string, unknown>) {
+  async function importUpdate(
+    values: Record<string, unknown>,
+    approval: Record<string, unknown> = {}
+  ) {
     const preview = await command("import.preview", {
       filename: "restore.xlsx",
       rows: [{ rowNumber: 2, values: { personalNumber: "00001", ...values } }],
@@ -4204,6 +4208,7 @@ describe("first duty vertical slice", () => {
         confirmed: true,
         overwriteConfirmed: true,
         reason: "ייבוא לבדיקה",
+        ...approval,
       },
       1
     );
@@ -4560,6 +4565,254 @@ describe("first duty vertical slice", () => {
     ).toHaveLength(0);
     const viewed = await command("import.get", { id: batch.id });
     expect(JSON.stringify(viewed)).not.toContain("0500000007");
+  });
+  type RestorePreview = Awaited<ReturnType<typeof previewImportRestore>>;
+  async function restorationWith(
+    batchId: string,
+    decisions: Record<string, unknown>[],
+    actor = manager
+  ) {
+    return (await executeAction(actor, {
+      type: "import.restore.preview",
+      payload: { id: batchId, decisions },
+      expectedVersion: 2,
+      idempotencyKey: randomUUID(),
+    })) as RestorePreview;
+  }
+  it("shows the population move of a restore with its assignments over the whole night, requires its confirmation and a new preview after assignments change", async () => {
+    const { actor } = await fixtureDuty();
+    const soldierId = actor.soldierId!;
+    const transition = israeliDay(10);
+    const midnight = DateTime.fromISO(transition, { zone: "Asia/Jerusalem" });
+    await mandatoryDuty(
+      soldierId,
+      midnight.minus({ hours: 2 }),
+      midnight.plus({ hours: 6 }),
+      "לילה שחוצה את המעבר"
+    );
+    const batch = await importUpdate(
+      { permanentDate: transition },
+      { populationImpactConfirmed: true }
+    );
+    expect(await attentionOf(soldierId)).toEqual([
+      { status: "reserved", needsAttention: ["population"] },
+    ]);
+    const morning = midnight.plus({ days: 2, hours: 8 });
+    await mandatoryDuty(
+      soldierId,
+      morning,
+      morning.plus({ hours: 8 }),
+      "תורנות קבע אחרי הייבוא",
+      ["career"]
+    );
+    await expect(restorationWith(batch.id, [], actor)).rejects.toThrow("אחראי");
+    const preview = await restoration(batch.id);
+    expect(preview.populationMoves).toBe(1);
+    expect(preview.rows[0].fields).toMatchObject([
+      { key: "service.permanentFrom", status: "automatic" },
+    ]);
+    const moved = preview.rows[0].populationImpact!;
+    expect(moved.before).toEqual([
+      { from: null, population: "mandatory" },
+      { from: transition, population: "career" },
+    ]);
+    expect(moved.after).toEqual([{ from: null, population: "mandatory" }]);
+    expect(
+      moved.impact.map(({ dutyName, before, after, affected, reasons }) => ({
+        dutyName,
+        before,
+        after,
+        affected,
+        reasons: reasons.map((reason) => reason.code),
+      }))
+    ).toEqual([
+      {
+        dutyName: "לילה שחוצה את המעבר",
+        before: "blocked",
+        after: "eligible",
+        affected: true,
+        reasons: [],
+      },
+      {
+        dutyName: "תורנות קבע אחרי הייבוא",
+        before: "eligible",
+        after: "blocked",
+        affected: true,
+        reasons: ["population"],
+      },
+    ]);
+    // The preview changes nothing.
+    expect((await stored(soldierId)).data.service.permanentFrom).toBe(
+      transition
+    );
+    const approval = {
+      id: batch.id,
+      token: preview.token,
+      confirmed: true,
+      reason: "ביטול תאריך הקבע שיובא",
+    };
+    await expect(command("import.restore", approval, 2)).rejects.toMatchObject({
+      code: "population_impact_confirmation_required",
+    });
+    await mandatoryDuty(
+      soldierId,
+      morning.plus({ days: 1 }),
+      morning.plus({ days: 1, hours: 8 }),
+      "קבע שנוסף אחרי התצוגה",
+      ["career"]
+    );
+    await expect(
+      command(
+        "import.restore",
+        { ...approval, populationImpactConfirmed: true },
+        2
+      )
+    ).rejects.toMatchObject({ code: "stale_restore_impact", status: 409 });
+    expect((await stored(soldierId)).data.service.permanentFrom).toBe(
+      transition
+    );
+    const fresh = await restoration(batch.id);
+    expect(fresh.rows[0].populationImpact!.impact).toHaveLength(3);
+    const payload = {
+      ...approval,
+      token: fresh.token,
+      populationImpactConfirmed: true,
+    };
+    const competing = await Promise.allSettled([
+      command("import.restore", payload, 2),
+      command("import.restore", payload, 2),
+    ]);
+    expect(
+      competing.filter((item) => item.status === "fulfilled")
+    ).toHaveLength(1);
+    const saved = await stored(soldierId);
+    expect(saved.data.service.permanentFrom).toBeUndefined();
+    expect(saved.data.populationHistory).toEqual([]);
+    expect(await attentionOf(soldierId)).toEqual([
+      { status: "reserved", needsAttention: [] },
+      { status: "reserved", needsAttention: ["population"] },
+      { status: "reserved", needsAttention: ["population"] },
+    ]);
+    expect(await db.select().from(ledger)).toHaveLength(0);
+  });
+  it("computes the restore impact from the chosen conflict decisions and needs no confirmation when the timeline stays", async () => {
+    const { actor } = await fixtureDuty();
+    const soldierId = actor.soldierId!;
+    const transition = israeliDay(10);
+    const later = israeliDay(20);
+    const morning = DateTime.fromISO(`${israeliDay(25)}T08:00`, {
+      zone: "Asia/Jerusalem",
+    });
+    const batch = await importUpdate(
+      { permanentDate: transition, name: "שם מהייבוא" },
+      { populationImpactConfirmed: true }
+    );
+    await mandatoryDuty(
+      soldierId,
+      morning,
+      morning.plus({ hours: 8 }),
+      "תורנות קבע",
+      ["career"]
+    );
+    await saveProfile(
+      {
+        id: soldierId,
+        name: "שם מהייבוא",
+        personalNumber: "00001",
+        population: "mandatory",
+        serviceType: "mandatory",
+        graceEligible: false,
+        permanentDate: later,
+      },
+      (await stored(soldierId)).version
+    );
+    const undecided = await restoration(batch.id);
+    const conflict = undecided.rows[0].fields.find(
+      (field) => field.key === "service.permanentFrom"
+    )!;
+    expect(conflict.status).toBe("conflict");
+    // An undecided conflict counts as keeping the current value.
+    expect(undecided.decisionsPending).toBe(true);
+    expect(undecided.populationMoves).toBe(0);
+    const rowId = undecided.rows[0].id;
+    const restore = [
+      { rowId, key: "service.permanentFrom", action: "restore" },
+    ];
+    await expect(
+      command(
+        "import.restore",
+        {
+          id: batch.id,
+          token: undecided.token,
+          confirmed: true,
+          populationImpactConfirmed: true,
+          reason: "שחזור שלא נבדקה השפעתו",
+          decisions: restore,
+        },
+        2
+      )
+    ).rejects.toMatchObject({ code: "stale_restore_impact" });
+    const decided = await restorationWith(batch.id, restore);
+    expect(decided.decisionsPending).toBe(false);
+    expect(decided.rows[0].populationImpact!.after).toEqual([
+      { from: null, population: "mandatory" },
+    ]);
+    expect(decided.rows[0].populationImpact!.impact).toMatchObject([
+      { affected: true, after: "blocked", reasons: [{ code: "population" }] },
+    ]);
+    // Keeping the later date leaves the timeline, so no confirmation is needed.
+    await command(
+      "import.restore",
+      {
+        id: batch.id,
+        token: decided.token,
+        confirmed: true,
+        reason: "משאירים את תאריך הקבע המעודכן",
+        decisions: [{ rowId, key: "service.permanentFrom", action: "keep" }],
+      },
+      2
+    );
+    const saved = await stored(soldierId);
+    expect(saved.name).toBe("חייל לבדיקה");
+    expect(saved.data.service.permanentFrom).toBe(later);
+    expect(await attentionOf(soldierId)).toEqual([
+      { status: "reserved", needsAttention: [] },
+    ]);
+  });
+  it("treats a restore that leaves the population timeline unchanged as no move", async () => {
+    const { actor } = await fixtureDuty();
+    const soldierId = actor.soldierId!;
+    const transition = israeliDay(10);
+    await addPeriod(
+      {
+        soldierId,
+        kind: "population",
+        startDate: transition,
+        value: "career",
+        reason: "מעבר קיים סינתטי",
+      },
+      1
+    );
+    const batch = await importUpdate({ permanentDate: transition });
+    expect((await stored(soldierId)).data.service.permanentFrom).toBe(
+      transition
+    );
+    const preview = await restoration(batch.id);
+    expect(preview.populationMoves).toBe(0);
+    expect(preview.rows[0].populationImpact).toBeUndefined();
+    await command(
+      "import.restore",
+      {
+        id: batch.id,
+        token: preview.token,
+        confirmed: true,
+        reason: "שחזור שאינו מזיז",
+      },
+      2
+    );
+    expect(
+      (await stored(soldierId)).data.service.permanentFrom
+    ).toBeUndefined();
   });
   describe("consensual transfer before start", () => {
     async function soldierActor(name: string, email: string, number: string) {
