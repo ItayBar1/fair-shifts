@@ -10,6 +10,10 @@
 
 **אומת ב־Docker:** ‏6 בדיקות PostgreSQL חדשות ב־`tests/integration/google-sign-in.test.ts`, מול מסלול sign-in, state ו־callback אמיתי של Better Auth. רק נקודת האסימונים של Google מדומה. על הקוד הקודם נכשלו 4 מהן. בלי בדיקת החשבון לפני יצירה עדיין עוברות כולן בזכות האינדקס, אבל הדחייה עוברת דרך insert שנכשל ונרשם ביומן.
 
+**#26 מוזג** ב־PR #78 ונפרס ב־staging (`c68de54`, בריאות `ok`, מיגרציה 0008). חשבון טכני ואחראי נוצרו ב־`bootstrap` בשרת, ולקוח OAuth של Google הוזן ל־`app.env` בידי המשתמש.
+
+**#36 (ענף `codex/itaybar1/issue-36-auto-deploy`):** המשתמש ביקש פריסה אוטומטית בכל כניסה ל־main, ובחר: השרת מושך (לא runner עצמי, כי המאגר ציבורי), staging בלי גיבוי, ו״רליס״ = פריסה בלבד. הכרעה 186, אפיון 1.40. `scripts/auto-deploy.sh`, יחידות systemd ב־`scripts/systemd`, ומדריך ב־`docs/operations.md`. אומת ב־Docker: `scripts/auto-deploy-test.sh` (12 תרחישים) עבר, ו־11 מוטציות נכשלו בו. טרם הותקן בשרת.
+
 **#28:** המשתמש פתח חשבון Brevo ומאמת את הדומיין של ה־Tunnel. שולח מדומיין שאינו בשליטתו נדחה. אימות DNS ממתין.
 
 **המשך:** לקוח OAuth ב־Google (Web, redirect `https://<דומיין>/api/auth/callback/google`, מצב Testing עם שני משתמשי בדיקה), ‏`bootstrap` בשרת עם כתובות הבדיקה שהמשתמש מסר (לא נשמרות במאגר), הזנת Google ו־Brevo ל־`app.env`, ובדיקות אמיתיות לפי #26 ו־#28.

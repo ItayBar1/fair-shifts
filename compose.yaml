@@ -59,6 +59,10 @@ services:
       retries: 20
   tests:
     <<: *app
+    # git: the automatic deployment test runs against a real Git origin.
+    build:
+      context: .
+      target: tooling
     profiles: [test]
     environment:
       <<: *env
@@ -72,7 +76,7 @@ services:
       [
         sh,
         -c,
-        "pnpm db:migrate && pnpm typecheck && pnpm lint && pnpm test && pnpm test:integration && pnpm build",
+        "pnpm db:migrate && pnpm typecheck && pnpm lint && pnpm test && sh scripts/auto-deploy-test.sh && pnpm test:integration && pnpm build",
       ]
   e2e:
     build:

@@ -44,6 +44,8 @@ Compose מיועד לפיתוח סינתטי: סודות מקומיים גלוי
 sh scripts/production-smoke.sh
 ```
 
+פריסה אוטומטית של main בשרת: `scripts/auto-deploy.sh` מטיימר systemd (הוראות במדריך ההפעלה). שירות הבדיקות מריץ את `scripts/auto-deploy-test.sh` מול מאגר Git אמיתי, ובו הפריסה עצמה מדומה.
+
 ## בדיקה לפני commit וגיבוי ב־Git
 
 Husky מפעיל בדיקה לפני כל commit. אחרי clone מתקינים את ה־hook דרך Docker:

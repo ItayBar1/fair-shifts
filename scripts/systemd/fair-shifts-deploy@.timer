@@ -1,0 +1,12 @@
+# Checks once a minute, counted from the end of the previous run, so a long
+# deployment is never started twice.
+[Unit]
+Description=Fair Shifts: check main for a new version (%i)
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
