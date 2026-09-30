@@ -7,7 +7,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.31](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.37](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [מצב השלבים, חלוקת עבודה בצוות ושער השחרור](docs/team-roadmap.md).
@@ -56,7 +56,23 @@ sh scripts/install-hooks.sh
 
 מסד הבדיקות והקונטיינרים של ה־commit נפרדים מסביבת הפיתוח ומנוקים בסיום. CI מריץ את אותן בדיקות גם ב־push. לפי הוראת המשתמש, שומרים נקודות התקדמות שעברו בדיקות באמצעות commit ו־push למאגר הקיים.
 
-מעתה עובדים בענף ייעודי לכל משימה, עם קידומת `codex/`, ומשלבים ב־main דרך PR. מגבים את ענף העבודה באופן שוטף. נוצרו 37 Stories עם תלויות ותנאי קבלה; לפני עבודה בוחרים בעלים ומעדכנים את הכרטיס. הגנת main לתיאום ב[כרטיס הצוות #29](https://github.com/ItayBar1/fair-shifts/issues/29); Project טרם הוקם. ההפעלה המתוכננת היא Ubuntu/Docker/Cloudflare Tunnel, עם פריסה אוטומטית של גרסה שנכנסה ל־main לאחר CI. כיום ה־workflow בודק בלבד ואינו פורס. פירוט ב[מפת הדרך לצוות](docs/team-roadmap.md).
+העבודה בענפים ושילובם ב־main מפורטים בנוהל שלהלן. ההפעלה המתוכננת היא Ubuntu/Docker/Cloudflare Tunnel, עם פריסה אוטומטית של גרסה שנכנסה ל־main לאחר CI. כיום ה־workflow בודק בלבד ואינו פורס. פירוט ב[מפת הדרך לצוות](docs/team-roadmap.md).
+
+## נוהל עבודה בצוות
+
+שני מפתחים: `ItayBar1` (admin) ו־`IshaiZigdon` (write). הנוהל לפי הכרעה 183.
+
+1. **התקנה:** אחרי clone, ובכל worktree חדש, מריצים `sh scripts/install-hooks.sh`. בלי זה Git מדלג על הבדיקה בלי הודעה.
+2. **לקיחת Story:** בוחרים כרטיס פתוח בלי בעלים, שכל תלויותיו מוזגו ל־main (התלויות כתובות בגוף הכרטיס). משייכים לעצמך, קוראים שוב את הכרטיס כדי לוודא שאין לקיחה מתחרה, וכותבים בו תגובה עם שם הענף. שיוך אינו נעילה: אם יש טיפול פעיל אחר, מתאמים לפני שמתחילים.
+3. **ענף:** מ־main העדכני, בשם `codex/<github-user>/issue-<N>-<תיאור>`. לא עובדים על main.
+4. **commit ו־push:** כל commit עובר את מלוא בדיקות Docker דרך Husky, ואין לעקוף את ה־hook. מגבים את הענף ב־push. אין force push, rebase או amend על ענף שכבר הועלה. כדי לעדכן ענף ממזגים לתוכו את main.
+5. **קבצים משותפים:** ‏`src/server/actions.ts`, `state.ts`, `validation.ts`, `schema.ts` ומיגרציות. שינוי חוזה בהם מציינים בכרטיס וב־PR. מיגרציה חדשה נוצרת רק אחרי מיזוג main העדכני לענף, עם `pnpm db:generate` דרך Docker. אם main קיבל מיגרציה בינתיים, מוחקים את המיגרציה של הענף ויוצרים אותה מחדש. בדיקת `migrations-order` נכשלת כשהמספור או שרשרת ה־snapshots אינם רציפים.
+6. **מספור הכרעות ואפיון:** במיזוג main מספרים מחדש את ההכרעה ואת גרסת האפיון של הענף אחרי מה שכבר נכנס, ומסנכרנים את ה־HTML.
+7. **PR:** לפי [התבנית](.github/pull_request_template.md). `Closes #N` רק כשכל תנאי הקבלה הושלמו ונבדקו; אחרת `Related to #N`. בכרטיס מוסיפים תגובה עם קישור ל־PR.
+8. **מיזוג:** מוגדר ב־[rulesets](.github/rulesets) של main. נדרשים PR, בדיקת `verify` ירוקה על ענף שמעודכן מול main, ואישור אחד של המפתח השני. admin יכול לעקוף רק את האישור, ורק דרך PR; את ה־CI ואת חסימת ה־force push והמחיקה אי אפשר לעקוף. PR של סוכן נפתח בשם בעל החשבון, ולכן המפתח השני הוא שמאשר אותו.
+9. **מסירה:** מעדכנים את [מצב הפרויקט](config/memory/project-state.md), [יומן הסשנים](config/memory/session-log.md) ומפות הכיסוי לפי מה שנבדק בפועל. כרטיס נסגר רק עם ראיות קבלה.
+
+**הפעלת ההגנה (admin, פעם אחת):** ‏Settings ← Rules ← Rulesets ← New ruleset ← Import a ruleset. מייבאים את שני הקבצים שב־`.github/rulesets` ובוחרים Create. אחרי ההפעלה בודקים שדחיפה ישירה ל־main נדחית ושבקשת מיזוג ממתינה ל־`verify`. שינוי מדיניות נעשה בקבצים ובהגדרות גם יחד; בדיקת `repository-rules` מוודאת שהבדיקה הנדרשת קיימת ב־CI.
 
 ## הקמה וכלי תחזוקה
 

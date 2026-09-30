@@ -57,7 +57,7 @@
 
 הוראת המשתמש: מעתה עובדים בענף ייעודי לכל משימה. מסלול שחזור העדכונים הושלם בענף `codex/import-restoration` ומוזג ב־PR #1; אינדקס הכרטיסים מתועד בענף `codex/github-backlog`. מגבים את ענף המשימה באמצעות commit ו־push, ופותחים PR לשילוב ב־main. Husky ממשיך לבדוק את מלוא תוכן ה־commit בתוך Docker. המפתח המצטרף צריך להתקין את ה־hook אחרי clone לפי ה־README.
 
-מומלץ להגן על main עם PR, אישור אחד של המפתח השני ובדיקות CI נדרשות, ולחסום force push. אלה הגדרות מומלצות, שטרם הוחלו במאגר. [תיעוד GitHub להגנת ענפים](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
+הגנת main הוכרעה בהכרעה 183: PR, בדיקת `verify` על ענף שמעודכן מול main, אישור אחד של המפתח השני (admin רשאי לעקוף רק אותו, דרך PR), וחסימת force push ומחיקה לכולם. ההגדרות נמצאות ב־`.github/rulesets`, ו־admin מייבא אותן בהגדרות המאגר לפי ה־README. עד הייבוא הן אינן נאכפות. [תיעוד GitHub להגנת ענפים](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
 
 כיוון השחרור המאושר הוא פריסה אוטומטית כאשר שינוי נכנס ל־main, לאחר מעבר הבדיקות. מיזוג PR יוצר שינוי ב־main ומפעיל את אותו מסלול. בדיקות PR ימשיכו לרוץ לפני מיזוגו. אין עדיין pipeline לפריסה פעילה.
 
