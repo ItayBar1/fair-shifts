@@ -4,10 +4,10 @@ import { validateDeploymentConfig } from "../src/server/config";
 // deployment Compose file. A failure stops the container before it serves.
 const errors = validateDeploymentConfig(process.env);
 if (errors.length) {
-  console.error("תצורת ההפעלה אינה תקינה:");
+  console.error("The deployment configuration is invalid:");
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
 console.log(
-  `תצורת ההפעלה תקינה (${process.env.DEPLOYMENT_ENVIRONMENT}, גרסה ${process.env.APP_VERSION})`
+  `The deployment configuration is valid (${process.env.DEPLOYMENT_ENVIRONMENT}, version ${process.env.APP_VERSION})`
 );

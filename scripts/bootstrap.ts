@@ -24,7 +24,7 @@ try {
     invariant(
       (await tx.select({ id: user.id }).from(user).limit(1)).length === 0,
       "already_initialized",
-      "המערכת כבר הוקמה; הוספת הרשאות נעשית דרך הממשק הטכני"
+      "The system is already set up; grant access through the technical screens"
     );
     const technical = await createInvitedAccount(
       {
@@ -75,7 +75,7 @@ try {
     return issueRecoveryCodes(technical.id, tx);
   });
   console.log(
-    "המערכת הוקמה. קודי השחזור מוצגים פעם אחת. יש לשמור אותם מחוץ למאגר וללוגים משותפים."
+    "System set up. The recovery codes below are shown once. Keep them outside the repository and shared logs."
   );
   console.log(recovery.join("\n"));
 } finally {

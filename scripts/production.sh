@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 export FAIR_SHIFTS_CONFIG_DIR="${FAIR_SHIFTS_CONFIG_DIR:-/opt/fair-shifts/config}"
 if [ -z "${APP_VERSION:-}" ]; then
   APP_VERSION=$(git rev-parse --short=12 HEAD 2>/dev/null || true)
-  [ -n "$APP_VERSION" ] || { echo 'יש להגדיר APP_VERSION' >&2; exit 1; }
+  [ -n "$APP_VERSION" ] || { echo 'APP_VERSION must be set' >&2; exit 1; }
   git diff --quiet HEAD 2>/dev/null || APP_VERSION="$APP_VERSION-local"
 fi
 export APP_VERSION
@@ -29,13 +29,13 @@ case "${1:-}" in
     "$docker_bin" run --rm --user "$(id -u):$(id -g)" \
       -v "$FAIR_SHIFTS_CONFIG_DIR:/config" "fair-shifts:$APP_VERSION" \
       node_modules/.bin/tsx scripts/init-production-config.ts /config "$@"
-    echo "התיקייה: $FAIR_SHIFTS_CONFIG_DIR"
+    echo "Configuration directory: $FAIR_SHIFTS_CONFIG_DIR"
     ;;
   deploy)
     shift
     # Without services named, cloudflared starts too and needs a token.
     if [ $# -eq 0 ] && ! grep -Eq '^TUNNEL_TOKEN=.+' "$FAIR_SHIFTS_CONFIG_DIR/tunnel.env" 2>/dev/null; then
-      echo "חסר TUNNEL_TOKEN ב־$FAIR_SHIFTS_CONFIG_DIR/tunnel.env" >&2
+      echo "TUNNEL_TOKEN is missing in $FAIR_SHIFTS_CONFIG_DIR/tunnel.env" >&2
       exit 1
     fi
     compose build app

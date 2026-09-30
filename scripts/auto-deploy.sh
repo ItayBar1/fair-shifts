@@ -3,7 +3,8 @@
 # timer (scripts/systemd) runs it every minute. It deploys the newest commit of
 # main only after the CI run of that exact push passed, one run at a time, and
 # returns to the previous image when a deployment without a database change
-# fails. Instructions: docs/operations.md.
+# fails. Instructions: docs/operations.md. Its output is English: it is read in
+# the server's terminal and journal (decision 187).
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -28,15 +29,15 @@ exec 9>"$state/lock"
 # interrupted by a newer push; the next tick picks the newer commit up.
 flock -n 9 || exit 0
 if [ -e "$state/paused" ]; then
-  log "מושהה: קיים $state/paused"
+  log "paused: $state/paused exists"
   exit 0
 fi
 if [ "$(git symbolic-ref -q --short HEAD || true)" != main ]; then
-  log "התיקייה אינה על הענף main; אין פריסה"
+  log "the checkout is not on branch main; not deploying"
   exit 1
 fi
 if ! git diff --quiet HEAD; then
-  log "יש בתיקייה שינויים שלא נשמרו ב־commit; אין פריסה"
+  log "the checkout has uncommitted changes; not deploying"
   exit 1
 fi
 
@@ -51,7 +52,7 @@ deployed=$(cat "$state/deployed" 2>/dev/null || git rev-parse HEAD)
 # The repository is public, so the API needs no token.
 if ! response=$(curl -fsS -H "Accept: application/vnd.github+json" \
   "$api/repos/$repository/actions/workflows/$workflow/runs?head_sha=$target&branch=main&event=push&per_page=1"); then
-  log "לא ניתן לקרוא את מצב הבדיקות ב־GitHub; ננסה שוב בדקה הבאה"
+  log "cannot read the check status from GitHub; retrying next minute"
   exit 0
 fi
 conclusion=$(printf '%s' "$response" | tr -d ' \n' |
@@ -59,18 +60,18 @@ conclusion=$(printf '%s' "$response" | tr -d ' \n' |
 case "$conclusion" in
   success) ;;
   "" | null)
-    log "הבדיקות של $(short "$target") עדיין לא הסתיימו"
+    log "checks for $(short "$target") have not finished yet"
     exit 0
     ;;
   *)
-    log "הבדיקות של $(short "$target") לא עברו ($conclusion); הגרסה לא תיפרס"
+    log "checks for $(short "$target") did not pass ($conclusion); not deploying it"
     stop_at "$target"
     ;;
 esac
 
 previous=$deployed
 if ! git merge -q --ff-only "$target"; then
-  log "main בשרת אינו מתקדם בקו ישר ל־$(short "$target"); אין פריסה"
+  log "main on this server cannot fast-forward to $(short "$target"); not deploying"
   stop_at "$target"
 fi
 # An unknown previous commit counts as a database change, the safe side.
@@ -79,10 +80,10 @@ git diff --quiet "$previous" "$target" -- drizzle || migrations=yes
 if [ "$migrations" = yes ]; then
   if [ "$(setting DEPLOYMENT_ENVIRONMENT)" = production ] ||
     [ -n "$(setting BACKUP_STORAGE)" ]; then
-    log "$(short "$target") משנה את המסד. כאן נדרש גיבוי מאומת לפני מיגרציה, ולכן אין פריסה אוטומטית. נוהל ב־docs/operations.md"
+    log "$(short "$target") changes the database. A verified backup is required before migrating here, so it is not deployed automatically. See docs/operations.md"
     stop_at "$target"
   fi
-  log "$(short "$target") משנה את המסד; staging בלי גיבוי, נתונים סינתטיים בלבד"
+  log "$(short "$target") changes the database; staging without backups (synthetic data), deploying without a backup"
 fi
 
 # Health must be ok for this version, with a worker of the same version, and
@@ -99,22 +100,22 @@ verify() {
     "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 }
 
-log "פורס את $(short "$target") במקום $(short "$previous") (שינוי מסד: $migrations)"
+log "deploying $(short "$target") in place of $(short "$previous") (database change: $migrations)"
 if sh "$production" deploy && verify "$(short "$target")"; then
   echo "$target" >"$state/deployed"
   rm -f "$state/stopped"
-  log "הגרסה $(short "$target") פעילה"
+  log "$(short "$target") is live"
   exit 0
 fi
 if [ "$migrations" = yes ]; then
-  log "הפריסה נכשלה אחרי שינוי במסד; אין חזרה אוטומטית. נוהל ב־docs/operations.md"
+  log "deployment failed after a database change; no automatic rollback. See docs/operations.md"
   stop_at "$target"
 fi
-log "הפריסה נכשלה; חוזרים ל־$(short "$previous")"
+log "deployment failed; rolling back to $(short "$previous")"
 if APP_VERSION=$(short "$previous") sh "$production" up -d --wait --no-build --remove-orphans &&
   verify "$(short "$previous")"; then
-  log "הגרסה $(short "$previous") פעילה שוב"
+  log "$(short "$previous") is live again"
 else
-  log "גם החזרה נכשלה; נדרש טיפול ידני (docs/operations.md)"
+  log "the rollback failed too; manual action needed, see docs/operations.md"
 fi
 stop_at "$target"

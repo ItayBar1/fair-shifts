@@ -122,7 +122,7 @@ for container in "$worker" "$app"; do
   code=$("$docker_bin" inspect -f '{{.State.ExitCode}}' "$container")
   [ "$code" != 137 ] || fail 'שירות נעצר בכוח (SIGKILL)'
 done
-production logs worker | grep -q 'עובד Fair Shifts נעצר' || fail 'העובד לא נסגר מסודר'
+production logs worker | grep -q 'Fair Shifts worker stopped' || fail 'העובד לא נסגר מסודר'
 
 step 'המסד נשמר לאחר down ו־up'
 production down

@@ -2,7 +2,9 @@
 
 29.09.2026 · כרטיס [#24](https://github.com/ItayBar1/fair-shifts/issues/24) (FS-25) · הכרעה 167 ב[יומן ההכרעות](open-decisions.md).
 
-המסמך מתאר את תצורת ההפעלה שבמאגר ואת אופן השימוש בה. מ־30.09.2026 רצה סביבת staging סינתטית על שרת המשתמש, דרך Cloudflare Tunnel (כרטיס [#25](https://github.com/ItayBar1/fair-shifts/issues/25), בתהליך). אין סביבת production. הפריסה האוטומטית (כרטיס [#36](https://github.com/ItayBar1/fair-shifts/issues/36), הכרעה 186) מתוארת בהמשך. הגיבוי (כרטיס [#27](https://github.com/ItayBar1/fair-shifts/issues/27)) מתואר בהמשך, ועדיין לא נבדק מול Drive אמיתי. שימוש בנתוני אמת מותר רק אחרי שער הפיילוט שבאפיון.
+המסמך מתאר את תצורת ההפעלה שבמאגר ואת אופן השימוש בה. מ־30.09.2026 רצה סביבת staging סינתטית על שרת המשתמש, דרך Cloudflare Tunnel (כרטיס [#25](https://github.com/ItayBar1/fair-shifts/issues/25), בתהליך). אין סביבת production. הפריסה האוטומטית (כרטיס [#36](https://github.com/ItayBar1/fair-shifts/issues/36), הכרעה 186) מתוארת בהמשך.
+
+כל פלט שנקרא בשרת כתוב באנגלית: סקריפטים, יומני קונטיינרים ו־systemd, הודעות בדיקת התצורה, הערות ב־`app.env` וההערות בבלוקי הפקודות כאן. מסוף Linux מציג עברית משמאל לימין (הכרעה 187). ממשק האתר נשאר בעברית. הגיבוי (כרטיס [#27](https://github.com/ItayBar1/fair-shifts/issues/27)) מתואר בהמשך, ועדיין לא נבדק מול Drive אמיתי. שימוש בנתוני אמת מותר רק אחרי שער הפיילוט שבאפיון.
 
 ## מה יש במאגר
 
@@ -62,12 +64,12 @@ cloudflared רץ עם `--no-autoupdate`, והגרסה נעולה בקובץ. ע�
 
 ```sh
 export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
-sh scripts/production.sh deploy    # בונה את ה־commit הנוכחי ומעלה את כל השירותים
-sh scripts/production.sh health    # מצב האתר, המסד והעובד
+sh scripts/production.sh deploy    # build the current commit and start every service
+sh scripts/production.sh health    # site, database and worker status
 sh scripts/production.sh ps
 sh scripts/production.sh logs -f worker
-sh scripts/production.sh stop      # עצירה מבוקרת; start מחזיר
-sh scripts/production.sh down      # מסיר קונטיינרים; הנפח והנתונים נשמרים
+sh scripts/production.sh stop      # graceful stop; start brings it back
+sh scripts/production.sh down      # remove containers; the volume and data stay
 ```
 
 - `deploy` בלי שמות שירותים מסרב לעלות כשאין `TUNNEL_TOKEN`. אפשר להעלות שירותים מסוימים, למשל `deploy db app worker`.
@@ -105,10 +107,10 @@ sudo systemctl enable --now "fair-shifts-deploy@$USER.timer"
 
 ```sh
 systemctl list-timers 'fair-shifts-deploy@*'
-journalctl -u "fair-shifts-deploy@$USER" -n 50      # שורות auto-deploy בעברית
-touch /opt/fair-shifts/deploy-state/paused          # השהיה לתחזוקה או לפריסה ידנית
-rm /opt/fair-shifts/deploy-state/paused             # חידוש
-rm /opt/fair-shifts/deploy-state/stopped            # ניסיון חוזר לגרסה שנעצרה, למשל אחרי הרצה חוזרת של CI שעברה
+journalctl -u "fair-shifts-deploy@$USER" -n 50      # auto-deploy lines
+touch /opt/fair-shifts/deploy-state/paused          # pause for maintenance or a manual deployment
+rm /opt/fair-shifts/deploy-state/paused             # resume
+rm /opt/fair-shifts/deploy-state/stopped            # retry a stopped commit, e.g. after a CI re-run passed
 ```
 
 יחידה שנכשלה מופיעה ב־`systemctl --failed`. כדי לפרוס ידנית בזמן שהטיימר פעיל, משהים קודם ומחדשים אחרי הפריסה. אחרי פריסה ידנית של commit אחר מ־main, רושמים אותו: `git rev-parse HEAD > /opt/fair-shifts/deploy-state/deployed`.
@@ -149,8 +151,8 @@ rm /opt/fair-shifts/deploy-state/stopped            # ניסיון חוזר לג
 ### מפתח ההצפנה
 
 ```sh
-age-keygen -o fair-shifts-backup.key   # במחשב של המנהל הטכני, לא בשרת
-age-keygen -y fair-shifts-backup.key   # מדפיס את המפתח הציבורי ל־AGE_RECIPIENT
+age-keygen -o fair-shifts-backup.key   # on the technical admin's computer, not the server
+age-keygen -y fair-shifts-backup.key   # prints the public key for AGE_RECIPIENT
 ```
 
 הקובץ הפרטי נשמר מחוץ לשרת ומחוץ ל־Drive, לפחות בשני עותקים בידי המנהל הטכני. בלעדיו אי אפשר לפענח אף גיבוי. פענוח לבדיקה: `age --decrypt -i fair-shifts-backup.key <file> > backup.dump`, ואחריו `pg_restore` למסד מבודד בלבד.

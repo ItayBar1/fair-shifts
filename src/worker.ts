@@ -61,14 +61,14 @@ await boss.work("backup", async () => {
     console.error("Backup run failed", result.code);
 });
 await boss.send("unit-maintenance");
-console.log("עובד Fair Shifts מוכן");
+console.log("Fair Shifts worker ready");
 let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
   await boss.stop({ graceful: true, timeout: 20_000 });
   await pool.end();
-  console.log("עובד Fair Shifts נעצר");
+  console.log("Fair Shifts worker stopped");
 }
 process.once("SIGTERM", () => {
   void stop();

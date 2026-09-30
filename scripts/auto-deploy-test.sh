@@ -179,7 +179,7 @@ ci "$sixth" success
 tick
 expect_status 0 "מיגרציה ב־staging"
 expect_running "$sixth" "מיגרציה ב־staging"
-expect_output "staging בלי גיבוי" "מיגרציה ב־staging"
+expect_output "staging without backups" "מיגרציה ב־staging"
 
 step 'פריסה שנכשלה אחרי שינוי מסד: אין חזרה אוטומטית'
 seventh=$(push seventh 0002_change)
@@ -189,7 +189,7 @@ tick
 rm "$work/fail-deploy"
 expect_status 1 "מיגרציה נכשלה"
 if grep -q " up " "$work/calls"; then fail "מיגרציה נכשלה: בוצעה חזרה"; fi
-expect_output "אין חזרה אוטומטית" "מיגרציה נכשלה"
+expect_output "no automatic rollback" "מיגרציה נכשלה"
 
 step 'שינוי מסד כשיש גיבוי או ב־production: לא פורסים אוטומטית'
 configure staging drive
@@ -198,7 +198,7 @@ ci "$eighth" success
 tick
 expect_status 1 "מיגרציה עם גיבוי"
 expect_no_deploy "מיגרציה עם גיבוי"
-expect_output "גיבוי מאומת" "מיגרציה עם גיבוי"
+expect_output "verified backup" "מיגרציה עם גיבוי"
 configure production
 ninth=$(push ninth 0004_change)
 ci "$ninth" success
