@@ -1,7 +1,8 @@
 #!/bin/sh
 # Automatic deployment of main on the host (card #36, decision 186). A systemd
 # timer (scripts/systemd) runs it every minute. It deploys the newest commit of
-# main only after the CI run of that exact push passed, one run at a time, and
+# main only after the CI run of that exact push passed, one run at a time, takes
+# a verified backup before a database change where backups are configured, and
 # returns to the previous image when a deployment without a database change
 # fails. Instructions: docs/operations.md. Its output is English: it is read in
 # the server's terminal and journal (decision 187).
@@ -78,12 +79,20 @@ fi
 migrations=no
 git diff --quiet "$previous" "$target" -- drizzle || migrations=yes
 if [ "$migrations" = yes ]; then
-  if [ "$(setting DEPLOYMENT_ENVIRONMENT)" = production ] ||
-    [ -n "$(setting BACKUP_STORAGE)" ]; then
-    log "$(short "$target") changes the database. A verified backup is required before migrating here, so it is not deployed automatically. See docs/operations.md"
+  if [ -n "$(setting BACKUP_STORAGE)" ]; then
+    # In the worker of the version still live, before anything changes.
+    log "$(short "$target") changes the database; taking a verified backup first"
+    if ! APP_VERSION=$(short "$previous") sh "$production" exec -T worker \
+      node_modules/.bin/tsx scripts/backup-before-deploy.ts "$(short "$target")"; then
+      log "no verified backup, so $(short "$target") is not deployed. See docs/operations.md"
+      stop_at "$target"
+    fi
+  elif [ "$(setting DEPLOYMENT_ENVIRONMENT)" = production ]; then
+    log "$(short "$target") changes the database, and production requires a verified backup first, but backups are not configured. Not deploying; see docs/operations.md"
     stop_at "$target"
+  else
+    log "$(short "$target") changes the database; staging without backups (synthetic data), deploying without a backup"
   fi
-  log "$(short "$target") changes the database; staging without backups (synthetic data), deploying without a backup"
 fi
 
 # Health must be ok for this version, with a worker of the same version, and
