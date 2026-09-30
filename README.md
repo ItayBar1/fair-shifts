@@ -7,7 +7,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.37](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.38](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [מצב השלבים, חלוקת עבודה בצוות ושער השחרור](docs/team-roadmap.md).
@@ -60,7 +60,7 @@ sh scripts/install-hooks.sh
 
 ## נוהל עבודה בצוות
 
-שני מפתחים: `ItayBar1` (admin) ו־`IshaiZigdon` (write). הנוהל לפי הכרעה 183.
+שני מפתחים: `ItayBar1` (admin) ו־`IshaiZigdon` (write). הנוהל לפי הכרעה 184.
 
 1. **התקנה:** אחרי clone, ובכל worktree חדש, מריצים `sh scripts/install-hooks.sh`. בלי זה Git מדלג על הבדיקה בלי הודעה.
 2. **לקיחת Story:** בוחרים כרטיס פתוח בלי בעלים, שכל תלויותיו מוזגו ל־main (התלויות כתובות בגוף הכרטיס). משייכים לעצמך, קוראים שוב את הכרטיס כדי לוודא שאין לקיחה מתחרה, וכותבים בו תגובה עם שם הענף. שיוך אינו נעילה: אם יש טיפול פעיל אחר, מתאמים לפני שמתחילים.

@@ -9,6 +9,7 @@ import {
   overlaps,
   releaseBoundary,
 } from "./time";
+import { executionPeriod } from "./execution";
 import type {
   Duty,
   DutySlot,
@@ -415,7 +416,8 @@ export function evaluateEligibility(
       continue;
     }
     if (other.status === "cancelled") continue;
-    const otherRange = interval(other);
+    // Overlap and rest follow the period the soldier actually covers (decision 183).
+    const otherRange = interval(executionPeriod(assignment, other));
     const targetRest = {
       start: target.start - duty.restBeforeMinutes * 60_000,
       end: target.end + duty.restAfterMinutes * 60_000,

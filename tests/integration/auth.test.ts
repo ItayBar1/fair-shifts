@@ -5662,6 +5662,8 @@ describe("first duty vertical slice", () => {
           (item) => (item as { title?: string }).title
         )
       ).toContain("העברה ממתינה לטיפול");
+      // An offer after the start is possible (decision 183), but a fixed-rate seat cannot be
+      // split between performers until fixed shares are supported (#19).
       await expect(
         command(
           "transfer.offer",
@@ -5669,7 +5671,7 @@ describe("first duty vertical slice", () => {
           1,
           actor
         )
-      ).rejects.toThrow("התחילה");
+      ).rejects.toThrow("#19");
     });
     it("closes offers on decline, withdrawal, a changed duty and cancellation", async () => {
       const { row, actor, seat, first, second } = await seatFixture();
@@ -6218,7 +6220,7 @@ describe("first duty vertical slice", () => {
         );
       });
 
-      it("never moves a started duty and leaves it for performance periods", async () => {
+      it("moves a started duty only with a handover time, through execution periods", async () => {
         const { row, actor, offer } = await awaitingExemption();
         const version = (await request(offer.id)).version;
         const preview = await review(offer.id, version);
@@ -6239,8 +6241,9 @@ describe("first duty vertical slice", () => {
           valid: true,
           started: true,
         });
+        // After the start the seat is split at a handover the manager sets (decision 183).
         await expect(approve(offer.id, version, preview)).rejects.toThrow(
-          "תקופות הביצוע"
+          "מועד החילוף"
         );
         expect((await request(offer.id)).data.status).toBe("awaiting_manager");
         expect(

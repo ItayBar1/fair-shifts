@@ -9,6 +9,7 @@ import {
 } from "./performance-corrections";
 import { LotteryButton, LotteryHistory } from "./planning";
 import { ScoreDecisions } from "./score-decisions";
+import { ExecutionPeriods, referredRequests } from "./execution-periods";
 import { TransferOffer } from "./transfers";
 import { SwapOffer } from "./swaps";
 import {
@@ -499,6 +500,7 @@ export function Dashboard({
   const decisions = rows(state.scoreDecisions).filter(
     (row) => row.status === "pending"
   );
+  const referred = referredRequests(state);
   // Derived from the dates, so a departure shows even before the worker's notice.
   const departed = state.soldiers.filter(
     (s) => !s.deletedAt && s.serviceStatus === "service_ended"
@@ -527,7 +529,12 @@ export function Dashboard({
         />
         <Stat
           label="ממתינים להחלטה"
-          value={pending.length + requests.length + decisions.length}
+          value={
+            pending.length +
+            requests.length +
+            decisions.length +
+            referred.length
+          }
           detail="אילוצים, החלפות, בקשות ותיקוני יתרה"
           icon={Clock3}
           tone="amber"
@@ -612,6 +619,25 @@ export function Dashboard({
               </Link>
             );
           })}
+          {referred.map((r) => (
+            <Link
+              className="task-item"
+              href={`/duties/${str(r.dutyId)}`}
+              key={r.id}
+            >
+              <span className="task-symbol amber">
+                <Clock3 size={20} />
+              </span>
+              <span>
+                <strong>טיפול בביצוע: {str(r.dutyName)}</strong>
+                <small>
+                  בקשת {personName(state, r.soldierId)} הופנתה אחרי תחילת
+                  התורנות. יש לרשום את תקופות הביצוע של המקום
+                </small>
+              </span>
+              <ChevronLeft size={18} />
+            </Link>
+          ))}
           {departed.map((s) => {
             const notice = rows(state.departures).find(
               (row) =>
@@ -847,7 +873,38 @@ export function DutyDetail({
       >
         {slots.length ? (
           slots.map((slot) => {
-            const assignment = assignments.find((a) => a.slotId === slot.id);
+            const seat = assignments.filter((a) => a.slotId === slot.id);
+            // A seat split into execution periods lists every performer by their period.
+            if (seat.length > 1 || seat[0]?.performedStart)
+              return (
+                <div className="slot-row" key={slot.id}>
+                  <span className="avatar">
+                    <UsersRound size={18} />
+                  </span>
+                  <span className="grow">
+                    <strong>{str(slot.name ?? slot.roleName, "תורן")}</strong>
+                    {[...seat]
+                      .sort((a, b) =>
+                        str(a.performedStart).localeCompare(
+                          str(b.performedStart)
+                        )
+                      )
+                      .map((a) => (
+                        <small key={a.id}>
+                          {personName(state, a.soldierId)} ·{" "}
+                          {displayDate(
+                            a.performedStart ?? dutyStart(duty),
+                            true
+                          )}{" "}
+                          — {displayDate(a.performedEnd ?? dutyEnd(duty), true)}{" "}
+                          · {num(a.points)} נקודות
+                        </small>
+                      ))}
+                  </span>
+                  <Badge tone="info">כמה מבצעים</Badge>
+                </div>
+              );
+            const assignment = seat[0];
             return (
               <div className="slot-row" key={slot.id}>
                 <span className={`avatar ${assignment ? "" : "empty-avatar"}`}>
@@ -959,6 +1016,9 @@ export function DutyDetail({
         ["published", "draft"].includes(str(dutyStatus(duty))) && (
           <DutyChanges state={state} action={action} duty={duty} />
         )}
+      {manager && dutyStatus(duty) === "published" && !future && (
+        <ExecutionPeriods state={state} action={action} duty={duty} />
+      )}
       {manager && dutyStatus(duty) === "published" && !future && (
         <PerformanceCorrections state={state} action={action} duty={duty} />
       )}

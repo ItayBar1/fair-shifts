@@ -41,12 +41,13 @@ export async function notifySoldier(
     email: boolean;
     expiresAt: number;
     /** Mail event namespace, so a swap and a transfer never share a key. */
-    scope?: "transfer" | "swap";
+    scope?: "transfer" | "swap" | "execution";
+    href?: string;
   }
 ) {
   const account = await accountOf(tx, soldierId);
   if (!account) return;
-  const href = "/requests";
+  const href = input.href ?? "/requests";
   await createRecord(
     tx,
     "notification",

@@ -8,6 +8,7 @@ import {
   str,
   num,
   rows,
+  obj,
   displayDate,
   personName,
 } from "@/client/types";
@@ -33,7 +34,10 @@ const candidateLabels: Record<string, string> = {
 const transfers = (state: AppState) =>
   state.requests.filter((row) => row.type === "transfer");
 
-/** Offer form on the duty page for the owner of a published seat that has not started. */
+/**
+ * Offer form on the duty page for the owner of a published seat. After the start the offer
+ * still goes out, but a manager sets the handover and approves it (decision 183).
+ */
 export function TransferOffer({
   state,
   action,
@@ -50,14 +54,15 @@ export function TransferOffer({
       row.soldierId === soldierId &&
       row.status === "reserved"
   );
+  const now = new Date(str(state.serverNow)).getTime();
   if (
     !soldierId ||
     !seat ||
     duty.status !== "published" ||
-    new Date(str(duty.start)).getTime() <=
-      new Date(str(state.serverNow)).getTime()
+    new Date(str(seat.performedEnd, str(duty.end))).getTime() <= now
   )
     return null;
+  const running = new Date(str(duty.start)).getTime() <= now;
   // One open offer per seat, whether a transfer or a swap.
   const open = state.requests.find(
     (row) =>
@@ -92,7 +97,11 @@ export function TransferOffer({
     <ActionDialog
       title="הצעת התורנות להעברה"
       buttonLabel="הצעה להעברה"
-      description={`אפשר להציע לכמה חיילים. הראשון שיסכים ויעמוד בתנאי התורנות יקבל אותה עם מלוא הניקוד (${num(seat.points)} נקודות). עד אז השיבוץ שלך בתוקף.`}
+      description={
+        running
+          ? "התורנות כבר התחילה. אפשר לבקש מחליף: אחרי שיסכים, אחראי יקבע את מועד החילוף, וכל אחד יקבל ניקוד לפי הזמן שביצע. עד אז השיבוץ שלך בתוקף."
+          : `אפשר להציע לכמה חיילים. הראשון שיסכים ויעמוד בתנאי התורנות יקבל אותה עם מלוא הניקוד (${num(seat.points)} נקודות). עד אז השיבוץ שלך בתוקף.`
+      }
       fields={[
         {
           name: "candidateIds",
@@ -195,8 +204,20 @@ function TransferDecision({
   row: Row;
 }) {
   const [review, setReview] = useState<Record<string, unknown> | null>(null);
+  const [handover, setHandover] = useState("");
   const requirements = rows(review?.requirements);
-  const close = () => setReview(null);
+  const close = () => {
+    setReview(null);
+    setHandover("");
+  };
+  const load = async (handoverAt?: string) =>
+    setReview(
+      await action(
+        "transfer.review",
+        { id: row.id, ...(handoverAt && { handoverAt }) },
+        num(row.version)
+      )
+    );
   const reject = (
     <ActionDialog
       title="דחיית ההעברה"
@@ -218,25 +239,14 @@ function TransferDecision({
       danger
     />
   );
-  if (started(state, row))
-    return (
-      <>
-        <Notice tone="warning">
-          התורנות כבר התחילה. העברה אחרי התחלה תטופל במסלול תקופות הביצוע, ועד
-          אז השיבוץ המקורי והניקוד השמור בתוקף. אפשר לדחות את ההעברה.
-        </Notice>
-        {reject}
-      </>
-    );
+  const running = started(state, row);
   return (
     <>
       <button
         className="btn secondary"
         onClick={async () => {
           try {
-            setReview(
-              await action("transfer.review", { id: row.id }, num(row.version))
-            );
+            await load();
           } catch {
             /* workspace displays API error */
           }
@@ -246,20 +256,55 @@ function TransferDecision({
       </button>
       {reject}
       {review && (
-        <Modal title="אישור העברה" onClose={close}>
+        <Modal
+          title={running ? "אישור חילוף בביצוע" : "אישור העברה"}
+          onClose={close}
+        >
           {!review.valid ? (
             <Notice tone="danger">{str(review.message)}</Notice>
-          ) : review.started ? (
-            <Notice tone="warning">
-              התורנות כבר התחילה. העברה אחרי התחלה תטופל במסלול תקופות הביצוע.
-            </Notice>
+          ) : review.started && !review.handoverAt ? (
+            <Form
+              fields={[
+                {
+                  name: "handoverAt",
+                  label: "מועד החילוף",
+                  type: "datetime-local",
+                  required: true,
+                  value: handover,
+                  hint: `בתוך תקופת הביצוע של ${personName(state, row.fromSoldierId)}: ${displayDate(obj(review.period).start, true)} — ${displayDate(obj(review.period).end, true)}`,
+                },
+              ]}
+              submitLabel="חישוב התקופות"
+              onSubmit={async (values) => {
+                setHandover(str(values.handoverAt));
+                await load(str(values.handoverAt));
+              }}
+              onCancel={close}
+            />
           ) : (
             <>
-              <Notice>
-                {personName(state, row.acceptedBy)} יקבל את התורנות{" "}
-                {str(row.dutyName)} עם מלוא הניקוד ({num(row.points)} נקודות), ו
-                {personName(state, row.fromSoldierId)} לא יהיה משובץ לה עוד.
-              </Notice>
+              {review.started ? (
+                <Notice>
+                  {personName(state, row.fromSoldierId)} מבצע עד{" "}
+                  {displayDate(review.handoverAt, true)}, ו
+                  {personName(state, row.acceptedBy)} מחליף אותו מאז ועד סוף
+                  התקופה. הניקוד יחושב לכל אחד לפי הזמן שביצע:{" "}
+                  {rows(obj(review.execution).changes)
+                    .filter((change) => change.kind !== "keep")
+                    .map(
+                      (change) =>
+                        `${str(change.name)} ${num(obj(change.price).points)} נקודות`
+                    )
+                    .join(" · ")}
+                  .
+                </Notice>
+              ) : (
+                <Notice>
+                  {personName(state, row.acceptedBy)} יקבל את התורנות{" "}
+                  {str(row.dutyName)} עם מלוא הניקוד ({num(row.points)} נקודות),
+                  ו{personName(state, row.fromSoldierId)} לא יהיה משובץ לה עוד.
+                </Notice>
+              )}
               {rows(review.blockers).map((item, index) => (
                 <Notice tone="danger" key={index}>
                   {str(item.message)}
@@ -297,7 +342,7 @@ function TransferDecision({
                       required: true,
                     },
                   ]}
-                  submitLabel="אישור ההעברה"
+                  submitLabel={running ? "אישור החילוף" : "אישור ההעברה"}
                   onSubmit={async (values) => {
                     await action(
                       "transfer.decide",
@@ -308,6 +353,7 @@ function TransferDecision({
                         previewToken: review.previewToken,
                         approvalReason: values.approvalReason,
                         approvalKeys: requirements.map((item) => item.key),
+                        ...(review.handoverAt ? { handoverAt: handover } : {}),
                       },
                       num(row.version)
                     );

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-// The rulesets are imported into the repository settings by hand (decision 183).
+// The rulesets are imported into the repository settings by hand (decision 184).
 // These checks keep the files in line with the CI workflow and the agreed policy.
 type Rule = { type: string; parameters?: Record<string, unknown> };
 type Ruleset = {
