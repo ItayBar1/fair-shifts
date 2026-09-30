@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { and, desc, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db, type DbTransaction } from "../db";
 import { backupRun, operationsState, user } from "../auth-schema";
@@ -360,7 +360,11 @@ async function alertTechnical(
     .where(and(eq(user.role, "technical"), isNull(user.deletedAt)));
   const title = "הגיבוי נכשל";
   const body = `${failureLabels[code]}. ${
-    run.trigger === "daily" ? "הגיבוי היומי" : "הגיבוי הידני"
+    run.trigger === "daily"
+      ? "הגיבוי היומי"
+      : beforeDeploy(run)
+        ? "הגיבוי לפני עדכון הגרסה"
+        : "הגיבוי הידני"
   } לא הושלם${run.attempts > 1 ? ` אחרי ${run.attempts} ניסיונות` : ""}. יש לבדוק במסך הגיבוי.`;
   for (const account of accounts) {
     await createRecord(tx, "notification", {
@@ -501,6 +505,7 @@ export async function backupState(
     runs: runs.map((row) => ({
       id: row.id,
       trigger: row.trigger,
+      beforeDeploy: beforeDeploy(row),
       status: row.status,
       attempts: row.attempts,
       createdAt: row.createdAt,
@@ -513,4 +518,93 @@ export async function backupState(
       deleteReason: row.deleteReason,
     })),
   };
+}
+
+// ---------------------------------------------------------------- deploy
+
+const DEPLOY_KEY = "deploy:";
+/** A run that the automatic deployment requested before migrating. */
+export const beforeDeploy = (run: Pick<BackupRun, "key">) =>
+  run.key.startsWith(DEPLOY_KEY);
+
+export type DeployBackupResult =
+  | { status: "verified"; runId: string; fileName: string }
+  | { status: "failed"; runId: string; code: string }
+  | { status: "stalled"; runId: string }
+  | { status: "disabled" | "restore" };
+
+/**
+ * A verified backup before a deployment changes the database (card #36).
+ * scripts/backup-before-deploy.ts runs it in the worker of the version still
+ * live. It waits for a run that is already pending or running, then requests
+ * one of its own and follows it while the worker takes, retries and verifies
+ * it. Attempts are bounded, so the wait ends; a run that no worker takes up
+ * within `stallMs` of being due ends it too, rather than holding the
+ * deployment forever. Progress lines are English: they are read in the
+ * deployment journal on the server (decision 187).
+ */
+export async function backupBeforeDeploy(
+  version: string,
+  {
+    config = backupConfig(),
+    pollMs = 5_000,
+    stallMs = 10 * 60_000,
+    log = (line: string) => console.log(line),
+  }: {
+    config?: BackupConfig;
+    pollMs?: number;
+    stallMs?: number;
+    log?: (line: string) => void;
+  } = {}
+): Promise<DeployBackupResult> {
+  if (config.kind === "none") return { status: "disabled" };
+  if (await restoreBlocked()) return { status: "restore" };
+  let own: string | undefined;
+  let last = "";
+  for (;;) {
+    if (!own) {
+      const [row] = await db
+        .insert(backupRun)
+        .values({
+          id: randomUUID(),
+          key: `${DEPLOY_KEY}${version}:${randomUUID()}`,
+          trigger: "manual",
+        })
+        .onConflictDoNothing()
+        .returning();
+      own = row?.id;
+    }
+    const [run] = await db
+      .select()
+      .from(backupRun)
+      .where(
+        own
+          ? eq(backupRun.id, own)
+          : inArray(backupRun.status, ["pending", "running"])
+      )
+      .limit(1);
+    if (run && own && run.status === "verified")
+      return { status: "verified", runId: run.id, fileName: run.fileName! };
+    if (run && own && run.status !== "pending" && run.status !== "running")
+      return { status: "failed", runId: run.id, code: run.errorCode ?? "" };
+    if (run) {
+      const line = deployProgress(run, Boolean(own));
+      if (line !== last) log((last = line));
+      const due = run.status === "pending" ? run.nextAttemptAt : run.leaseUntil;
+      if (due && Date.now() > due.getTime() + stallMs)
+        return { status: "stalled", runId: run.id };
+    }
+    await new Promise((done) => setTimeout(done, pollMs));
+  }
+}
+
+function deployProgress(run: BackupRun, own: boolean) {
+  const id = run.id.slice(0, 8);
+  if (!own)
+    return `waiting for backup ${id} (${run.trigger}), now ${run.status}`;
+  if (run.status === "running")
+    return `backup ${id} is running (attempt ${run.attempts})`;
+  if (run.errorCode)
+    return `backup ${id} attempt ${run.attempts} failed (${run.errorCode}); next attempt at ${run.nextAttemptAt.toISOString()}`;
+  return `backup ${id} requested; waiting for the worker`;
 }

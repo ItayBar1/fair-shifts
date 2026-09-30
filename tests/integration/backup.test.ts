@@ -32,7 +32,10 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
 import {
+  backupBeforeDeploy,
   backupConfig,
+  backupState,
+  beforeDeploy,
   runBackupCycle,
   type BackupConfig,
 } from "../../src/server/operations/backup";
@@ -600,4 +603,160 @@ describe("retention up to 30 copies and free space", () => {
         )
     ).toEqual([]);
   });
+});
+
+describe("a verified backup before a deployment changes the database (card #36)", () => {
+  const settle = (ms: number) => new Promise((done) => setTimeout(done, ms));
+  async function until(check: () => Promise<boolean> | boolean) {
+    const start = Date.now();
+    while (!(await check())) {
+      if (Date.now() - start > 10_000) throw new Error("timed out");
+      await settle(20);
+    }
+  }
+  const follow = (
+    lines: string[] = [],
+    overrides: Parameters<typeof backupBeforeDeploy>[1] = {}
+  ) => ({
+    config: config(),
+    pollMs: 20,
+    log: (line: string) => lines.push(line),
+    ...overrides,
+  });
+
+  it("waits for a run already active, then takes and verifies one of its own", async () => {
+    await command(technical, "backup.request");
+    const lines: string[] = [];
+    const deploying = backupBeforeDeploy("abc123def456", follow(lines));
+    await settle(150);
+    expect(await runs()).toHaveLength(1);
+    expect(lines).toEqual([
+      expect.stringMatching(/^waiting for backup \S+ \(manual\), now pending$/),
+    ]);
+
+    expect((await runBackupCycle(new Date(), config())).status).toBe(
+      "verified"
+    );
+    await until(async () => (await runs()).length === 2);
+    expect((await runBackupCycle(new Date(), config())).status).toBe(
+      "verified"
+    );
+    const result = await deploying;
+
+    const rows = await runs();
+    expect(rows.map((row) => [row.status, beforeDeploy(row)])).toEqual([
+      ["verified", false],
+      ["verified", true],
+    ]);
+    expect(rows[1].key).toMatch(/^deploy:abc123def456:/);
+    expect(result).toEqual({
+      status: "verified",
+      runId: rows[1].id,
+      fileName: rows[1].fileName,
+    });
+    expect(await storedFiles()).toHaveLength(2);
+    // The screen tells it apart from a manual request.
+    const state = await backupState(db, config());
+    expect(state.runs.map((row) => row.beforeDeploy)).toEqual([true, false]);
+  });
+
+  it("reports a failed attempt and keeps waiting until the retry is verified", async () => {
+    const lines: string[] = [];
+    const deploying = backupBeforeDeploy("v2", follow(lines));
+    await until(async () => (await runs()).length === 1);
+    const now = new Date();
+    const broken = {
+      ...config(),
+      storage: failing(directoryStorage(store), {
+        upload: async () => {
+          throw new BackupFailure("upload_failed");
+        },
+      }),
+    };
+    expect((await runBackupCycle(now, broken)).status).toBe("retry");
+    await until(() =>
+      lines.some((line) =>
+        /attempt 1 failed \(upload_failed\); next attempt at /.test(line)
+      )
+    );
+    expect(
+      (await runBackupCycle(new Date(now.getTime() + 16 * MINUTE), config()))
+        .status
+    ).toBe("verified");
+    expect(await deploying).toMatchObject({ status: "verified" });
+    expect(lines[0]).toMatch(/^backup \S+ requested; waiting for the worker$/);
+  });
+
+  it("ends with the worker's final failure, alerting the technical account", async () => {
+    const deploying = backupBeforeDeploy("v3", follow());
+    await until(async () => (await runs()).length === 1);
+    expect(
+      await runBackupCycle(new Date(), config({ AGE_RECIPIENT: "" }))
+    ).toMatchObject({ status: "failed", code: "key_missing" });
+    expect(await deploying).toMatchObject({
+      status: "failed",
+      code: "key_missing",
+    });
+    const notices = await technicalNotices();
+    expect(notices).toHaveLength(1);
+    expect(String(notices[0].data.body)).toContain("הגיבוי לפני עדכון הגרסה");
+  });
+
+  it("stops waiting when no worker takes the run up", async () => {
+    const result = await backupBeforeDeploy("v4", follow([], { stallMs: 100 }));
+    const [row] = await runs();
+    expect(result).toEqual({ status: "stalled", runId: row.id });
+    expect(row.status).toBe("pending");
+  });
+
+  it("requests nothing where backups are off or restore mode is on", async () => {
+    expect(
+      await backupBeforeDeploy(
+        "v5",
+        follow([], { config: config({ BACKUP_STORAGE: "" }) })
+      )
+    ).toEqual({ status: "disabled" });
+    await db
+      .insert(operationsState)
+      .values({ key: "restore", data: { blocked: true } });
+    expect(await backupBeforeDeploy("v5", follow())).toEqual({
+      status: "restore",
+    });
+    expect(await runs()).toEqual([]);
+  });
+
+  it("is what the deployment runs: exit code 0 only for a verified copy", async () => {
+    const cli = (version: string) =>
+      new Promise<{ code: number; output: string }>((resolve, reject) => {
+        const child = spawn(
+          "node_modules/.bin/tsx",
+          ["scripts/backup-before-deploy.ts", version],
+          { env: process.env }
+        );
+        let output = "";
+        child.stdout.on("data", (chunk: Buffer) => (output += chunk));
+        child.stderr.on("data", (chunk: Buffer) => (output += chunk));
+        child.once("error", reject);
+        child.once("close", (code) => resolve({ code: code ?? -1, output }));
+      });
+
+    const passing = cli("good1234");
+    await until(async () => (await runs()).length === 1);
+    expect((await runBackupCycle(new Date(), config())).status).toBe(
+      "verified"
+    );
+    const passed = await passing;
+    expect(passed.code).toBe(0);
+    expect(passed.output).toMatch(/requested; waiting for the worker\n/);
+    expect(passed.output).toMatch(/verified: fair-shifts-\S+\.dump\.age\n$/);
+
+    const refused = cli("bad12345");
+    await until(async () => (await runs()).length === 2);
+    await runBackupCycle(new Date(), config({ AGE_RECIPIENT: "" }));
+    const failed = await refused;
+    expect(failed.code).toBe(1);
+    expect(failed.output).toMatch(
+      /failed \(key_missing\); see the backup screen\n$/
+    );
+  }, 60_000);
 });
