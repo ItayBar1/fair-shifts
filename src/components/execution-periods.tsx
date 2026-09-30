@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Decimal from "decimal.js";
 import { DateTime } from "luxon";
 import {
   type AppState,
@@ -156,6 +157,17 @@ export function ExecutionPeriods({
                           `${segment.soldierId ? personName(state, segment.soldierId) : "לא בוצע"} ${displayDate(segment.start, true)}–${displayDate(segment.end, true)}`
                       )
                       .join(" · ")}
+                    {rows(row.allocationAfter).length > 0 && (
+                      <small>
+                        חלוקה:{" "}
+                        {rows(row.allocationAfter)
+                          .map(
+                            (part) =>
+                              `${personName(state, part.soldierId)} — בסיס ${str(part.fixedBase, "יחסי לזמן")}, תוספת קבועה ${str(part.fixedExtra, "0")}`
+                          )
+                          .join(" · ")}
+                      </small>
+                    )}
                   </td>
                   <td>{str(row.reason)}</td>
                 </tr>
@@ -187,6 +199,9 @@ function SeatEditor({
       : [{ soldierId: null, start: str(duty.start), end: str(duty.end) }];
   const [open, setOpen] = useState(false);
   const [segments, setSegments] = useState<Segment[]>(initial);
+  const [allocationEdits, setAllocationEdits] = useState<
+    Record<string, { base: string; extra: string }>
+  >({});
   const [reason, setReason] = useState("");
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [reviewPending, setReviewPending] = useState(false);
@@ -196,10 +211,49 @@ function SeatEditor({
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const soldiers = state.soldiers.filter((row) => !row.deletedAt);
+  const seatRows = state.assignments.filter(
+    (row) =>
+      row.dutyId === duty.id &&
+      row.slotId === slot.id &&
+      SEAT.includes(str(row.status))
+  );
+  const seatRecord = rows(state.seatExecutions).find(
+    (row) => row.dutyId === duty.id && row.slotId === slot.id
+  );
+  const fixedExtraTotal = str(
+    seatRecord?.fixedExtraTotal,
+    seatRows
+      .reduce((sum, row) => sum.plus(str(row.extraPoints, "0")), new Decimal(0))
+      .toString()
+  );
+  const pricing = obj(duty.pricing);
+  const performers = [
+    ...new Set(
+      segments.flatMap((segment) =>
+        segment.soldierId ? [segment.soldierId] : []
+      )
+    ),
+  ];
+  const needsAllocation =
+    performers.length > 1 &&
+    (pricing.mode === "fixed" || Number(fixedExtraTotal) > 0);
+  const share = (soldierId: string) => {
+    const row = seatRows.find((item) => item.soldierId === soldierId);
+    return (
+      allocationEdits[soldierId] ?? {
+        base: str(
+          row?.fixedBaseAllocation,
+          seatRows.length === 1 && row ? str(pricing.basePoints) : "0"
+        ),
+        extra: str(row?.extraPoints, "0"),
+      }
+    );
+  };
   const close = () => {
     setOpen(false);
     setPreview(null);
     setSegments(initial());
+    setAllocationEdits({});
     setError("");
   };
   const edit = (next: Segment[]) => {
@@ -216,6 +270,13 @@ function SeatEditor({
     })),
     reason,
     reviewPending,
+    ...(needsAllocation && {
+      allocations: performers.map((soldierId) => ({
+        soldierId,
+        ...(pricing.mode === "fixed" && { fixedBase: share(soldierId).base }),
+        fixedExtra: share(soldierId).extra,
+      })),
+    }),
   });
   const run = async (work: () => Promise<void>) => {
     setError("");
@@ -269,7 +330,14 @@ function SeatEditor({
   );
   return (
     <>
-      <button className="btn secondary" onClick={() => setOpen(true)}>
+      <button
+        className="btn secondary"
+        onClick={() => {
+          setSegments(initial());
+          setAllocationEdits({});
+          setOpen(true);
+        }}
+      >
         עריכת תקופות ביצוע
       </button>
       {open && (
@@ -352,6 +420,59 @@ function SeatEditor({
           <button type="button" className="btn secondary" onClick={splitLast}>
             הוספת תקופה
           </button>
+          {needsAllocation && (
+            <fieldset className="approval-list">
+              <legend>חלוקה מפורשת של הניקוד הקבוע</legend>
+              <p className="muted">
+                יש לחלק את מלוא הבסיס הקבוע ({str(pricing.basePoints)}) ואת
+                התוספת הקבועה ({fixedExtraTotal}) בין המבצעים. סכום לכל רכיב
+                חייב להשתוות למקור; העיגול נעשה רק אחרי חיבור כל הרכיבים למבצע.
+              </p>
+              {performers.map((soldierId) => (
+                <div className="form-grid" key={soldierId}>
+                  <strong>{personName(state, soldierId)}</strong>
+                  {pricing.mode === "fixed" && (
+                    <label className="field">
+                      <span>חלק מהבסיס הקבוע</span>
+                      <input
+                        aria-label={`בסיס קבוע ל${personName(state, soldierId)}`}
+                        inputMode="decimal"
+                        value={share(soldierId).base}
+                        onChange={(event) => {
+                          setAllocationEdits((current) => ({
+                            ...current,
+                            [soldierId]: {
+                              ...share(soldierId),
+                              base: event.target.value,
+                            },
+                          }));
+                          setPreview(null);
+                        }}
+                      />
+                    </label>
+                  )}
+                  <label className="field">
+                    <span>תוספת קבועה</span>
+                    <input
+                      aria-label={`תוספת קבועה ל${personName(state, soldierId)}`}
+                      inputMode="decimal"
+                      value={share(soldierId).extra}
+                      onChange={(event) => {
+                        setAllocationEdits((current) => ({
+                          ...current,
+                          [soldierId]: {
+                            ...share(soldierId),
+                            extra: event.target.value,
+                          },
+                        }));
+                        setPreview(null);
+                      }}
+                    />
+                  </label>
+                </div>
+              ))}
+            </fieldset>
+          )}
           <label className="field full">
             <span>
               סיבה<span className="required"> *</span>
@@ -415,6 +536,9 @@ function SeatEditor({
                             {change.price ? (
                               <>
                                 בסיס {str(price.base)}
+                                {Number(str(price.extras, "0")) > 0
+                                  ? ` + תוספת קבועה ${str(price.extras)}`
+                                  : ""}
                                 {rows(price.surcharges)
                                   .filter((item) => num(item.count) > 0)
                                   .map(

@@ -23,6 +23,11 @@ import {
   Status,
   type Field,
 } from "./ui";
+import {
+  allocationFields,
+  allocationSummary,
+  allocationValues,
+} from "./fixed-allocation";
 
 const OPEN = ["awaiting_consent", "awaiting_manager"];
 const candidateLabels: Record<string, string> = {
@@ -205,19 +210,33 @@ function TransferDecision({
 }) {
   const [review, setReview] = useState<Record<string, unknown> | null>(null);
   const [handover, setHandover] = useState("");
+  const [allocation, setAllocation] = useState<ReturnType<
+    typeof allocationValues
+  > | null>(null);
+  const [allocationReason, setAllocationReason] = useState("");
   const requirements = rows(review?.requirements);
   const close = () => {
     setReview(null);
     setHandover("");
+    setAllocation(null);
+    setAllocationReason("");
   };
-  const load = async (handoverAt?: string) =>
-    setReview(
-      await action(
-        "transfer.review",
-        { id: row.id, ...(handoverAt && { handoverAt }) },
-        num(row.version)
-      )
+  const load = async (
+    handoverAt?: string,
+    shares?: ReturnType<typeof allocationValues>
+  ) => {
+    const next = await action(
+      "transfer.review",
+      {
+        id: row.id,
+        ...(handoverAt && { handoverAt }),
+        ...(shares && { allocations: shares }),
+      },
+      num(row.version)
     );
+    setReview(next);
+    setAllocation(shares ?? null);
+  };
   const reject = (
     <ActionDialog
       title="דחיית ההעברה"
@@ -281,6 +300,33 @@ function TransferDecision({
               }}
               onCancel={close}
             />
+          ) : review.started &&
+            obj(review.execution).allocationRequired === true &&
+            obj(review.execution).allocationExplicit !== true ? (
+            <>
+              <Notice>{allocationSummary(obj(review.execution))}</Notice>
+              <Form
+                fields={[
+                  ...allocationFields(obj(review.execution), state, "share"),
+                  {
+                    name: "allocationReason",
+                    label: "סיבה לחלוקת הניקוד",
+                    type: "textarea",
+                    required: true,
+                    full: true,
+                  },
+                ]}
+                submitLabel="חישוב חלוקת הניקוד"
+                onSubmit={async (values) => {
+                  await load(
+                    handover,
+                    allocationValues(obj(review.execution), values, "share")
+                  );
+                  setAllocationReason(str(values.allocationReason));
+                }}
+                onCancel={close}
+              />
+            </>
           ) : (
             <>
               {review.started ? (
@@ -291,10 +337,10 @@ function TransferDecision({
                   התקופה. הניקוד יחושב לכל אחד לפי הזמן שביצע:{" "}
                   {rows(obj(review.execution).changes)
                     .filter((change) => change.kind !== "keep")
-                    .map(
-                      (change) =>
-                        `${str(change.name)} ${num(obj(change.price).points)} נקודות`
-                    )
+                    .map((change) => {
+                      const price = obj(change.price);
+                      return `${str(change.name)}: בסיס ${str(price.base)}, תוספת קבועה ${str(price.extras, "0")}, סך מדויק ${str(price.totalExact)} ← ${num(price.points)} נקודות`;
+                    })
                     .join(" · ")}
                   .
                 </Notice>
@@ -354,6 +400,8 @@ function TransferDecision({
                         approvalReason: values.approvalReason,
                         approvalKeys: requirements.map((item) => item.key),
                         ...(review.handoverAt ? { handoverAt: handover } : {}),
+                        ...(allocation && { allocations: allocation }),
+                        ...(allocation && { allocationReason }),
                       },
                       num(row.version)
                     );

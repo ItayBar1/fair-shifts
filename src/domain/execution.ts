@@ -118,9 +118,7 @@ export function segmentPrice(
   period: InstantRange
 ): PriceBreakdown {
   if (pricing.mode !== "daily")
-    throw new Error(
-      "חלוקת ביצוע בתעריף קבוע תתאפשר בהמשך (כרטיס #19). עד אז אפשר לתקן ביצוע של מבצע יחיד"
-    );
+    throw new Error("חישוב אוטומטי לפי משך זמין בתעריף יומי בלבד");
   return calculatePerformedPrice(pricing, [period], "0");
 }
 

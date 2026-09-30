@@ -22,6 +22,11 @@ import {
   Status,
   type Field,
 } from "./ui";
+import {
+  allocationFields,
+  allocationSummary,
+  allocationValues,
+} from "./fixed-allocation";
 
 const OPEN = ["awaiting_consent", "awaiting_manager"];
 const entryLabels: Record<string, string> = {
@@ -198,7 +203,19 @@ function SwapDecision({
 }) {
   const [review, setReview] = useState<Record<string, unknown> | null>(null);
   const [times, setTimes] = useState<Record<string, string>>({});
+  const [allocationSides, setAllocationSides] = useState<
+    | { slotId: string; allocations: ReturnType<typeof allocationValues> }[]
+    | null
+  >(null);
+  const [allocationReason, setAllocationReason] = useState("");
   const sides = rows(review?.sides);
+  const needsAllocation = sides.flatMap((side, index) => {
+    const execution = obj(side.execution);
+    return execution.allocationRequired === true &&
+      execution.allocationExplicit !== true
+      ? [{ execution, index }]
+      : [];
+  });
   const requirements = sides.flatMap((side) =>
     rows(side.requirements).map((item): Row => ({
       ...item,
@@ -208,15 +225,24 @@ function SwapDecision({
   const close = () => {
     setReview(null);
     setTimes({});
+    setAllocationSides(null);
+    setAllocationReason("");
   };
-  const load = async (handovers: Record<string, string> = {}) =>
-    setReview(
-      await action(
-        "swap.review",
-        { id: row.id, ...handovers },
-        num(row.version)
-      )
+  const load = async (
+    handovers: Record<string, string> = {},
+    shares?: {
+      slotId: string;
+      allocations: ReturnType<typeof allocationValues>;
+    }[]
+  ) => {
+    const next = await action(
+      "swap.review",
+      { id: row.id, ...handovers, ...(shares && { allocationSides: shares }) },
+      num(row.version)
     );
+    setReview(next);
+    setAllocationSides(shares ?? null);
+  };
   const accepted = rows(row.candidates).find(
     (item) => item.assignmentId === row.acceptedAssignmentId
   );
@@ -303,6 +329,44 @@ function SwapDecision({
               }}
               onCancel={close}
             />
+          ) : needsAllocation.length > 0 ? (
+            <>
+              {needsAllocation.map(({ execution, index }) => (
+                <Notice key={index}>
+                  {str(sides[index]?.dutyName)}: {allocationSummary(execution)}
+                </Notice>
+              ))}
+              <Form
+                fields={[
+                  ...needsAllocation.flatMap(({ execution, index }) =>
+                    allocationFields(execution, state, `share${index}-`)
+                  ),
+                  {
+                    name: "allocationReason",
+                    label: "סיבה לחלוקת הניקוד",
+                    type: "textarea",
+                    required: true,
+                    full: true,
+                  },
+                ]}
+                submitLabel="חישוב חלוקת הניקוד"
+                onSubmit={async (values) => {
+                  await load(
+                    times,
+                    needsAllocation.map(({ execution, index }) => ({
+                      slotId: str(execution.slotId),
+                      allocations: allocationValues(
+                        execution,
+                        values,
+                        `share${index}-`
+                      ),
+                    }))
+                  );
+                  setAllocationReason(str(values.allocationReason));
+                }}
+                onCancel={close}
+              />
+            </>
           ) : (
             <>
               {review.started ? (
@@ -312,10 +376,10 @@ function SwapDecision({
                   {sides
                     .flatMap((side) => rows(obj(side.execution).changes))
                     .filter((change) => change.kind !== "keep")
-                    .map(
-                      (change) =>
-                        `${str(change.name)} ${num(obj(change.price).points)} נקודות`
-                    )
+                    .map((change) => {
+                      const price = obj(change.price);
+                      return `${str(change.name)}: בסיס ${str(price.base)}, תוספת קבועה ${str(price.extras, "0")}, סך מדויק ${str(price.totalExact)} ← ${num(price.points)} נקודות`;
+                    })
                     .join(" · ")}
                   . תורנות שטרם התחילה עוברת במלואה.
                 </Notice>
@@ -379,6 +443,8 @@ function SwapDecision({
                         approvalReason: values.approvalReason,
                         approvalKeys: requirements.map((item) => item.key),
                         ...times,
+                        ...(allocationSides && { allocationSides }),
+                        ...(allocationSides && { allocationReason }),
                       },
                       num(row.version)
                     );

@@ -138,10 +138,14 @@ export interface Assignment {
   slotId: string;
   soldierId: string;
   points: number;
+  /** Value before execution allocations; the current reserved value may change. */
+  originalPoints?: number;
   status: AssignmentStatus;
   version: number;
   creditedAt?: Instant;
   extraPoints?: string;
+  /** Manager-approved share of the fixed base after a seat is split. */
+  fixedBaseAllocation?: string;
   approvals?: SpecificApproval[];
   pendingReviewConfirmed?: boolean;
   /**
