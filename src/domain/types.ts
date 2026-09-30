@@ -144,6 +144,13 @@ export interface Assignment {
   extraPoints?: string;
   approvals?: SpecificApproval[];
   pendingReviewConfirmed?: boolean;
+  /**
+   * The part of the duty this assignment covers once a seat is split into
+   * execution periods. Absent means the whole duty.
+   */
+  performedStart?: Instant;
+  performedEnd?: Instant;
+  performance?: Performance;
 }
 export interface SpecificApproval {
   kind:
@@ -205,4 +212,6 @@ export interface Performance {
   points: number;
   reflected: Record<string, number>;
   corrections: number;
+  /** A credited execution period later recorded as not performed by anyone. */
+  removed?: boolean;
 }

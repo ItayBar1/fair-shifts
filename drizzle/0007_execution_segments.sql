@@ -1,0 +1,2 @@
+DROP INDEX "assignment_one_occupant";--> statement-breakpoint
+CREATE UNIQUE INDEX "assignment_one_occupant" ON "assignments" USING btree ("slot_id") WHERE "assignments"."status" in ('reserved', 'held') and "assignments"."data"->>'performedStart' is null;

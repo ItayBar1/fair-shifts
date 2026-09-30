@@ -27,6 +27,7 @@ import {
   applyPerformanceCorrection,
 } from "./performance-corrections";
 import { previewScoreDecision, applyScoreDecision } from "./score-decisions";
+import { applyExecution, previewExecution } from "./execution";
 import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
 import { user } from "./auth-schema";
 import {
@@ -395,6 +396,12 @@ export async function executeAction(actor: Actor, value: unknown) {
           payload,
           expectedVersion
         );
+        break;
+      case "execution.preview":
+        result = await previewExecution(tx, actor, payload);
+        break;
+      case "execution.apply":
+        result = await applyExecution(tx, actor, payload);
         break;
       case "score.decision.preview":
         result = await previewScoreDecision(
