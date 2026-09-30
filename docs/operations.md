@@ -96,12 +96,15 @@ sh scripts/production.sh down      # remove containers; the volume and data stay
 
 ```sh
 cd /opt/fair-shifts/app
+mkdir -p /opt/fair-shifts/deploy-state
+git rev-parse HEAD > /opt/fair-shifts/deploy-state/deployed   # the commit that runs now, before pulling
+git pull -q --ff-only
 sudo cp scripts/systemd/fair-shifts-deploy@.service scripts/systemd/fair-shifts-deploy@.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now "fair-shifts-deploy@$USER.timer"
 ```
 
-שם המופע הוא משתמש ההפעלה, שחבר בקבוצה `docker`. הנתיבים הקבועים ביחידה: הקוד ב־`/opt/fair-shifts/app`, התצורה ב־`/opt/fair-shifts/config`, ומצב הפריסה ב־`/opt/fair-shifts/deploy-state`: הגרסה הפעילה (`deployed`), גרסה שנעצרה (`stopped`) והנעילה.
+רושמים את הגרסה שרצה לפני `git pull`: בלי הרישום הטיימר מניח שהגרסה הפעילה היא ה־commit שבתיקייה, ולא יפרוס את מה שנמשך. שם המופע הוא משתמש ההפעלה, שחבר בקבוצה `docker`. הנתיבים הקבועים ביחידה: הקוד ב־`/opt/fair-shifts/app`, התצורה ב־`/opt/fair-shifts/config`, ומצב הפריסה ב־`/opt/fair-shifts/deploy-state`: הגרסה הפעילה (`deployed`), גרסה שנעצרה (`stopped`) והנעילה.
 
 ### מעקב ותחזוקה
 
@@ -163,6 +166,7 @@ age-keygen -y fair-shifts-backup.key   # prints the public key for AGE_RECIPIENT
 
 בתמונת המצב מופיעה שורת ״משלוח מייל״, ובמסך ״משלוחי מייל״ מוצגים מכסת היום, התור, הממתינים למכסה ו־20 הכשלים האחרונים מהשבוע. מוצגים סוג המייל, הסיבה, מספר הניסיונות והמועדים בלבד, בלי נמענים ובלי תוכן (הכרעה 177).
 
+- **מתי יוצא מייל:** קוד כניסה וקוד לאימות כתובת נשלחים תוך שניות. בזמן השמירה בתור נשלח אות PostgreSQL (`LISTEN`/`NOTIFY`, ערוץ `fair_shifts_mail_due`), שנמסר רק אחרי commit, והעובד מאזין לו בחיבור משלו. שאר ההודעות יוצאות בסבב הדקה, שהוא גם הגיבוי לאות שלא הגיע. אחרי ניתוק החיבור העובד מתחבר מחדש תוך 5 שניות, ורושם ביומן `Mail signal connection lost` (הכרעה 188).
 - **מכסה:** 300 ביום לפי `MAIL_QUOTA_TIME_ZONE` (ברירת מחדל UTC). הודעות, כולל התראות גיבוי, נעצרות ב־290, ו־10 האחרונים שמורים לקודי כניסה ולאימות מייל. אין שדרוג אוטומטי למסלול בתשלום.
 - **השהיה:** כשהספק דוחה את מפתח ה־API או את השולח, המשלוח מושהה לרבע שעה ומתחדש מעצמו. יש לבדוק את `BREVO_API_KEY` ו־`BREVO_SENDER_EMAIL`. כשהספק מודיע שהמכסה שלו נגמרה, המשלוח מושהה עד היום הבא.
 - **דף הכניסה:** בזמן השהיה, או כשגם המכסה השמורה לקודים נגמרה, מי שמבקש קוד רואה הודעת עיכוב כללית ומופנה לאחראי. ההודעה זהה לכל כתובת.
