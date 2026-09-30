@@ -61,7 +61,7 @@ describe("deployment configuration check", () => {
   it("requires distinct, long secrets and a valid mail key", () => {
     expect(errorsFor({ OTP_SECRET: "short" })).toHaveLength(1);
     expect(errorsFor({ OTP_SECRET: valid.BETTER_AUTH_SECRET })).toEqual([
-      "OTP_SECRET: חייב להיות שונה מ־BETTER_AUTH_SECRET",
+      "OTP_SECRET: must differ from BETTER_AUTH_SECRET",
     ]);
     expect(errorsFor({ MAIL_ENCRYPTION_KEY: "9f".repeat(31) })).toHaveLength(1);
     expect(

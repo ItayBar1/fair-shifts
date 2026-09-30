@@ -384,7 +384,8 @@ export async function recoverTechnicalAccess(email: string, reason: string) {
     invariant(
       target && target.role === "technical" && !target.deletedAt,
       "not_found",
-      "חשבון טכני לא נמצא"
+      // Server recovery only (scripts/recover.ts): read in the server's terminal.
+      "Technical account not found"
     );
     await tx
       .update(user)

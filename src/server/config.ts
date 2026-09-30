@@ -2,7 +2,8 @@ import { DateTime } from "luxon";
 import { validBackupTime } from "../domain/backup";
 
 // Deployment configuration check. Messages name the variable only and never
-// echo its value, so the output is safe for container logs.
+// echo its value, so the output is safe for container logs. They are English:
+// they are read on the server (decision 187).
 export const deploymentEnvironments = ["production", "staging"] as const;
 export type DeploymentEnvironment = (typeof deploymentEnvironments)[number];
 type Env = Record<string, string | undefined>;
@@ -34,7 +35,7 @@ export function validateDeploymentConfig(env: Env): string[] {
   const errors: string[] = [];
   const value = (name: string) => env[name]?.trim() ?? "";
   const required = (name: string) => {
-    if (!value(name)) errors.push(`${name}: חסר ערך`);
+    if (!value(name)) errors.push(`${name}: missing value`);
     return value(name);
   };
 
@@ -43,68 +44,76 @@ export function validateDeploymentConfig(env: Env): string[] {
     environment &&
     !deploymentEnvironments.includes(environment as DeploymentEnvironment)
   )
-    errors.push("DEPLOYMENT_ENVIRONMENT: ערך מותר הוא production או staging");
+    errors.push(
+      "DEPLOYMENT_ENVIRONMENT: allowed values are production or staging"
+    );
 
   const version = required("APP_VERSION");
   if (version === "development")
-    errors.push("APP_VERSION: יש לבנות את התמונה עם מזהה גרסה");
+    errors.push("APP_VERSION: build the image with a version identifier");
 
   const databaseUrl = required("DATABASE_URL");
   if (databaseUrl) {
     const url = parseUrl(databaseUrl);
     if (!url || !["postgres:", "postgresql:"].includes(url.protocol))
-      errors.push("DATABASE_URL: נדרשת כתובת PostgreSQL תקינה");
+      errors.push("DATABASE_URL: a valid PostgreSQL URL is required");
     else if (
       decodeURIComponent(url.password).length < 16 ||
       isDevelopmentValue(databaseUrl)
     )
-      errors.push("DATABASE_URL: סיסמת המסד קצרה או לקוחה מסביבת הפיתוח");
+      errors.push(
+        "DATABASE_URL: the database password is short or taken from development"
+      );
   }
 
   const authUrl = required("BETTER_AUTH_URL");
   if (authUrl) {
     const url = parseUrl(authUrl);
     if (!url || url.protocol !== "https:" || url.pathname !== "/")
-      errors.push("BETTER_AUTH_URL: נדרשת כתובת https של שורש האתר");
+      errors.push("BETTER_AUTH_URL: an https URL of the site root is required");
   }
 
   for (const name of ["BETTER_AUTH_SECRET", "OTP_SECRET"]) {
     const secret = required(name);
     if (secret && (secret.length < 32 || isDevelopmentValue(secret)))
-      errors.push(`${name}: נדרש סוד אקראי באורך 32 תווים לפחות`);
+      errors.push(
+        `${name}: a random secret of at least 32 characters is required`
+      );
   }
   if (
     value("BETTER_AUTH_SECRET") &&
     value("BETTER_AUTH_SECRET") === value("OTP_SECRET")
   )
-    errors.push("OTP_SECRET: חייב להיות שונה מ־BETTER_AUTH_SECRET");
+    errors.push("OTP_SECRET: must differ from BETTER_AUTH_SECRET");
 
   const mailKey = required("MAIL_ENCRYPTION_KEY");
   if (mailKey && !/^[a-f0-9]{64}$/i.test(mailKey))
-    errors.push("MAIL_ENCRYPTION_KEY: נדרשים 32 בייט בהקסדצימלי (64 תווים)");
+    errors.push(
+      "MAIL_ENCRYPTION_KEY: 32 bytes in hexadecimal (64 characters) are required"
+    );
   else if (mailKey && isDevelopmentValue(mailKey))
-    errors.push("MAIL_ENCRYPTION_KEY: המפתח לקוח מסביבת הפיתוח");
+    errors.push("MAIL_ENCRYPTION_KEY: the key is taken from development");
 
   const transport = required("MAIL_TRANSPORT");
   if (transport && !["disabled", "brevo"].includes(transport))
-    errors.push("MAIL_TRANSPORT: ערך מותר הוא disabled או brevo");
+    errors.push("MAIL_TRANSPORT: allowed values are disabled or brevo");
   if (transport === "brevo") {
     required("BREVO_API_KEY");
     const sender = required("BREVO_SENDER_EMAIL");
     if (sender && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sender))
-      errors.push("BREVO_SENDER_EMAIL: נדרשת כתובת מייל תקינה");
+      errors.push("BREVO_SENDER_EMAIL: a valid email address is required");
   }
 
   const zone = value("MAIL_QUOTA_TIME_ZONE") || "UTC";
   if (!DateTime.now().setZone(zone).isValid)
-    errors.push("MAIL_QUOTA_TIME_ZONE: אזור זמן לא מוכר");
+    errors.push("MAIL_QUOTA_TIME_ZONE: unknown time zone");
 
   if (
     Boolean(value("GOOGLE_CLIENT_ID")) !==
     Boolean(value("GOOGLE_CLIENT_SECRET"))
   )
     errors.push(
-      "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET: יש למלא את שניהם או להשאיר את שניהם ריקים"
+      "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET: set both or leave both empty"
     );
 
   // Backups (decision 173). An empty BACKUP_STORAGE switches them off; the
@@ -112,7 +121,7 @@ export function validateDeploymentConfig(env: Env): string[] {
   const backup = value("BACKUP_STORAGE");
   if (!["", "drive", "directory"].includes(backup))
     errors.push(
-      "BACKUP_STORAGE: ערך מותר הוא drive או directory, או ריק לכיבוי"
+      "BACKUP_STORAGE: allowed values are drive or directory, or empty to switch backups off"
     );
   if (backup === "drive")
     for (const name of [
@@ -126,14 +135,14 @@ export function validateDeploymentConfig(env: Env): string[] {
     const recipient = required("AGE_RECIPIENT");
     if (recipient && !/^age1[0-9a-z]{58}$/.test(recipient))
       errors.push(
-        "AGE_RECIPIENT: נדרש מפתח ציבורי של age (age1…), לא מפתח פרטי"
+        "AGE_RECIPIENT: an age public key (age1…) is required, not a private key"
       );
   }
   if (value("BACKUP_TIME") && !validBackupTime(value("BACKUP_TIME")))
-    errors.push("BACKUP_TIME: נדרשת שעה בתבנית HH:MM");
+    errors.push("BACKUP_TIME: a time in HH:MM format is required");
 
   if (!["", "true", "false"].includes(value("RESTORE_MODE")))
-    errors.push("RESTORE_MODE: ערך מותר הוא true או false");
+    errors.push("RESTORE_MODE: allowed values are true or false");
 
   return errors;
 }

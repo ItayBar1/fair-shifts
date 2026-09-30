@@ -6,7 +6,7 @@ try {
     process.env.RECOVERY_REASON ?? ""
   );
   console.log(
-    "הגישה שוחררה ונדרשת התחברות מחדש. קודי שחזור חדשים לשמירה מחוץ למאגר:"
+    "Access released; a new sign-in is required. New recovery codes, keep them outside the repository:"
   );
   console.log(codes.join("\n"));
 } finally {

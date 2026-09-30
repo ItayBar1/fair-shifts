@@ -5,7 +5,7 @@ if command -v docker >/dev/null 2>&1; then
 elif [ -x /Applications/Docker.app/Contents/Resources/bin/docker ]; then
   docker_bin=/Applications/Docker.app/Contents/Resources/bin/docker
 else
-  echo 'Docker לא נמצא. יש להתקין ולהפעיל Docker Desktop.' >&2
+  echo 'Docker was not found. Install and start Docker (Docker Desktop on a Mac).' >&2
   exit 1
 fi
 if [ -z "${DOCKER_HOST:-}" ] && [ ! -S /var/run/docker.sock ] && [ -S "$HOME/.docker/run/docker.sock" ]; then
