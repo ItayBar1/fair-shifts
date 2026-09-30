@@ -46,6 +46,14 @@ export function classifyProviderStatus(status: number): FailureCategory {
   return "transient";
 }
 
+// Domains reserved for tests and examples (RFC 2606, RFC 6761): no mailbox can
+// exist there. Synthetic staging data uses them, and the provider never gets
+// them, so they cost no quota and no bounce (decision 190).
+const reservedDomain =
+  /(^|\.)(invalid|test|example|localhost)$|(^|\.)example\.(com|net|org)$/i;
+export const reservedAddress = (address: string) =>
+  reservedDomain.test(address.slice(address.lastIndexOf("@") + 1));
+
 /** Only these categories are stored; provider responses are never persisted. */
 export type OutboxError =
   | "delivery_failed"
@@ -56,7 +64,8 @@ export type OutboxError =
   | "not_relevant"
   | "superseded"
   | "recipient_unavailable"
-  | "preference_disabled";
+  | "preference_disabled"
+  | "reserved_address";
 
 type Closable = { attempts: number; error: string | null };
 /**

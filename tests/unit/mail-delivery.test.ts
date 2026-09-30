@@ -10,6 +10,7 @@ import {
   emailText,
   publicationVersion,
   quotaAllows,
+  reservedAddress,
   retryAt,
 } from "../../src/domain/mail-delivery";
 
@@ -85,5 +86,29 @@ describe("mail delivery rules (decision 177)", () => {
       version: 5,
     });
     expect(publicationVersion("transfer:r1:offer:acct")).toBeNull();
+  });
+});
+
+describe("addresses reserved for tests (decision 190)", () => {
+  it("recognises the reserved domains and nothing else", () => {
+    for (const address of [
+      "soldier01@example.invalid",
+      "SOLDIER@EXAMPLE.INVALID",
+      "someone@unit.test",
+      "a@example",
+      "a@host.localhost",
+      "a@example.com",
+      "a@mail.example.org",
+      "a@example.net",
+    ])
+      expect(reservedAddress(address), address).toBe(true);
+    for (const address of [
+      "tester@gmail.com",
+      "a@invalid.com",
+      "a@myexample.com",
+      "a@example.co.il",
+      "a@test.org",
+    ])
+      expect(reservedAddress(address), address).toBe(false);
   });
 });
