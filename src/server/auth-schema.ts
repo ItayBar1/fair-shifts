@@ -99,6 +99,7 @@ export const account = pgTable(
   },
   (t) => [
     uniqueIndex("auth_provider_subject").on(t.providerId, t.accountId),
+    uniqueIndex("auth_account_user_provider").on(t.userId, t.providerId),
     index("auth_account_user").on(t.userId),
   ]
 );

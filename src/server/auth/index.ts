@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import * as tables from "../auth-schema";
@@ -73,7 +73,10 @@ function configureAuth() {
           }
         : {},
     account: {
-      accountLinking: { enabled: true, trustedProviders: ["google"] },
+      // The invitation address is the local proof, so an invited person may
+      // start with Google before ever using a code. Google is not trusted by
+      // name: the first link needs Google's own email_verified claim.
+      accountLinking: { enabled: true, requireLocalEmailVerified: false },
     },
     session: {
       expiresIn: 7 * 86400,
@@ -96,6 +99,27 @@ function configureAuth() {
     },
     databaseHooks: {
       user: { create: { before: async () => false } },
+      // Sign-in is bound to the provider's stable sub. Another Google account
+      // that shows the same address never becomes a second link. The unique
+      // index auth_account_user_provider settles a race between two; this
+      // check keeps the usual refusal from reaching a failed insert, whose
+      // log would carry the provider tokens.
+      account: {
+        create: {
+          before: async (value) => {
+            const [linked] = await db
+              .select({ id: tables.account.id })
+              .from(tables.account)
+              .where(
+                and(
+                  eq(tables.account.userId, value.userId),
+                  eq(tables.account.providerId, value.providerId)
+                )
+              );
+            if (linked) return false;
+          },
+        },
+      },
       session: {
         create: {
           before: async (value) =>
