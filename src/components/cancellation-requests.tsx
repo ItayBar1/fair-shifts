@@ -59,7 +59,8 @@ export function CancellationRequestButton({
   if (started(state, duty))
     return (
       <Notice>
-        התורנות כבר התחילה. לשינוי במהלך הביצוע יש לפנות לאחראי התורנויות.
+        התורנות כבר התחילה, ולכן אי אפשר לבקש ביטול או דחייה. אפשר לבקש מחליף,
+        והאחראי יקבע את מועד החילוף.
       </Notice>
     );
   const open = requestsOf(state).find(

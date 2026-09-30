@@ -7,6 +7,7 @@ import {
   str,
   num,
   rows,
+  obj,
   displayDate,
   personName,
 } from "@/client/types";
@@ -37,6 +38,11 @@ const future = (state: AppState, duty?: Row) =>
     new Date(str(state.serverNow)).getTime();
 const dutyOf = (state: AppState, id: unknown) =>
   state.duties.find((item) => item.id === id);
+/** A seat can still change hands until its own period ends; after the start only through a manager. */
+const open = (state: AppState, seat: Row, duty?: Row) =>
+  !!duty &&
+  new Date(str(seat.performedEnd, str(duty.end))).getTime() >
+    new Date(str(state.serverNow)).getTime();
 
 /** Offer form on the duty page: swap my seat for one of several seats of other soldiers. */
 export function SwapOffer({
@@ -59,7 +65,7 @@ export function SwapOffer({
     !soldierId ||
     !seat ||
     duty.status !== "published" ||
-    !future(state, duty) ||
+    !open(state, seat, duty) ||
     state.requests.some(
       (row) =>
         ["transfer", "swap"].includes(str(row.type)) &&
@@ -75,7 +81,9 @@ export function SwapOffer({
         row.status === "reserved" &&
         row.soldierId !== soldierId &&
         other?.status === "published" &&
-        future(state, other) &&
+        open(state, row, other) &&
+        // Two seats of one started duty cannot be swapped.
+        (future(state, other) || other.id !== duty.id) &&
         !state.soldiers.find((item) => item.id === row.soldierId)?.deletedAt
       );
     })
@@ -98,7 +106,7 @@ export function SwapOffer({
     <ActionDialog
       title="הצעת החלפה"
       buttonLabel="הצעת החלפה"
-      description={`בחרו שיבוץ אחד או כמה של חיילים אחרים. הראשון שיסכים יקבל את התורנות שלך (${num(seat.points)} נקודות), ואת/ה תקבל/י את התורנות שלו עם הניקוד שלה. שני השיבוצים מתחלפים יחד או לא מתחלפים כלל, ועד אז השיבוץ שלך בתוקף.`}
+      description={`בחרו שיבוץ אחד או כמה של חיילים אחרים. הראשון שיסכים יקבל את התורנות שלך (${num(seat.points)} נקודות), ואת/ה תקבל/י את התורנות שלו עם הניקוד שלה. שני השיבוצים מתחלפים יחד או לא מתחלפים כלל, ועד אז השיבוץ שלך בתוקף.${future(state, duty) ? "" : " התורנות שלך כבר התחילה: אחרי ההסכמה אחראי יקבע את מועד החילוף, והניקוד בה יחושב לפי הזמן שכל אחד ביצע."}`}
       fields={[
         {
           name: "targetAssignmentIds",
@@ -189,6 +197,7 @@ function SwapDecision({
   row: Row;
 }) {
   const [review, setReview] = useState<Record<string, unknown> | null>(null);
+  const [times, setTimes] = useState<Record<string, string>>({});
   const sides = rows(review?.sides);
   const requirements = sides.flatMap((side) =>
     rows(side.requirements).map((item): Row => ({
@@ -196,7 +205,18 @@ function SwapDecision({
       sideId: side.soldierId,
     }))
   );
-  const close = () => setReview(null);
+  const close = () => {
+    setReview(null);
+    setTimes({});
+  };
+  const load = async (handovers: Record<string, string> = {}) =>
+    setReview(
+      await action(
+        "swap.review",
+        { id: row.id, ...handovers },
+        num(row.version)
+      )
+    );
   const accepted = rows(row.candidates).find(
     (item) => item.assignmentId === row.acceptedAssignmentId
   );
@@ -221,28 +241,40 @@ function SwapDecision({
       danger
     />
   );
-  const startedAny =
-    !future(state, dutyOf(state, row.dutyId)) ||
-    !future(state, dutyOf(state, accepted?.dutyId));
-  if (startedAny)
-    return (
-      <>
-        <Notice tone="warning">
-          אחת התורנויות כבר התחילה. החלפה אחרי התחלה תטופל במסלול תקופות הביצוע,
-          ועד אז השיבוצים המקוריים והניקוד השמור בתוקף. אפשר לדחות את ההחלפה.
-        </Notice>
-        {reject}
-      </>
-    );
+  const periods = obj(review?.periods);
+  const handoverFields: Field[] = [
+    ...(periods.seat
+      ? [
+          {
+            name: "handoverAt",
+            label: `מועד החילוף ב${str(row.dutyName)}`,
+            type: "datetime-local" as const,
+            required: true,
+            value: times.handoverAt,
+            hint: `בתוך תקופת הביצוע של ${personName(state, row.fromSoldierId)}: ${displayDate(obj(periods.seat).start, true)} — ${displayDate(obj(periods.seat).end, true)}`,
+          },
+        ]
+      : []),
+    ...(periods.target
+      ? [
+          {
+            name: "targetHandoverAt",
+            label: `מועד החילוף ב${str(accepted?.dutyName)}`,
+            type: "datetime-local" as const,
+            required: true,
+            value: times.targetHandoverAt,
+            hint: `בתוך תקופת הביצוע של ${personName(state, accepted?.soldierId)}: ${displayDate(obj(periods.target).start, true)} — ${displayDate(obj(periods.target).end, true)}`,
+          },
+        ]
+      : []),
+  ];
   return (
     <>
       <button
         className="btn secondary"
         onClick={async () => {
           try {
-            setReview(
-              await action("swap.review", { id: row.id }, num(row.version))
-            );
+            await load();
           } catch {
             /* workspace displays API error */
           }
@@ -255,20 +287,47 @@ function SwapDecision({
         <Modal title="אישור החלפה" onClose={close}>
           {!review.valid ? (
             <Notice tone="danger">{str(review.message)}</Notice>
-          ) : review.started ? (
-            <Notice tone="warning">
-              אחת התורנויות כבר התחילה. החלפה אחרי התחלה תטופל במסלול תקופות
-              הביצוע.
-            </Notice>
+          ) : review.handoverRequired ? (
+            <Form
+              fields={handoverFields}
+              submitLabel="חישוב התקופות"
+              onSubmit={async (values) => {
+                const next = Object.fromEntries(
+                  Object.entries(values).map(([key, value]) => [
+                    key,
+                    str(value),
+                  ])
+                );
+                setTimes(next);
+                await load(next);
+              }}
+              onCancel={close}
+            />
           ) : (
             <>
-              <Notice>
-                {personName(state, accepted?.soldierId)} יקבל את{" "}
-                {str(row.dutyName)} ({num(row.points)} נקודות), ו
-                {personName(state, row.fromSoldierId)} יקבל את{" "}
-                {str(accepted?.dutyName)} ({num(accepted?.points)} נקודות). שני
-                השיבוצים מתחלפים יחד.
-              </Notice>
+              {review.started ? (
+                <Notice>
+                  אחת התורנויות כבר התחילה. בתורנות שהתחילה כל אחד מקבל ניקוד
+                  לפי הזמן שביצע:{" "}
+                  {sides
+                    .flatMap((side) => rows(obj(side.execution).changes))
+                    .filter((change) => change.kind !== "keep")
+                    .map(
+                      (change) =>
+                        `${str(change.name)} ${num(obj(change.price).points)} נקודות`
+                    )
+                    .join(" · ")}
+                  . תורנות שטרם התחילה עוברת במלואה.
+                </Notice>
+              ) : (
+                <Notice>
+                  {personName(state, accepted?.soldierId)} יקבל את{" "}
+                  {str(row.dutyName)} ({num(row.points)} נקודות), ו
+                  {personName(state, row.fromSoldierId)} יקבל את{" "}
+                  {str(accepted?.dutyName)} ({num(accepted?.points)} נקודות).
+                  שני השיבוצים מתחלפים יחד.
+                </Notice>
+              )}
               {sides.flatMap((side) =>
                 rows(side.blockers).map((item, index) => (
                   <Notice tone="danger" key={`${str(side.soldierId)}-${index}`}>
@@ -319,6 +378,7 @@ function SwapDecision({
                         previewToken: review.previewToken,
                         approvalReason: values.approvalReason,
                         approvalKeys: requirements.map((item) => item.key),
+                        ...times,
                       },
                       num(row.version)
                     );

@@ -17,8 +17,9 @@ import { Badge, Modal, Notice, Panel } from "./ui";
 // Execution periods of a seat in a duty that started (decision 183).
 
 const ZONE = "Asia/Jerusalem";
-const local = (value: string) =>
-  DateTime.fromISO(value).setZone(ZONE).toFormat("yyyy-MM-dd'T'HH:mm");
+// A typed wall-clock time is Israel time, whatever the browser's own time zone.
+const moment = (value: string) => DateTime.fromISO(value, { zone: ZONE });
+const local = (value: string) => moment(value).toFormat("yyyy-MM-dd'T'HH:mm");
 
 type Segment = { soldierId: string | null; start: string; end: string };
 
@@ -240,8 +241,8 @@ function SeatEditor({
   const splitLast = () => {
     const next = segments.map((segment) => ({ ...segment }));
     const last = next.at(-1)!;
-    const from = DateTime.fromISO(last.start).setZone(ZONE);
-    const to = DateTime.fromISO(last.end).setZone(ZONE);
+    const from = moment(last.start);
+    const to = moment(last.end);
     const middle = from
       .plus({ milliseconds: to.diff(from).as("milliseconds") / 2 })
       .startOf("hour");
@@ -290,7 +291,7 @@ function SeatEditor({
           )}
           <ol className="execution-segments">
             {segments.map((segment, index) => (
-              <li key={index} className="form-grid">
+              <li key={index} className="execution-segment">
                 <label className="field">
                   <span>מבצע בתקופה {index + 1}</span>
                   <span className="select-wrap">
@@ -313,7 +314,7 @@ function SeatEditor({
                   </span>
                 </label>
                 <label className="field">
-                  <span>מ־</span>
+                  <span>התחלה</span>
                   <input
                     aria-label={`תחילת תקופה ${index + 1}`}
                     type="datetime-local"
@@ -323,7 +324,7 @@ function SeatEditor({
                   />
                 </label>
                 <label className="field">
-                  <span>עד</span>
+                  <span>סיום</span>
                   <input
                     aria-label={`סיום תקופה ${index + 1}`}
                     type="datetime-local"

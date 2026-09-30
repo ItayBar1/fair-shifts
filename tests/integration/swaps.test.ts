@@ -494,7 +494,7 @@ describe("mutual swap by consent before the start", () => {
     }
   });
 
-  it("sends a swap whose duty started to a manager, who cannot complete it before performance periods and may reject it with a visible reason", async () => {
+  it("sends a swap whose duty started to a manager, who needs a handover time to approve it and may reject it with a visible reason", async () => {
     const first = await publishedDuty([{ person: alon }], 2, "שמירה");
     const second = await publishedDuty([{ person: bar }], 4, "מטבח");
     const seatA = await seatOf(first.id, alon);
@@ -521,6 +521,7 @@ describe("mutual swap by consent before the start", () => {
         row.version
       )
     ).rejects.toThrow("לאחראי");
+    // After the start a seat is split at a handover the manager sets (decision 183).
     await expect(
       command(
         manager,
@@ -534,7 +535,7 @@ describe("mutual swap by consent before the start", () => {
         },
         row.version
       )
-    ).rejects.toThrow("כבר התחילה");
+    ).rejects.toThrow("מועד החילוף");
     await command(
       manager,
       "swap.decide",
@@ -710,9 +711,10 @@ describe("mutual swap by consent before the start", () => {
     // A seat whose duty already started is not on offer.
     const third = await publishedDuty([{ person: chen }], 4, "סיור");
     await startNow(third.id);
+    // A started fixed-rate seat cannot be split until fixed shares are supported (#19).
     await expect(
       offer(alon, first.id, [(await seatOf(third.id, chen)).id])
-    ).rejects.toThrow("טרם התחילה");
+    ).rejects.toThrow("#19");
     // Managers cannot offer on a soldier's behalf.
     const seatA = await seatOf(first.id, alon);
     await expect(

@@ -27,6 +27,18 @@ import type {
 import { closeRequestsOfTransferredSeat } from "./cancellation-requests";
 import { cancelStaleDutyReminders } from "./duty-reminder-checks";
 import {
+  commitExecution,
+  executionView,
+  handoverSegments,
+  parseHandover,
+  planExecution,
+  seatOf,
+  splitBlocker,
+  type ExecutionPlan,
+} from "./execution";
+import { remainingPeriod } from "./transfers";
+import { executionPeriod } from "../domain/execution";
+import {
   accountOf,
   approvalKey,
   closeSeatRequests,
@@ -101,7 +113,7 @@ const notify = (
 function afterSwap(
   state: Domain,
   soldierId: string,
-  seat: Pick<Assignment, "dutyId" | "slotId">,
+  seat: Assignment,
   leaving: string,
   approvals: SpecificApproval[] = []
 ) {
@@ -110,7 +122,9 @@ function afterSwap(
   invariant(person && duty, "not_found", "החייל או התורנות לא נמצאו", 404);
   const slot = duty.slots.find((row) => row.id === seat.slotId);
   invariant(slot, "not_found", "המקום לא נמצא בתורנות", 404);
-  return evaluateEligibility(person, duty, slot, {
+  // A seat that started can only be taken over for what is left of it (decision 183).
+  const rest = remainingPeriod(seat, duty);
+  return evaluateEligibility(person, rest ? { ...duty, ...rest } : duty, slot, {
     duties: state.duties,
     assignments: state.assignments,
     // Both soldiers consented, so both are volunteers (decision 163).
@@ -118,6 +132,26 @@ function afterSwap(
     ignoreAssignmentIds: [leaving],
     approvals,
   });
+}
+
+/** A seat can be offered until its own period ends; after the start only if it can be split. */
+function movable(state: Domain, seat: Assignment, duty: Duty, whose: string) {
+  invariant(
+    instant(executionPeriod(seat, duty).end).toMillis() > Date.now(),
+    "performance_ended",
+    `הביצוע בתורנות ${whose} כבר הסתיים. תיקון ביצוע נעשה בידי אחראי`
+  );
+  if (!hasStarted(duty)) return;
+  const blocker = splitBlocker(
+    duty,
+    state.assignments.filter(
+      (row) =>
+        row.dutyId === duty.id &&
+        row.slotId === seat.slotId &&
+        row.status !== "cancelled"
+    )
+  );
+  invariant(!blocker, "not_swappable", blocker!);
 }
 
 export async function offerSwap(
@@ -155,11 +189,8 @@ export async function offerSwap(
     "not_swappable",
     "ניתן להציע להחלפה רק שיבוץ בתורנות שפורסמה"
   );
-  invariant(
-    !hasStarted(duty),
-    "performance_started",
-    "התורנות כבר התחילה. בקשת החלפה במהלך ביצוע מטופלת בידי אחראי"
-  );
+  // After the start an offer is still possible, but it always goes to a manager (decision 183).
+  movable(state, seat, duty, "שלך");
   const open = await openSeatRequests(tx);
   invariant(
     !seatCommitted(open, seat.id),
@@ -184,9 +215,15 @@ export async function offerSwap(
     const other = state.duties.find((row) => row.id === target.dutyId);
     const person = state.soldiers.find((row) => row.id === target.soldierId);
     invariant(
-      other && other.status === "published" && !hasStarted(other),
+      other && other.status === "published",
       "invalid_target",
-      "אפשר להחליף רק עם תורנות שפורסמה וטרם התחילה"
+      "אפשר להחליף רק עם תורנות שפורסמה"
+    );
+    movable(state, target, other, `של ${other.name}`);
+    invariant(
+      !(target.dutyId === seat.dutyId && hasStarted(other)),
+      "invalid_target",
+      "אחרי תחילת התורנות אי אפשר להחליף בין שני מקומות באותה תורנות"
     );
     invariant(
       person && !person.deletedAt && (await accountOf(tx, person.id)),
@@ -255,15 +292,30 @@ export async function offerSwap(
       event: "offer",
       requestId: row.id,
       title: "הוצעה לך החלפת תורנויות",
-      body: `${offerer} מציע לך לקבל את התורנות ${duty.name} במקום ${theirs.map((item) => item.dutyName).join(" או ")}. אפשר להסכים או לדחות במסך ההחלפות.`,
-      email: true,
-      expiresAt: Math.min(
-        instant(duty.start).toMillis(),
-        ...theirs.map((item) =>
-          instant(
-            state.duties.find((row) => row.id === item.dutyId)!.start
-          ).toMillis()
+      body: `${offerer} מציע לך לקבל את התורנות ${duty.name} במקום ${theirs.map((item) => item.dutyName).join(" או ")}. אפשר להסכים או לדחות במסך ההחלפות.${
+        hasStarted(duty) ||
+        theirs.some((item) =>
+          hasStarted(state.duties.find((row) => row.id === item.dutyId)!)
         )
+          ? " אחת התורנויות כבר התחילה, ולכן אחרי ההסכמה אחראי יקבע את מועד החילוף."
+          : ""
+      }`,
+      email: true,
+      // Relevant until the first seat involved can no longer change hands.
+      expiresAt: Math.min(
+        instant(executionPeriod(seat, duty).end).toMillis(),
+        ...theirs.map((item) => {
+          const other = state.duties.find((row) => row.id === item.dutyId)!;
+          const target = state.assignments.find(
+            (row) => row.id === item.assignmentId
+          )!;
+          return instant(
+            hasStarted(other) ? executionPeriod(target, other).end : other.start
+          ).toMillis();
+        }),
+        hasStarted(duty)
+          ? Number.MAX_SAFE_INTEGER
+          : instant(duty.start).toMillis()
       ),
     });
   }
@@ -994,6 +1046,357 @@ function sides(
   ];
 }
 
+const handovers = {
+  handoverAt: z.string().max(40).optional(),
+  handoverOffset: z.number().optional(),
+  targetHandoverAt: z.string().max(40).optional(),
+  targetHandoverOffset: z.number().optional(),
+};
+function handoverTimes(input: {
+  handoverAt?: string;
+  handoverOffset?: number;
+  targetHandoverAt?: string;
+  targetHandoverOffset?: number;
+}) {
+  return {
+    seat: parseHandover(input.handoverAt, input.handoverOffset),
+    target: parseHandover(input.targetHandoverAt, input.targetHandoverOffset),
+  };
+}
+
+/**
+ * A swap after the start (decision 183): a side that started is split at the handover the
+ * manager sets, and a side that did not start moves whole. Each incoming soldier is checked
+ * against their own period, with the other side already as it will be after the swap.
+ */
+async function startedSwap(
+  tx: DbTransaction,
+  input: {
+    row: Workflow;
+    data: SwapData;
+    state: Domain;
+    entry: SwapEntry;
+    seat: Assignment;
+    target: Assignment;
+    duty: Duty;
+    other: Duty;
+    at: { seat?: string; target?: string };
+  }
+) {
+  const { data, state, entry } = input;
+  const sides = [
+    {
+      row: input.seat,
+      duty: input.duty,
+      leaving: data.fromSoldierId,
+      incoming: entry.soldierId,
+      at: input.at.seat,
+      dutyName: data.dutyName,
+    },
+    {
+      row: input.target,
+      duty: input.other,
+      leaving: entry.soldierId,
+      incoming: data.fromSoldierId,
+      at: input.at.target,
+      dutyName: entry.dutyName,
+    },
+  ];
+  // The seat as it will stand after this side of the swap, for the other side's checks.
+  const after = (side: (typeof sides)[number]): Assignment[] => {
+    const period = executionPeriod(side.row, side.duty);
+    const incoming = {
+      id: `swap:${side.row.id}`,
+      dutyId: side.row.dutyId,
+      slotId: side.row.slotId,
+      soldierId: side.incoming,
+      points: 0,
+      status: "reserved" as const,
+      version: 0,
+      ...(side.at && { performedStart: side.at, performedEnd: period.end }),
+    };
+    return side.at
+      ? [
+          {
+            ...side.row,
+            performedStart: period.start,
+            performedEnd: side.at,
+            performance: undefined,
+          },
+          incoming,
+        ]
+      : [{ ...side.row, status: "cancelled" as const }, incoming];
+  };
+  const moves: {
+    incoming: string;
+    dutyName: string;
+    plan?: ExecutionPlan;
+    blockers: EligibilityReason[];
+    requirements: (EligibilityReason & { key: string })[];
+  }[] = [];
+  for (const [index, side] of sides.entries()) {
+    const counterpart = after(sides[1 - index]!);
+    if (side.at) {
+      const { segments } = await seatOf(tx, side.row);
+      const plan = await planExecution(tx, {
+        dutyId: side.duty.id,
+        slotId: side.row.slotId,
+        segments: handoverSegments(
+          segments,
+          side.leaving,
+          side.incoming,
+          side.at
+        ),
+        mode: "volunteer",
+        overrides: counterpart,
+      });
+      const change = plan.changes.find(
+        (item) => item.soldierId === side.incoming
+      );
+      moves.push({
+        incoming: side.incoming,
+        dutyName: side.dutyName,
+        plan,
+        blockers: change?.eligibility?.blockers ?? [],
+        requirements: change?.eligibility?.requirements ?? [],
+      });
+      continue;
+    }
+    const replaced = new Set(counterpart.map((row) => row.id));
+    const person = state.soldiers.find((row) => row.id === side.incoming)!;
+    const slot = side.duty.slots.find((row) => row.id === side.row.slotId)!;
+    const result = evaluateEligibility(person, side.duty, slot, {
+      duties: state.duties,
+      assignments: state.assignments
+        .filter((row) => !replaced.has(row.id))
+        .concat(counterpart),
+      mode: "volunteer",
+    });
+    moves.push({
+      incoming: side.incoming,
+      dutyName: side.dutyName,
+      blockers: result.blockers,
+      requirements: result.approvalsRequired.map((reason) => ({
+        ...reason,
+        key: `${side.incoming}|${approvalKey(reason)}`,
+      })),
+    });
+  }
+  const token = createHash("sha256")
+    .update(
+      JSON.stringify({
+        review: reviewToken(state, input.row, data),
+        at: input.at,
+        plans: moves.map((move) => move.plan?.token ?? null),
+        requirements: moves.map((move) => move.requirements.map((r) => r.key)),
+      })
+    )
+    .digest("hex");
+  return { sides, moves, token };
+}
+
+async function decideStartedSwap(
+  tx: DbTransaction,
+  actor: Actor,
+  context: {
+    input: {
+      previewToken: string;
+      approvalReason?: string;
+      approvalKeys: string[];
+      handoverAt?: string;
+      handoverOffset?: number;
+      targetHandoverAt?: string;
+      targetHandoverOffset?: number;
+    };
+    row: Workflow;
+    data: SwapData;
+    state: Domain;
+    entry: SwapEntry;
+    seat: Assignment;
+    target: Assignment;
+    duty: Duty;
+    other: Duty;
+  }
+) {
+  const { input, row, data, state, entry, seat, target, duty, other } = context;
+  invariant(
+    seat.dutyId !== target.dutyId,
+    "same_duty_started",
+    "אחרי תחילת התורנות אי אפשר להחליף בין שני מקומות באותה תורנות. אפשר לדחות את ההחלפה",
+    409
+  );
+  const at = handoverTimes(input);
+  invariant(
+    (!hasStarted(duty) || at.seat) && (!hasStarted(other) || at.target),
+    "handover_required",
+    "אחת התורנויות כבר התחילה. יש לבדוק שוב ולהזין את מועד החילוף",
+    409
+  );
+  const planned = await startedSwap(tx, { ...context, at });
+  invariant(
+    input.previewToken === planned.token,
+    "stale_preview",
+    "נתוני ההחלפה או הביצוע השתנו מאז הבדיקה. יש לבדוק שוב לפני החלטה",
+    409
+  );
+  invariant(
+    planned.moves.every((move) => !move.blockers.length),
+    "candidate_ineligible",
+    "אחד הצדדים אינו עומד כעת בתנאי התורנות. אפשר לדחות את ההחלפה עם סיבה",
+    422
+  );
+  const required = planned.moves.flatMap((move) => move.requirements);
+  if (required.length)
+    invariant(
+      input.approvalReason,
+      "approval_required",
+      "נדרשת סיבה לאישור החריגים",
+      422
+    );
+  for (const reason of required) {
+    invariant(
+      input.approvalKeys.includes(reason.key),
+      "approval_required",
+      "נדרש אישור נפרד לכל חריג"
+    );
+    invariant(
+      ["exemption", "rank"].includes(reason.code),
+      "unknown_exception",
+      "אין סמכות לחריגה מהתנאי הזה"
+    );
+  }
+  const now = new Date().toISOString();
+  const fromName = nameOf(state.soldiers, data.fromSoldierId);
+  const toName = nameOf(state.soldiers, entry.soldierId);
+  const results: string[] = [];
+  const executionIds: string[] = [];
+  for (const [index, side] of planned.sides.entries()) {
+    const move = planned.moves[index]!;
+    if (side.at) {
+      // A second split is planned again on the state the first one left behind.
+      const plan =
+        index === 0 || !planned.sides[0]!.at
+          ? move.plan!
+          : await planExecution(tx, {
+              dutyId: side.duty.id,
+              slotId: side.row.slotId,
+              segments: handoverSegments(
+                (await seatOf(tx, side.row)).segments,
+                side.leaving,
+                side.incoming,
+                side.at
+              ),
+              mode: "volunteer",
+            });
+      const execution = await commitExecution(tx, actor, plan, {
+        reason: `החלפה במהלך ביצוע בין ${fromName} ל${toName}`,
+        mode: "volunteer",
+        approvalKeys: input.approvalKeys,
+        approvalReason: input.approvalReason,
+        requestId: row.id,
+      });
+      executionIds.push(execution.id);
+      results.push(
+        plan.changes.find((change) => change.soldierId === side.incoming)!.rowId
+      );
+      continue;
+    }
+    const person = state.soldiers.find((item) => item.id === side.incoming)!;
+    const approvals: SpecificApproval[] = move.requirements.map((reason) => ({
+      kind: reason.code as SpecificApproval["kind"],
+      soldierId: person.id,
+      soldierVersion: person.version,
+      dutyId: side.duty.id,
+      dutyVersion: rulesVersion(side.duty),
+      referenceId: reason.referenceId,
+      referenceVersion: reason.referenceVersion,
+      reason: input.approvalReason!,
+      approvedBy: actor.id,
+      approvedAt: now,
+    }));
+    await release(tx, side.row, row.id, side.incoming);
+    results.push(await occupy(tx, side.row, side.incoming, row.id, approvals));
+    await tx
+      .update(duties)
+      .set({
+        version: side.duty.version + 1,
+        data: {
+          ...side.duty,
+          rulesVersion: rulesVersion(side.duty),
+          version: side.duty.version + 1,
+        } as Duty & { name: string; location: string; instructions: string },
+        updatedAt: new Date(),
+      })
+      .where(eq(duties.id, side.duty.id));
+    await cancelStaleDutyReminders(tx, side.duty.id);
+    await closeSeatRequests(
+      tx,
+      { assignmentIds: [side.row.id], exceptId: row.id },
+      "השיבוץ הוחלף בהסכמה עם חייל אחר"
+    );
+  }
+  await closeRequestsOfTransferredSeat(tx, seat.dutyId, data.fromSoldierId);
+  await closeRequestsOfTransferredSeat(tx, target.dutyId, entry.soldierId);
+  const updated = await updateRecord(tx, row, {
+    ...data,
+    status: "completed",
+    resultAssignmentIds: results,
+    handovers: at,
+    executionIds,
+    closedAt: now,
+    decidedBy: actor.id,
+    decidedByName: actor.name,
+    decidedAt: now,
+  });
+  const endsAt =
+    Math.max(instant(duty.end).toMillis(), instant(other.end).toMillis()) +
+    86_400_000;
+  const when = (value?: string) =>
+    value ? ` החל מ־${instant(value).toFormat("dd.MM.yyyy HH:mm")}` : "";
+  await notify(tx, data.fromSoldierId, {
+    event: "completed",
+    requestId: row.id,
+    title: "האחראי אישר את ההחלפה",
+    body: `${toName} מחליף אותך בתורנות ${data.dutyName}${when(at.seat)}, ואת/ה מחליף/ה אותו בתורנות ${entry.dutyName}${when(at.target)}. הניקוד בתורנות שהתחילה יחושב לפי הזמן שכל אחד ביצע.`,
+    email: true,
+    expiresAt: endsAt,
+  });
+  await notify(tx, entry.soldierId, {
+    event: "completed",
+    requestId: row.id,
+    title: "האחראי אישר את ההחלפה",
+    body: `${fromName} מחליף אותך בתורנות ${entry.dutyName}${when(at.target)}, ואת/ה מחליף/ה אותו בתורנות ${data.dutyName}${when(at.seat)}. הניקוד בתורנות שהתחילה יחושב לפי הזמן שכל אחד ביצע.`,
+    email: true,
+    expiresAt: endsAt,
+  });
+  await notifyManagers(
+    tx,
+    row.id,
+    "אחראי אישר החלפת תורנויות",
+    `${actor.name} אישר את ההחלפה במהלך ביצוע בין ${fromName} (${data.dutyName}) ל${toName} (${entry.dutyName}).`
+  );
+  await audit(
+    tx,
+    actor,
+    "swap.approve",
+    row.id,
+    {
+      dutyId: seat.dutyId,
+      dutyIds: [seat.dutyId, target.dutyId],
+      fromAssignmentIds: [seat.id, target.id],
+      toAssignmentIds: results,
+      executionIds,
+    },
+    data.fromSoldierId
+  );
+  return {
+    id: updated.id,
+    version: updated.version,
+    status: "completed",
+    assignmentIds: results,
+  };
+}
+
 /** Read-only review for a manager: both sides' eligibility after the swap and the exceptions to approve. */
 export async function reviewSwap(
   tx: DbTransaction,
@@ -1001,11 +1404,61 @@ export async function reviewSwap(
   payload: unknown,
   expectedVersion?: number
 ) {
-  const input = z.object({ id }).parse(payload);
+  const input = z.object({ id, ...handovers }).parse(payload);
   const { row, data, state, entry, seat, target, duty, other, changed } =
     await awaitingManager(tx, actor, input.id, expectedVersion);
   if (changed || !seat || !target || !duty || !other)
     return { valid: false, message: changed ?? "ההחלפה אינה תקפה עוד" };
+  if (hasStarted(duty) || hasStarted(other)) {
+    const periods = {
+      seat: hasStarted(duty) ? executionPeriod(seat, duty) : undefined,
+      target: hasStarted(other) ? executionPeriod(target, other) : undefined,
+    };
+    const at = handoverTimes(input);
+    if (seat.dutyId === target.dutyId)
+      return {
+        valid: false,
+        message:
+          "אחרי תחילת התורנות אי אפשר להחליף בין שני מקומות באותה תורנות. אפשר לדחות את ההחלפה",
+      };
+    if ((periods.seat && !at.seat) || (periods.target && !at.target))
+      return { valid: true, started: true, handoverRequired: true, periods };
+    const planned = await startedSwap(tx, {
+      row,
+      data,
+      state,
+      entry,
+      seat,
+      target,
+      duty,
+      other,
+      at,
+    });
+    return {
+      valid: true,
+      started: true,
+      periods,
+      handovers: at,
+      status: planned.moves.some((move) => move.blockers.length)
+        ? "blocked"
+        : planned.moves.some((move) => move.requirements.length)
+          ? "approval_required"
+          : "eligible",
+      sides: planned.moves.map((move) => ({
+        soldierId: move.incoming,
+        dutyName: move.dutyName,
+        status: move.blockers.length
+          ? "blocked"
+          : move.requirements.length
+            ? "approval_required"
+            : "eligible",
+        blockers: move.blockers,
+        requirements: move.requirements,
+        execution: move.plan && executionView(move.plan),
+      })),
+      previewToken: planned.token,
+    };
+  }
   const checked = sides(state, data, entry, seat, target);
   return {
     valid: true,
@@ -1050,6 +1503,7 @@ export async function decideSwap(
         approvalReason: z.string().trim().max(2000).optional(),
         approvalKeys: z.array(z.string()).default([]),
         confirmed: z.literal(true),
+        ...handovers,
       }),
     ])
     .parse(payload);
@@ -1104,13 +1558,19 @@ export async function decideSwap(
   }
   if (changed || !seat || !target || !duty || !other)
     return expire(tx, row, changed ?? "ההחלפה אינה תקפה עוד", "swap_invalid");
-  // After either start the seats move only through performance periods, never here.
-  invariant(
-    !hasStarted(duty) && !hasStarted(other),
-    "performance_started",
-    "אחת התורנויות כבר התחילה. החלפה אחרי התחלה מטופלת במסלול תקופות הביצוע; עד אז השיבוצים המקוריים בתוקף",
-    409
-  );
+  // After either start a started seat is split at the handover the manager sets (decision 183).
+  if (hasStarted(duty) || hasStarted(other))
+    return decideStartedSwap(tx, actor, {
+      input,
+      row,
+      data,
+      state,
+      entry,
+      seat,
+      target,
+      duty,
+      other,
+    });
   invariant(
     input.previewToken === reviewToken(state, row, data),
     "stale_preview",

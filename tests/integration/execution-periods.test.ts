@@ -689,6 +689,91 @@ describe("a replacement requested after the start", () => {
     expect(notes).toContain("קיבלת חלק מתורנות");
   });
 
+  it("swaps a started seat at a handover for a whole seat that has not started", async () => {
+    const running = await runningDuty([alon]);
+    const later = await runningDuty([bar], { startedHoursAgo: -48, hours: 24 });
+    const seatA = await rowOf(running.id, alon);
+    const seatB = await rowOf(later.id, bar);
+    // Two seats of the same started duty cannot be swapped.
+    const same = await runningDuty([alon, chen]);
+    await expect(
+      command(
+        alon,
+        "swap.offer",
+        {
+          assignmentId: (await rowOf(same.id, alon)).id,
+          targetAssignmentIds: [(await rowOf(same.id, chen)).id],
+        },
+        (await rowOf(same.id, alon)).version
+      )
+    ).rejects.toThrow("באותה תורנות");
+    const offer = await command(
+      alon,
+      "swap.offer",
+      { assignmentId: seatA.id, targetAssignmentIds: [seatB.id] },
+      seatA.version
+    );
+    const request = async () =>
+      (await db.select().from(records).where(eq(records.id, offer.id)))[0];
+    await command(
+      bar,
+      "swap.respond",
+      {
+        id: offer.id,
+        assignmentId: seatB.id,
+        decision: "accept",
+        confirmed: true,
+      },
+      (await request()).version
+    );
+    const waiting = await request();
+    expect(waiting.data.status).toBe("awaiting_manager");
+    const { version } = waiting;
+    expect(
+      await command(manager, "swap.review", { id: offer.id }, version)
+    ).toMatchObject({ started: true, handoverRequired: true });
+    const handoverAt = new Date(
+      new Date(running.data.start).getTime() + 18 * HOUR
+    ).toISOString();
+    const review = await command(
+      manager,
+      "swap.review",
+      { id: offer.id, handoverAt },
+      version
+    );
+    expect(review.status).toBe("eligible");
+    await command(
+      manager,
+      "swap.decide",
+      {
+        id: offer.id,
+        decision: "approve",
+        confirmed: true,
+        previewToken: review.previewToken,
+        handoverAt,
+      },
+      version
+    );
+    expect((await request()).data.status).toBe("completed");
+    // The started seat is split by actual time; the other seat moves whole with its value.
+    expect(await rowOf(running.id, alon)).toMatchObject({
+      status: "credited",
+      points: 3,
+    });
+    expect(await rowOf(running.id, bar)).toMatchObject({
+      status: "reserved",
+      points: 5,
+    });
+    expect(await rowOf(later.id, alon)).toMatchObject({
+      status: "reserved",
+      points: 4,
+    });
+    expect(
+      (await seatRows(later.id)).find((row) => row.id === seatB.id)?.status
+    ).toBe("cancelled");
+    expect(await balance(alon)).toBe(3);
+  });
+
   it("closes a referred cancellation request once the seat's periods are recorded", async () => {
     const duty = await runningDuty([alon]);
     const seat = await rowOf(duty.id, alon);
