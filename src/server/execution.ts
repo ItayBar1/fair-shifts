@@ -24,7 +24,6 @@ import {
   executionPeriod,
   normalizeSegments,
   samePeriod,
-  segmentPrice,
   within,
   type ExecutionSegment,
 } from "../domain/execution";
@@ -34,6 +33,7 @@ import {
   type LedgerEvent,
 } from "../domain/scoring";
 import { instant } from "../domain/time";
+import { priceSplitExecution } from "../domain/pricing";
 import type {
   Assignment,
   Duty,
@@ -61,10 +61,22 @@ const segmentInput = z.object({
   startOffset: z.number().optional(),
   endOffset: z.number().optional(),
 });
+const amount = z
+  .string()
+  .trim()
+  .max(30)
+  .regex(/^\d+(?:\.\d+)?$/);
+export const fixedAllocationInput = z.object({
+  soldierId: id,
+  fixedBase: amount.optional(),
+  fixedExtra: amount,
+});
+export type FixedAllocation = z.infer<typeof fixedAllocationInput>;
 const executionInput = z.object({
   dutyId: id,
   slotId: id,
   segments: z.array(segmentInput).min(1).max(24),
+  allocations: z.array(fixedAllocationInput).max(24).optional(),
   reason: text,
   reviewPending: z.boolean().default(false),
   approvalReason: z.string().trim().max(2000).optional(),
@@ -119,6 +131,7 @@ export interface Change {
   from?: InstantRange;
   to?: InstantRange;
   price?: PriceBreakdown;
+  allocation?: FixedAllocation;
   /** Points before the change: stored for an open row, recorded for a credited one. */
   pointsBefore: number;
   effect?: Effect;
@@ -136,6 +149,7 @@ export interface ExecutionPlanOptions {
   mode: "manual" | "volunteer";
   reviewPending?: boolean;
   approvalKeys?: string[];
+  allocations?: FixedAllocation[];
   /** Assignments of other seats as they will be after the same operation (a swap moves two). */
   overrides?: SeatRow[];
 }
@@ -200,18 +214,72 @@ async function seatRecordOf(tx: DbTransaction, dutyId: string, slotId: string) {
   );
 }
 
-function hasFixedExtra(row: SeatRow) {
-  const extra = new Decimal(row.extraPoints || "0");
-  return extra.isFinite() && extra.gt(0);
+/** The original fixed extra stays attached to the seat, even after a performer is removed. */
+function fixedExtraTotal(rows: SeatRow[], seatRecord?: Workflow): string {
+  if (seatRecord?.data.fixedExtraTotal !== undefined)
+    return String(seatRecord.data.fixedExtraTotal);
+  return rows
+    .reduce(
+      (sum, row) => sum.plus(new Decimal(row.extraPoints || "0")),
+      new Decimal(0)
+    )
+    .toString();
 }
 
-/** Whether a seat can be split at all before fixed shares are supported (#19). */
-export function splitBlocker(duty: Duty, rows: SeatRow[]): string | undefined {
-  if (duty.pricing.mode !== "daily")
-    return "חלוקת ביצוע בתעריף קבוע תתאפשר בהמשך (כרטיס #19). עד אז אפשר לדחות את הבקשה או לתקן ביצוע של מבצע יחיד אחרי הסיום";
-  if (rows.some(hasFixedExtra))
-    return "לשיבוץ במקום הזה יש תוספת קבועה, כגון הזנקה. חלוקתה בין מבצעים תתאפשר בהמשך (כרטיס #19)";
-  return undefined;
+function allocationDraft(
+  duty: Duty,
+  target: Map<string, ExecutionSegment>,
+  byPerformer: Map<string, SeatRow>,
+  extraTotal: string
+): FixedAllocation[] {
+  const performers = [...target.keys()];
+  const draft = performers.map((soldierId) => {
+    const row = byPerformer.get(soldierId);
+    return {
+      soldierId,
+      ...(duty.pricing.mode === "fixed" && {
+        fixedBase:
+          row?.fixedBaseAllocation ??
+          (byPerformer.size === 1 && row ? duty.pricing.basePoints : "0"),
+      }),
+      fixedExtra: row?.extraPoints ?? "0",
+    };
+  });
+  if (!draft.length) return draft;
+  const extraRemainder = new Decimal(extraTotal).minus(
+    draft.reduce((sum, item) => sum.plus(item.fixedExtra), new Decimal(0))
+  );
+  if (new Decimal(draft[0]!.fixedExtra).plus(extraRemainder).isNegative()) {
+    draft.forEach((item) => {
+      item.fixedExtra = "0";
+    });
+    draft[0]!.fixedExtra = extraTotal;
+  } else {
+    draft[0]!.fixedExtra = new Decimal(draft[0]!.fixedExtra)
+      .plus(extraRemainder)
+      .toString();
+  }
+  if (duty.pricing.mode === "fixed") {
+    const baseRemainder = new Decimal(duty.pricing.basePoints).minus(
+      draft.reduce(
+        (sum, item) => sum.plus(item.fixedBase || "0"),
+        new Decimal(0)
+      )
+    );
+    if (
+      new Decimal(draft[0]!.fixedBase || "0").plus(baseRemainder).isNegative()
+    ) {
+      draft.forEach((item) => {
+        item.fixedBase = "0";
+      });
+      draft[0]!.fixedBase = String(duty.pricing.basePoints);
+    } else {
+      draft[0]!.fixedBase = new Decimal(draft[0]!.fixedBase || "0")
+        .plus(baseRemainder)
+        .toString();
+    }
+  }
+  return draft;
 }
 
 /**
@@ -251,8 +319,6 @@ export async function planExecution(
     slot.id,
     seatRecord
   );
-  const blocker = splitBlocker(duty, rows);
-  invariant(!blocker, "split_unavailable", blocker!, 422);
   let proposed: ExecutionSegment[];
   try {
     proposed = normalizeSegments(duty, params.segments);
@@ -297,6 +363,45 @@ export async function planExecution(
       segment.soldierId ? [[segment.soldierId, segment] as const] : []
     )
   );
+  const extraTotal = fixedExtraTotal(rows, seatRecord);
+  const allocationRequired =
+    target.size > 1 &&
+    (duty.pricing.mode === "fixed" || new Decimal(extraTotal).gt(0));
+  const allocation =
+    params.allocations ??
+    allocationDraft(duty, target, byPerformer, extraTotal);
+  invariant(
+    allocation.length === target.size &&
+      new Set(allocation.map((item) => item.soldierId)).size === target.size &&
+      allocation.every((item) => target.has(item.soldierId)),
+    "invalid_allocation",
+    "נדרשת חלוקה אחת לכל מבצע בפועל",
+    422
+  );
+  let priced: { soldierId: string; price: PriceBreakdown }[];
+  try {
+    priced = target.size
+      ? priceSplitExecution(
+          duty.pricing,
+          duty,
+          allocation.map((item) => ({
+            ...item,
+            periods: [target.get(item.soldierId)!],
+          })),
+          extraTotal
+        )
+      : [];
+  } catch (error) {
+    throw new AppError(
+      "invalid_allocation",
+      error instanceof Error ? error.message : "חלוקת הניקוד אינה תקינה",
+      422
+    );
+  }
+  const priceOf = new Map(priced.map((item) => [item.soldierId, item.price]));
+  const allocationOf = new Map(
+    allocation.map((item) => [item.soldierId, item])
+  );
   for (const [soldierId, row] of byPerformer) {
     const from = executionPeriod(row, duty);
     const to = target.get(soldierId);
@@ -317,13 +422,24 @@ export async function planExecution(
       continue;
     }
     const period = range(to);
-    const unchanged = samePeriod(from, period);
+    const price = priceOf.get(soldierId)!;
+    const share = allocationOf.get(soldierId)!;
+    const beforeBase = row.fixedBaseAllocation ?? duty.pricing.basePoints;
+    const unchanged =
+      samePeriod(from, period) &&
+      (credited
+        ? currentPerformance(row, duty, credits).points
+        : row.points) === price.points &&
+      new Decimal(row.extraPoints || "0").eq(share.fixedExtra) &&
+      (duty.pricing.mode !== "fixed" ||
+        new Decimal(beforeBase).eq(share.fixedBase!));
     if (credited) {
       changes.push({
         ...base,
         kind: unchanged ? "keep" : "correct",
         to: period,
-        ...(!unchanged && { price: segmentPrice(duty.pricing, period) }),
+        allocation: share,
+        ...(!unchanged && { price }),
       });
       continue;
     }
@@ -332,7 +448,8 @@ export async function planExecution(
       ...base,
       kind: due ? "late" : unchanged ? "keep" : "update",
       to: period,
-      price: segmentPrice(duty.pricing, period),
+      price,
+      allocation: share,
     });
   }
   for (const [soldierId, segment] of target) {
@@ -351,7 +468,8 @@ export async function planExecution(
       name: person.name,
       rowId: randomUUID(),
       to: period,
-      price: segmentPrice(duty.pricing, period),
+      price: priceOf.get(soldierId)!,
+      allocation: allocationOf.get(soldierId)!,
       pointsBefore: 0,
       findings: [],
     });
@@ -523,6 +641,7 @@ export async function planExecution(
         seat: rows.map((row) => [row.id, row.version, row.status]),
         record: seatRecord ? [seatRecord.id, seatRecord.version] : null,
         proposed,
+        allocation,
         mode: params.mode,
         changes: changes.map((change) => [
           change.kind,
@@ -552,6 +671,10 @@ export async function planExecution(
     proposed,
     changes,
     credits,
+    allocation,
+    allocationRequired,
+    allocationExplicit: params.allocations !== undefined,
+    extraTotal,
     token,
   };
 }
@@ -574,6 +697,14 @@ export function executionView(plan: ExecutionPlan) {
       credited,
     })),
     proposed: plan.proposed,
+    allocationRequired: plan.allocationRequired,
+    allocationExplicit: plan.allocationExplicit,
+    allocation: plan.allocation,
+    fixedBaseTotal:
+      plan.duty.pricing.mode === "fixed"
+        ? plan.duty.pricing.basePoints
+        : undefined,
+    fixedExtraTotal: plan.extraTotal,
     changes: plan.changes.map((change) => ({
       kind: change.kind,
       soldierId: change.soldierId,
@@ -581,6 +712,7 @@ export function executionView(plan: ExecutionPlan) {
       from: change.from,
       to: change.to,
       price: change.price,
+      allocation: change.allocation,
       pointsBefore: change.pointsBefore,
       credited: change.row?.status === "credited",
       eligibility: change.eligibility,
@@ -685,6 +817,12 @@ export async function commitExecution(
   }
 ) {
   const { duty, slot, changes, state } = plan;
+  invariant(
+    !plan.allocationRequired || plan.allocationExplicit,
+    "allocation_required",
+    "יש לקבוע במפורש חלוקת בסיס ותוספת קבועה לכל מבצע לפני אישור",
+    422
+  );
   const executionId = randomUUID();
   const now = new Date();
   const nowIso = now.toISOString();
@@ -722,8 +860,13 @@ export async function commitExecution(
       await writeRow(tx, row!, {
         points: change.price!.points,
         data: {
+          originalPoints: row!.originalPoints ?? row!.points,
           performedStart: period!.start,
           performedEnd: period!.end,
+          extraPoints: change.allocation!.fixedExtra,
+          ...(duty.pricing.mode === "fixed" && {
+            fixedBaseAllocation: change.allocation!.fixedBase,
+          }),
           approvals: [...(row!.approvals ?? []), ...approvals],
           executionId,
         },
@@ -755,7 +898,10 @@ export async function commitExecution(
         points: change.price!.points,
         status: "reserved",
         version: 1,
-        extraPoints: "0",
+        ...(duty.pricing.mode === "fixed" && {
+          fixedBaseAllocation: change.allocation!.fixedBase,
+        }),
+        extraPoints: change.allocation!.fixedExtra,
         approvals,
         pendingReviewConfirmed: input.reviewPending,
         performedStart: period!.start,
@@ -899,8 +1045,15 @@ export async function commitExecution(
       ...(change.kind === "remove" && { removed: true }),
     };
     const fields = {
+      ...(row && { originalPoints: row.originalPoints ?? row.points }),
       performedStart: performance.start,
       performedEnd: performance.end,
+      extraPoints:
+        change.kind === "remove" ? "0" : change.allocation!.fixedExtra,
+      ...(duty.pricing.mode === "fixed" &&
+        change.kind !== "remove" && {
+          fixedBaseAllocation: change.allocation!.fixedBase,
+        }),
       performance,
       executionId,
       creditedAt: row?.creditedAt ?? nowIso,
@@ -930,7 +1083,6 @@ export async function commitExecution(
         points: change.price!.points,
         status: "credited",
         version: 1,
-        extraPoints: "0",
         approvals,
         ...fields,
       };
@@ -952,6 +1104,7 @@ export async function commitExecution(
     dutyId: duty.id,
     slotId: slot.id,
     notPerformed,
+    fixedExtraTotal: plan.extraTotal,
     executionIds: [
       ...((plan.seatRecord?.data.executionIds as string[]) ?? []),
       executionId,
@@ -982,6 +1135,13 @@ export async function commitExecution(
         credited,
       })),
       after: plan.proposed,
+      allocationBefore: plan.rows.map((row) => ({
+        soldierId: row.soldierId,
+        fixedBase: row.fixedBaseAllocation,
+        fixedExtra: row.extraPoints ?? "0",
+      })),
+      allocationAfter: plan.allocation,
+      fixedExtraTotal: plan.extraTotal,
       prices: changes
         .filter((change) => change.price)
         .map((change) => ({
@@ -1138,6 +1298,7 @@ export async function previewExecution(
     dutyId: input.dutyId,
     slotId: input.slotId,
     segments: parseSegments(input),
+    allocations: input.allocations,
     mode: "manual",
     reviewPending: input.reviewPending,
   });
@@ -1155,6 +1316,7 @@ export async function applyExecution(
     dutyId: input.dutyId,
     slotId: input.slotId,
     segments: parseSegments(input),
+    allocations: input.allocations,
     mode: "manual",
     reviewPending: input.reviewPending,
   });
@@ -1169,6 +1331,12 @@ export async function applyExecution(
       (await pendingReferral(tx, plan)),
     "no_change",
     "לא הוזן שינוי בתקופות הביצוע"
+  );
+  invariant(
+    !plan.allocationRequired || plan.allocationExplicit,
+    "allocation_required",
+    "יש לקבוע במפורש חלוקת בסיס ותוספת קבועה לכל מבצע לפני אישור",
+    422
   );
   return commitExecution(tx, actor, plan, {
     reason: input.reason,

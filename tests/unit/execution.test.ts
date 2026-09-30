@@ -160,9 +160,9 @@ describe("segmentPrice", () => {
     expect(Number(price.totalExact)).toBeCloseTo(31 / 6, 12);
     expect(price.points).toBe(5);
   });
-  it("refuses a fixed rate until fixed shares are supported", () => {
+  it("reserves automatic duration pricing for daily rates", () => {
     expect(() => segmentPrice({ ...daily, mode: "fixed" }, duty)).toThrow(
-      "#19"
+      "יומי בלבד"
     );
   });
 });

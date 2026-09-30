@@ -47,7 +47,8 @@ import {
   parseHandover,
   planExecution,
   seatOf,
-  splitBlocker,
+  fixedAllocationInput,
+  type FixedAllocation,
 } from "./execution";
 import { executionPeriod } from "../domain/execution";
 
@@ -165,18 +166,6 @@ export async function offerTransfer(
     "performance_ended",
     "הביצוע שלך בתורנות הזו כבר הסתיים. תיקון ביצוע נעשה בידי אחראי"
   );
-  if (remaining) {
-    const blocker = splitBlocker(
-      duty,
-      state.assignments.filter(
-        (row) =>
-          row.dutyId === duty.id &&
-          row.slotId === seat.slotId &&
-          row.status !== "cancelled"
-      )
-    );
-    invariant(!blocker, "not_transferable", blocker!);
-  }
   invariant(
     !seatCommitted(await openSeatRequests(tx), seat.id),
     "transfer_open",
@@ -817,7 +806,13 @@ export async function reviewTransfer(
   payload: unknown,
   expectedVersion?: number
 ) {
-  const input = z.object({ id, ...handoverInput }).parse(payload);
+  const input = z
+    .object({
+      id,
+      ...handoverInput,
+      allocations: z.array(fixedAllocationInput).optional(),
+    })
+    .parse(payload);
   const { row, data, state, seat, duty, person, changed } =
     await awaitingManager(tx, actor, input.id, expectedVersion);
   if (changed || !duty || !person || !seat)
@@ -829,7 +824,13 @@ export async function reviewTransfer(
     const handoverAt = parseHandover(input.handoverAt, input.handoverOffset);
     if (!handoverAt)
       return { valid: true, started, handoverRequired: true, period };
-    const plan = await startedPlan(tx, data, seat, handoverAt);
+    const plan = await startedPlan(
+      tx,
+      data,
+      seat,
+      handoverAt,
+      input.allocations
+    );
     const replacement = plan.changes.find(
       (change) => change.soldierId === data.acceptedBy
     );
@@ -885,6 +886,8 @@ export async function decideTransfer(
         approvalKeys: z.array(z.string()).default([]),
         confirmed: z.literal(true),
         ...handoverInput,
+        allocations: z.array(fixedAllocationInput).optional(),
+        allocationReason: z.string().trim().min(1).max(2000).optional(),
       }),
     ])
     .parse(payload);
@@ -958,7 +961,19 @@ export async function decideTransfer(
       "התורנות כבר התחילה. יש לבדוק שוב ולהזין את מועד החילוף",
       409
     );
-    const plan = await startedPlan(tx, data, seat, handoverAt);
+    const plan = await startedPlan(
+      tx,
+      data,
+      seat,
+      handoverAt,
+      input.allocations
+    );
+    invariant(
+      !plan.allocationRequired || input.allocationReason,
+      "allocation_reason_required",
+      "נדרשת סיבה לחלוקת הניקוד בין המבצעים",
+      422
+    );
     invariant(
       input.previewToken === startedToken(plan, row, data, duty),
       "stale_preview",
@@ -966,7 +981,7 @@ export async function decideTransfer(
       409
     );
     const execution = await commitExecution(tx, actor, plan, {
-      reason: `העברה במהלך ביצוע מ${from} ל${to}`,
+      reason: input.allocationReason ?? `העברה במהלך ביצוע מ${from} ל${to}`,
       mode: "volunteer",
       approvalKeys: input.approvalKeys,
       approvalReason: input.approvalReason,
@@ -1107,7 +1122,8 @@ async function startedPlan(
   tx: DbTransaction,
   data: TransferData,
   seat: Assignment,
-  handoverAt: string
+  handoverAt: string,
+  allocations?: FixedAllocation[]
 ) {
   const { segments } = await seatOf(tx, seat);
   return planExecution(tx, {
@@ -1120,6 +1136,7 @@ async function startedPlan(
       handoverAt
     ),
     mode: "volunteer",
+    allocations,
   });
 }
 function startedToken(
