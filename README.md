@@ -44,6 +44,8 @@ Compose מיועד לפיתוח סינתטי: סודות מקומיים גלוי
 sh scripts/production-smoke.sh
 ```
 
+חיילים סינתטיים ל־staging: `pnpm staging:soldiers` בשירות הכלים יוצר קובץ XLSX לייבוא במסך הייבוא (פירוט במדריך ההפעלה).
+
 פריסה אוטומטית של main בשרת: `scripts/auto-deploy.sh` מטיימר systemd (הוראות במדריך ההפעלה). שירות הבדיקות מריץ את `scripts/auto-deploy-test.sh` מול מאגר Git אמיתי, ובו הפריסה עצמה מדומה.
 
 ## בדיקה לפני commit וגיבוי ב־Git

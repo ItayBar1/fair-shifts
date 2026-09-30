@@ -118,6 +118,45 @@ rm /opt/fair-shifts/deploy-state/stopped            # retry a stopped commit, e.
 
 יחידה שנכשלה מופיעה ב־`systemctl --failed`. כדי לפרוס ידנית בזמן שהטיימר פעיל, משהים קודם ומחדשים אחרי הפריסה. אחרי פריסה ידנית של commit אחר מ־main, רושמים אותו: `git rev-parse HEAD > /opt/fair-shifts/deploy-state/deployed`.
 
+## סביבת ה־staging
+
+כרטיס [#25](https://github.com/ItayBar1/fair-shifts/issues/25), הכרעה 189. סביבה סינתטית לתרגול ההפעלה ולבדיקות מול ספקים אמיתיים. אין בה נתוני חיילים אמיתיים.
+
+| פריט    | ערך                                                                                                                                                                                 |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| כתובת   | `https://classly-studio-management.uk`. זה דומיין של אתר קודם שהוסר מהשרת, והוא משמש זמנית לבדיקות. החלפה: `BETTER_AUTH_URL`, ה־Route ב־Tunnel, ה־redirect ב־Google והשולח ב־Brevo. |
+| שרת     | Ubuntu של המשתמש. הקוד ב־`/opt/fair-shifts/app`, התצורה ב־`/opt/fair-shifts/config`, מצב הפריסה ב־`/opt/fair-shifts/deploy-state`.                                                  |
+| תצורה   | `DEPLOYMENT_ENVIRONMENT=staging`, גיבוי כבוי, `MAIL_TRANSPORT=brevo` עם דומיין ושולח מאומתים, ולקוח Google במצב Testing עם משתמשי בדיקה בלבד.                                       |
+| עדכון   | הטיימר של הפריסה האוטומטית (בסעיף הקודם). שירותים אחרים שרצים באותו שרת לא שייכים לפרויקט, ואין לגעת בהם.                                                                           |
+| חשבונות | מנהל טכני ואחראי מ־`bootstrap`, עם כתובות הבדיקה של המשתמש. הכתובות לא נשמרות במאגר. קודי השחזור של הטכני נשמרים אצל המשתמש.                                                        |
+
+### גישה ותחזוקה
+
+- **גישה לשרת:** SSH של המשתמש. אין פורט פתוח לאתר או למסד. הגישה לאתר היא רק דרך ה־Tunnel.
+- **הקמה ראשונה של חשבונות** (פעם אחת, על מסד ריק; הפלט באנגלית):
+
+```sh
+cd /opt/fair-shifts/app
+sh scripts/production.sh exec -T -e TECHNICAL_EMAIL=<address> -e TECHNICAL_NAME="Technical admin" \
+  -e MANAGER_EMAIL=<address> -e MANAGER_NAME="Test manager" -e MANAGER_PERSONAL_NUMBER=0000001 \
+  app node_modules/.bin/tsx scripts/bootstrap.ts
+```
+
+- **קודי שחזור חדשים לטכני:** `production.sh exec -T -e RECOVERY_EMAIL=<address> -e RECOVERY_REASON="<reason>" app node_modules/.bin/tsx scripts/recover.ts`.
+- **שינוי ערך ב־`app.env`:** משהים את הטיימר (`touch /opt/fair-shifts/deploy-state/paused`), עורכים, מריצים `production.sh deploy`, ומחדשים את הטיימר.
+- **ספירה במסד בלי לחשוף תוכן:** `production.sh exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select role, count(*) from auth_user group by role"'`.
+
+### נתונים סינתטיים
+
+`seed:demo` חסום כש־`NODE_ENV=production`, וזה המצב גם ב־staging. במקום זה מייבאים חיילים סינתטיים דרך מסך הייבוא של האחראי. זה אותו מסלול שישמש בהמשך לנתוני אמת. הקובץ נוצר במחשב של המפתח, ב־Docker:
+
+```sh
+sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tools \
+  pnpm staging:soldiers --out .local/staging-soldiers.xlsx --extra "<tester address>|<name>"
+```
+
+בקובץ 20 חיילים בשלוש האוכלוסיות: 12 חובה, 5 קבע וקצינים ו־3 קמ״א. לכולם כתובות `@example.invalid`, שלא מקבלות מייל, מספרים אישיים שמתחילים ב־9 וניקוד התחלתי. כל `--extra` מוסיף חייל חובה עם כתובת בדיקה אמיתית, למשל לבדיקת Google ומייל. `.local` אינו נשמר ב־Git. מעלים את הקובץ ב־`/manage/imports`, בודקים את התצוגה המקדימה ומאשרים.
+
 ## בריאות ופעימת עובד
 
 `GET /api/health` מחזיר JSON עם `status`, ‏`version`, ‏`checkedAt`, ‏`database` ו־`worker`. בתוך `worker` מופיעים `status`, ‏`lastBeatAt`, ‏`lastSuccessAt`, ‏`version` ו־`sameVersion`. אין בתשובה חשבונות, שמות, פרטי קשר או תוכן הודעות. היא ציבורית דרך ה־Tunnel וחושפת רק את מזהה הגרסה.
@@ -167,6 +206,7 @@ age-keygen -y fair-shifts-backup.key   # prints the public key for AGE_RECIPIENT
 בתמונת המצב מופיעה שורת ״משלוח מייל״, ובמסך ״משלוחי מייל״ מוצגים מכסת היום, התור, הממתינים למכסה ו־20 הכשלים האחרונים מהשבוע. מוצגים סוג המייל, הסיבה, מספר הניסיונות והמועדים בלבד, בלי נמענים ובלי תוכן (הכרעה 177).
 
 - **מתי יוצא מייל:** קוד כניסה וקוד לאימות כתובת נשלחים תוך שניות. בזמן השמירה בתור נשלח אות PostgreSQL (`LISTEN`/`NOTIFY`, ערוץ `fair_shifts_mail_due`), שנמסר רק אחרי commit, והעובד מאזין לו בחיבור משלו. שאר ההודעות יוצאות בסבב הדקה, שהוא גם הגיבוי לאות שלא הגיע. אחרי ניתוק החיבור העובד מתחבר מחדש תוך 5 שניות, ורושם ביומן `Mail signal connection lost` (הכרעה 188).
+- **כתובות בדיקה:** מייל לדומיין ששמור לבדיקות (`.invalid`, ‏`.test`, ‏`.example`, ‏`.localhost`, ‏`example.com/net/org`) לא נשלח ל־Brevo ולא נספר במכסה. הוא מסומן כדילוג (`reserved_address`), והודעת האתר נשארת (הכרעה 190). כך החיילים הסינתטיים ב־staging לא יוצרים מיילים שחוזרים.
 - **מכסה:** 300 ביום לפי `MAIL_QUOTA_TIME_ZONE` (ברירת מחדל UTC). הודעות, כולל התראות גיבוי, נעצרות ב־290, ו־10 האחרונים שמורים לקודי כניסה ולאימות מייל. אין שדרוג אוטומטי למסלול בתשלום.
 - **השהיה:** כשהספק דוחה את מפתח ה־API או את השולח, המשלוח מושהה לרבע שעה ומתחדש מעצמו. יש לבדוק את `BREVO_API_KEY` ו־`BREVO_SENDER_EMAIL`. כשהספק מודיע שהמכסה שלו נגמרה, המשלוח מושהה עד היום הבא.
 - **דף הכניסה:** בזמן השהיה, או כשגם המכסה השמורה לקודים נגמרה, מי שמבקש קוד רואה הודעת עיכוב כללית ומופנה לאחראי. ההודעה זהה לכל כתובת.
@@ -182,8 +222,7 @@ sh scripts/production-smoke.sh
 
 ## מה עוד לא נבדק
 
-- staging על שרת Ubuntu עם Tunnel ו־DNS פעילים רץ ובריא, וחוזר אחרי reboot. חסרים בו בדיקות בדפדפן ובנייד, נתונים סינתטיים ונוהל גישה (כרטיס #25).
+- staging (#25): התוצאות בכרטיס. נותרה בדיקה של שמירת נתונים אחרי reboot, כשיש כבר נתונים.
 - גיבוי מול Drive אמיתי (כרטיס #37) ושחזור מבודד עם החלת מחיקות (#35).
 - פריסה אוטומטית (#36): נבדקה מול מאגר Git אמיתי עם פריסה מדומה (`scripts/auto-deploy-test.sh`). טרם הודגמה בשרת, כולל תקלה וחזרה, וגיבוי אוטומטי לפני מיגרציה טרם מומש.
 - משלוח Brevo וכניסת Google בחשבונות בדיקה (כרטיסים #28 ו־#26).
-- נתונים סינתטיים לסביבת staging: `seed:demo` חסום כש־`NODE_ENV=production`. הדרך להזין נתונים סינתטיים ל־staging תיקבע בכרטיס #25.

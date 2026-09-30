@@ -46,6 +46,7 @@ import {
   emailText,
   isCodeKind,
   publicationVersion,
+  reservedAddress,
   quotaAllows,
   retryAt,
   type FailureCategory,
@@ -323,6 +324,14 @@ export async function deliverNextEmail(
         .where(eq(user.id, message.recipientAccountId));
       let skip: OutboxError | null =
         recipient && !recipient.deletedAt ? null : "recipient_unavailable";
+      // Only the real provider is spared reserved addresses; an injected test
+      // transport still receives them (decision 190).
+      if (
+        !skip &&
+        !transport &&
+        reservedAddress(message.destination ?? recipient.email)
+      )
+        skip = "reserved_address";
       if (!skip && message.kind === "login-code") {
         const [code] = await tx
           .select()

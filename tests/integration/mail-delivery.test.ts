@@ -352,6 +352,46 @@ describe("retries and failures", () => {
     });
   });
 
+  it("never hands a reserved test address to the real provider, and charges no quota", async () => {
+    process.env.MAIL_TRANSPORT = "brevo";
+    const calls: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      calls.push(String(input));
+      throw new Error("the provider must not be called");
+    }) as typeof fetch;
+    try {
+      const key = await queue();
+      expect(await deliverNextEmail(undefined, later(1000))).toEqual({
+        status: "skipped",
+      });
+      expect(await row(key)).toMatchObject({
+        status: "cancelled",
+        error: "reserved_address",
+        attempts: 0,
+        destination: null,
+      });
+      expect(calls).toEqual([]);
+      const [quota] = await db.select().from(emailQuota);
+      expect(quota?.used ?? 0).toBe(0);
+      // A code for a reserved address is dropped the same way.
+      await requestCode(memberEmail, later(2000));
+      await deliverNextEmail(undefined, later(3000));
+      const [code] = await db
+        .select()
+        .from(emailOutbox)
+        .where(eq(emailOutbox.kind, "login-code"));
+      expect(code).toMatchObject({
+        status: "cancelled",
+        error: "reserved_address",
+        encryptedSecret: null,
+      });
+      expect(calls).toEqual([]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("pauses all mail on an account problem without spending the message's attempts", async () => {
     process.env.MAIL_TRANSPORT = "brevo";
     const key = await queue();
