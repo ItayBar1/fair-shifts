@@ -96,12 +96,15 @@ sh scripts/production.sh down      # remove containers; the volume and data stay
 
 ```sh
 cd /opt/fair-shifts/app
+mkdir -p /opt/fair-shifts/deploy-state
+git rev-parse HEAD > /opt/fair-shifts/deploy-state/deployed   # the commit that runs now, before pulling
+git pull -q --ff-only
 sudo cp scripts/systemd/fair-shifts-deploy@.service scripts/systemd/fair-shifts-deploy@.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now "fair-shifts-deploy@$USER.timer"
 ```
 
-שם המופע הוא משתמש ההפעלה, שחבר בקבוצה `docker`. הנתיבים הקבועים ביחידה: הקוד ב־`/opt/fair-shifts/app`, התצורה ב־`/opt/fair-shifts/config`, ומצב הפריסה ב־`/opt/fair-shifts/deploy-state`: הגרסה הפעילה (`deployed`), גרסה שנעצרה (`stopped`) והנעילה.
+רושמים את הגרסה שרצה לפני `git pull`: בלי הרישום הטיימר מניח שהגרסה הפעילה היא ה־commit שבתיקייה, ולא יפרוס את מה שנמשך. שם המופע הוא משתמש ההפעלה, שחבר בקבוצה `docker`. הנתיבים הקבועים ביחידה: הקוד ב־`/opt/fair-shifts/app`, התצורה ב־`/opt/fair-shifts/config`, ומצב הפריסה ב־`/opt/fair-shifts/deploy-state`: הגרסה הפעילה (`deployed`), גרסה שנעצרה (`stopped`) והנעילה.
 
 ### מעקב ותחזוקה
 
