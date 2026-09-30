@@ -44,12 +44,14 @@ import {
   closedOutcome,
   codeKinds,
   emailText,
+  isCodeKind,
   publicationVersion,
   quotaAllows,
   retryAt,
   type FailureCategory,
   type OutboxError,
 } from "../../domain/mail-delivery";
+import { signalMail } from "./mail-signal";
 
 function encryptionKey() {
   const value = process.env.MAIL_ENCRYPTION_KEY ?? "";
@@ -105,6 +107,9 @@ export async function enqueueEmail(tx: DbTransaction, input: EnqueueInput) {
       encryptedSecret: secret ? sealSecret(secret) : null,
     })
     .onConflictDoNothing({ target: emailOutbox.eventKey });
+  // A code is sent within seconds once committed; other mail waits for the
+  // minute's maintenance (decision 188).
+  if (isCodeKind(values.kind)) await signalMail(tx);
 }
 export type MailMessage = {
   to: string;

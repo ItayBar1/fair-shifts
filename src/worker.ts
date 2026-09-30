@@ -11,6 +11,7 @@ import { recordWorkerHeartbeat } from "./server/operations/health";
 import { refreshRoundNotices } from "./server/round-notices";
 import { runBackupCycle } from "./server/operations/backup";
 import { refreshDutyReminders } from "./server/duty-reminders";
+import { listenForMail, singleFlight } from "./server/operations/mail-signal";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 // The container health check reads this file's age (see compose.production.yaml).
@@ -21,6 +22,14 @@ await rm(heartbeatFile, { force: true });
 const boss = new PgBoss(process.env.DATABASE_URL);
 boss.on("error", (error) => console.error("Worker queue error", error.name));
 await boss.start();
+// One drain of the outbox at a time, from the minute's maintenance or from a
+// committed code's signal (decision 188).
+const drainMail = singleFlight(async () => {
+  for (let index = 0; index < 20; index++) {
+    const result = await deliverNextEmail();
+    if (result.status === "idle" || result.status === "disabled") break;
+  }
+});
 await boss.createQueue("unit-maintenance", { retryLimit: 5, retryDelay: 15 });
 await boss.schedule("unit-maintenance", "* * * * *");
 await boss.work("unit-maintenance", async () => {
@@ -42,10 +51,7 @@ await boss.work("unit-maintenance", async () => {
     await recordWorkerHeartbeat(tx, { now, paused: false, credited });
   });
   await writeFile(heartbeatFile, new Date().toISOString());
-  for (let index = 0; index < 20; index++) {
-    const result = await deliverNextEmail();
-    if (result.status === "idle" || result.status === "disabled") break;
-  }
+  await drainMail();
 });
 // Backups run in their own queue so a long dump never delays the minute's maintenance.
 // The run table, not the queue, decides whether a backup is due (decision 173).
@@ -61,12 +67,19 @@ await boss.work("backup", async () => {
     console.error("Backup run failed", result.code);
 });
 await boss.send("unit-maintenance");
+const mailSignals = listenForMail(() => {
+  drainMail().catch((error: Error) =>
+    console.error("Mail delivery failed", error.name)
+  );
+});
 console.log("Fair Shifts worker ready");
 let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
   await boss.stop({ graceful: true, timeout: 20_000 });
+  await mailSignals.stop();
+  await drainMail.settled();
   await pool.end();
   console.log("Fair Shifts worker stopped");
 }
