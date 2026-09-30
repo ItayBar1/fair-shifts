@@ -258,6 +258,11 @@ export async function readState(actor: Actor) {
                 status: row.status,
                 points: row.points,
                 version: row.version,
+                // Who covers which part of a split seat is part of the published schedule.
+                ...(row.performedStart && {
+                  performedStart: row.performedStart,
+                  performedEnd: row.performedEnd,
+                }),
                 ...(row.performance && {
                   performance: {
                     performerId: row.performance.performerId,
@@ -353,6 +358,8 @@ export async function readState(actor: Actor) {
       performanceCorrections: managing
         ? workflow("performance_correction")
         : [],
+      seatExecutions: managing ? workflow("seat_execution") : [],
+      executionChanges: managing ? workflow("execution_change") : [],
       scoreDecisions: managing
         ? workflow("score_decision").map((row) => {
             const data = workflows.find((item) => item.id === row.id)!.data;

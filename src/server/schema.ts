@@ -10,7 +10,7 @@ import {
   index,
   check,
 } from "drizzle-orm/pg-core";
-import type { Soldier, Duty, Assignment, Performance } from "../domain/types";
+import type { Soldier, Duty, Assignment } from "../domain/types";
 export * from "./auth-schema";
 
 const dates = () => ({
@@ -99,10 +99,7 @@ export const assignments = pgTable(
       .$type<
         Assignment & {
           needsAttention?: string[];
-          performedStart?: string;
-          performedEnd?: string;
           fixedBonus?: number;
-          performance?: Performance;
         }
       >()
       .notNull(),
@@ -110,9 +107,13 @@ export const assignments = pgTable(
     ...dates(),
   },
   (table) => [
+    // One occupant per seat; a seat split into execution periods (decision 183)
+    // holds one row per performer, kept apart by the execution rules.
     uniqueIndex("assignment_one_occupant")
       .on(table.slotId)
-      .where(sql`${table.status} in ('reserved', 'held')`),
+      .where(
+        sql`${table.status} in ('reserved', 'held') and ${table.data}->>'performedStart' is null`
+      ),
     uniqueIndex("assignment_soldier_once")
       .on(table.dutyId, table.soldierId)
       .where(sql`${table.status} in ('reserved', 'held')`),

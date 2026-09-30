@@ -691,6 +691,19 @@ select {
   grid-column: 1 / -1;
   min-width: 0;
 }
+.execution-segments {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.execution-segment {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
 .check-field {
   display: flex;
   flex-direction: row;
@@ -1428,7 +1441,8 @@ tbody tr:last-child td {
   .page-footer {
     flex-direction: column;
   }
-  .form-grid {
+  .form-grid,
+  .execution-segment {
     grid-template-columns: 1fr;
   }
   .hide-mobile {

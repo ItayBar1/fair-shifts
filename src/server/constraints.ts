@@ -26,6 +26,7 @@ import { parseMoment } from "./duty-service";
 import { reassessAssignments } from "./personnel";
 import { cancelRoundEmails } from "./round-notices";
 import { datesToInstants, interval, overlaps } from "../domain/time";
+import { executionPeriod } from "../domain/execution";
 
 export async function createRound(
   tx: DbTransaction,
@@ -351,7 +352,7 @@ async function reviewImpact(tx: DbTransaction, record: Workflow) {
               !duty ||
               duty.status === "cancelled" ||
               !overlaps(
-                interval(duty),
+                interval(executionPeriod(assignment, duty)),
                 datesToInstants({ start: pending.start!, end: pending.end! })
               )
             )

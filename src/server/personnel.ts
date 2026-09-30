@@ -17,6 +17,7 @@ import {
 import { id, date, population, text, gender } from "./validation";
 import { invariant } from "./errors";
 import { evaluateEligibility, populationTimeline } from "../domain/eligibility";
+import { executionDuty } from "../domain/execution";
 import type { AllowedHours, Soldier } from "../domain/types";
 import { refreshRankReminders } from "./ranks";
 
@@ -37,14 +38,19 @@ export async function reassessAssignments(
     const duty = state.duties.find((row) => row.id === assignment.dutyId);
     const slot = duty?.slots.find((row) => row.id === assignment.slotId);
     if (!person || !duty || !slot) continue;
-    const result = evaluateEligibility(person, duty, slot, {
-      duties: state.duties,
-      assignments: state.assignments,
-      mode: "manual",
-      ignoreAssignmentIds: [assignment.id],
-      approvals: assignment.approvals,
-      pendingReviewConfirmed: assignment.pendingReviewConfirmed,
-    });
+    const result = evaluateEligibility(
+      person,
+      executionDuty(duty, assignment),
+      slot,
+      {
+        duties: state.duties,
+        assignments: state.assignments,
+        mode: "manual",
+        ignoreAssignmentIds: [assignment.id],
+        approvals: assignment.approvals,
+        pendingReviewConfirmed: assignment.pendingReviewConfirmed,
+      }
+    );
     const reasons = [...result.blockers, ...result.approvalsRequired].map(
       (row) => row.code
     );
@@ -147,8 +153,9 @@ export function impactOf(state: DomainState, soldierId: string, data: Soldier) {
       approvals: assignment.approvals,
       pendingReviewConfirmed: assignment.pendingReviewConfirmed,
     };
-    const before = evaluateEligibility(existing, duty, slot, context);
-    const after = evaluateEligibility(proposed, duty, slot, context);
+    const own = executionDuty(duty, assignment);
+    const before = evaluateEligibility(existing, own, slot, context);
+    const after = evaluateEligibility(proposed, own, slot, context);
     const codes = (result: typeof before) =>
       JSON.stringify(
         [...result.blockers, ...result.approvalsRequired].map(

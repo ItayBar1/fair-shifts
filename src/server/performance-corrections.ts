@@ -75,6 +75,24 @@ async function plan(
     "not_credited",
     "ניתן לתקן רק ביצוע של תורנות שפורסמה"
   );
+  // A seat split between performers is corrected as a whole, so periods never overlap (decision 183).
+  const siblings = await tx
+    .select({ id: assignments.id, status: assignments.status })
+    .from(assignments)
+    .where(
+      and(
+        eq(assignments.dutyId, row.dutyId),
+        eq(assignments.slotId, row.slotId)
+      )
+    );
+  invariant(
+    !row.data.performedStart &&
+      !siblings.some(
+        (item) => item.id !== row.id && item.status !== "cancelled"
+      ),
+    "split_execution",
+    "בשיבוץ הזה נרשמו תקופות ביצוע. התיקון נעשה בעריכת תקופות הביצוע של המקום"
+  );
   const [credit] = await tx
     .select()
     .from(ledger)

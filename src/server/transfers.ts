@@ -39,6 +39,17 @@ import {
 } from "./seat-requests";
 import { closeRequestsOfTransferredSeat } from "./cancellation-requests";
 import { cancelStaleDutyReminders } from "./duty-reminder-checks";
+import {
+  commitExecution,
+  executionView,
+  handoverInput,
+  handoverSegments,
+  parseHandover,
+  planExecution,
+  seatOf,
+  splitBlocker,
+} from "./execution";
+import { executionPeriod } from "../domain/execution";
 
 // Consensual transfer of a published seat before it starts (decisions 108-109, 149, 163),
 // and the manager's decision on a transfer that needs one (decision 178).
@@ -76,19 +87,36 @@ export type TransferData = {
 };
 type Domain = Awaited<ReturnType<typeof loadDomain>>;
 
+/**
+ * After the start a replacement can take only what is left of the seat, so eligibility
+ * before a manager sets the handover looks at the rest of the offerer's period (decision 183).
+ */
+export function remainingPeriod(seat: Assignment, duty: Duty) {
+  const period = executionPeriod(seat, duty);
+  const now = Date.now();
+  if (instant(period.start).toMillis() > now) return undefined;
+  return { start: new Date(now).toISOString(), end: period.end };
+}
+
 function candidateEligibility(
   state: Domain,
   person: Soldier,
   duty: Duty,
-  slotId: string
+  slotId: string,
+  period?: { start: string; end: string }
 ) {
   const slot = duty.slots.find((row) => row.id === slotId);
   invariant(slot, "not_found", "המקום לא נמצא בתורנות", 404);
-  return evaluateEligibility(person, duty, slot, {
-    duties: state.duties,
-    assignments: state.assignments,
-    mode: "volunteer",
-  });
+  return evaluateEligibility(
+    person,
+    period ? { ...duty, ...period } : duty,
+    slot,
+    {
+      duties: state.duties,
+      assignments: state.assignments,
+      mode: "volunteer",
+    }
+  );
 }
 function nameOf(state: Domain, soldierId: string) {
   return soldierName(state.soldiers, soldierId);
@@ -130,11 +158,25 @@ export async function offerTransfer(
     "not_transferable",
     "ניתן להציע להעברה רק שיבוץ בתורנות שפורסמה"
   );
+  // After the start an offer is still possible, but it always goes to a manager (decision 183).
+  const remaining = remainingPeriod(seat, duty);
   invariant(
-    instant(duty.start).toMillis() > Date.now(),
-    "performance_started",
-    "התורנות כבר התחילה. בקשת החלפה במהלך ביצוע מטופלת בידי אחראי"
+    instant(executionPeriod(seat, duty).end).toMillis() > Date.now(),
+    "performance_ended",
+    "הביצוע שלך בתורנות הזו כבר הסתיים. תיקון ביצוע נעשה בידי אחראי"
   );
+  if (remaining) {
+    const blocker = splitBlocker(
+      duty,
+      state.assignments.filter(
+        (row) =>
+          row.dutyId === duty.id &&
+          row.slotId === seat.slotId &&
+          row.status !== "cancelled"
+      )
+    );
+    invariant(!blocker, "not_transferable", blocker!);
+  }
   invariant(
     !seatCommitted(await openSeatRequests(tx), seat.id),
     "transfer_open",
@@ -156,8 +198,8 @@ export async function offerTransfer(
     );
     // The offerer learns only that the candidate is unsuitable, never why (decision 163).
     invariant(
-      candidateEligibility(state, person, duty, seat.slotId).status !==
-        "blocked",
+      candidateEligibility(state, person, duty, seat.slotId, remaining)
+        .status !== "blocked",
       "candidate_ineligible",
       `${person.name} אינו מתאים לתורנות זו. אפשר לבחור חייל אחר`
     );
@@ -188,9 +230,13 @@ export async function offerTransfer(
       event: "offer",
       requestId: row.id,
       title: "הוצעה לך תורנות",
-      body: `${offerer} מציע לך לקבל את התורנות ${duty.name}. אפשר להסכים או לדחות במסך ההחלפות.`,
+      body: remaining
+        ? `${offerer} מבקש שתחליף אותו בתורנות ${duty.name}, שכבר התחילה. אם תסכים, אחראי יקבע את מועד החילוף.`
+        : `${offerer} מציע לך לקבל את התורנות ${duty.name}. אפשר להסכים או לדחות במסך ההחלפות.`,
       email: true,
-      expiresAt: instant(duty.start).toMillis(),
+      expiresAt: remaining
+        ? instant(remaining.end).toMillis()
+        : instant(duty.start).toMillis(),
     });
   await audit(
     tx,
@@ -330,7 +376,13 @@ export async function respondTransfer(
   const person = state.soldiers.find((item) => item.id === actor.soldierId);
   invariant(person, "not_found", "החייל לא נמצא", 404);
   // Recheck at the moment of acceptance: the offer never reserved anything for the candidate.
-  const eligibility = candidateEligibility(state, person, duty, data.slotId);
+  const eligibility = candidateEligibility(
+    state,
+    person,
+    duty,
+    data.slotId,
+    remainingPeriod(seat, duty)
+  );
   invariant(
     eligibility.status !== "blocked",
     "candidate_ineligible",
@@ -765,16 +817,38 @@ export async function reviewTransfer(
   payload: unknown,
   expectedVersion?: number
 ) {
-  const input = z.object({ id }).parse(payload);
-  const { row, data, state, duty, person, changed } = await awaitingManager(
-    tx,
-    actor,
-    input.id,
-    expectedVersion
-  );
-  if (changed || !duty || !person)
+  const input = z.object({ id, ...handoverInput }).parse(payload);
+  const { row, data, state, seat, duty, person, changed } =
+    await awaitingManager(tx, actor, input.id, expectedVersion);
+  if (changed || !duty || !person || !seat)
     return { valid: false, message: changed ?? "ההעברה אינה תקפה עוד" };
   const started = instant(duty.start).toMillis() <= Date.now();
+  if (started) {
+    // After the start the manager sets the handover and sees both periods before approving.
+    const period = executionPeriod(seat, duty);
+    const handoverAt = parseHandover(input.handoverAt, input.handoverOffset);
+    if (!handoverAt)
+      return { valid: true, started, handoverRequired: true, period };
+    const plan = await startedPlan(tx, data, seat, handoverAt);
+    const replacement = plan.changes.find(
+      (change) => change.soldierId === data.acceptedBy
+    );
+    return {
+      valid: true,
+      started,
+      period,
+      handoverAt,
+      status: replacement?.eligibility?.blockers.length
+        ? "blocked"
+        : replacement?.eligibility?.requirements.length
+          ? "approval_required"
+          : "eligible",
+      blockers: replacement?.eligibility?.blockers ?? [],
+      requirements: replacement?.eligibility?.requirements ?? [],
+      execution: executionView(plan),
+      previewToken: startedToken(plan, row, data, duty),
+    };
+  }
   const eligibility = candidateEligibility(state, person, duty, data.slotId);
   return {
     valid: true,
@@ -810,6 +884,7 @@ export async function decideTransfer(
         approvalReason: z.string().trim().max(2000).optional(),
         approvalKeys: z.array(z.string()).default([]),
         confirmed: z.literal(true),
+        ...handoverInput,
       }),
     ])
     .parse(payload);
@@ -874,13 +949,82 @@ export async function decideTransfer(
       changed ?? "ההעברה אינה תקפה עוד",
       "transfer_invalid"
     );
-  // After the start the seat moves only through performance periods, never here.
-  invariant(
-    instant(duty.start).toMillis() > Date.now(),
-    "performance_started",
-    "התורנות כבר התחילה. העברה אחרי התחלה מטופלת במסלול תקופות הביצוע; עד אז השיבוץ המקורי בתוקף",
-    409
-  );
+  // After the start the seat is split at the handover the manager sets (decision 183).
+  if (instant(duty.start).toMillis() <= Date.now()) {
+    const handoverAt = parseHandover(input.handoverAt, input.handoverOffset);
+    invariant(
+      handoverAt,
+      "handover_required",
+      "התורנות כבר התחילה. יש לבדוק שוב ולהזין את מועד החילוף",
+      409
+    );
+    const plan = await startedPlan(tx, data, seat, handoverAt);
+    invariant(
+      input.previewToken === startedToken(plan, row, data, duty),
+      "stale_preview",
+      "נתוני ההעברה או הביצוע השתנו מאז הבדיקה. יש לבדוק שוב לפני החלטה",
+      409
+    );
+    const execution = await commitExecution(tx, actor, plan, {
+      reason: `העברה במהלך ביצוע מ${from} ל${to}`,
+      mode: "volunteer",
+      approvalKeys: input.approvalKeys,
+      approvalReason: input.approvalReason,
+      requestId: row.id,
+    });
+    const created = plan.changes.find(
+      (change) => change.soldierId === replacementId
+    )!;
+    await closeRequestsOfTransferredSeat(tx, duty.id, data.fromSoldierId);
+    const updated = await updateRecord(tx, row, {
+      ...data,
+      status: "completed",
+      resultAssignmentId: created.rowId,
+      handoverAt,
+      executionId: execution.id,
+      closedAt: now,
+      decidedBy: actor.id,
+      decidedByName: actor.name,
+      decidedAt: now,
+    });
+    const endsAt = instant(duty.end).toMillis() + 86_400_000;
+    const at = instant(handoverAt).toFormat("dd.MM.yyyy HH:mm");
+    await notify(tx, data.fromSoldierId, {
+      event: "completed",
+      requestId: row.id,
+      title: "האחראי אישר את החילוף",
+      body: `${to} מחליף אותך בתורנות ${data.dutyName} החל מ־${at}. הניקוד שלך יחושב לפי הזמן שביצעת.`,
+      email: true,
+      expiresAt: endsAt,
+    });
+    await notify(tx, replacementId, {
+      event: "completed",
+      requestId: row.id,
+      title: "קיבלת חלק מתורנות",
+      body: `אתה מחליף את ${from} בתורנות ${data.dutyName} החל מ־${at}, באישור אחראי. הניקוד יחושב לפי הזמן שתבצע.`,
+      email: true,
+      expiresAt: endsAt,
+    });
+    await audit(
+      tx,
+      actor,
+      "transfer.approve",
+      row.id,
+      {
+        dutyId: duty.id,
+        fromAssignmentId: seat.id,
+        toAssignmentId: created.rowId,
+        executionId: execution.id,
+      },
+      replacementId
+    );
+    return {
+      id: updated.id,
+      version: updated.version,
+      status: "completed",
+      assignmentId: created.rowId,
+    };
+  }
   invariant(
     input.previewToken === reviewToken(state, row, data, duty),
     "stale_preview",
@@ -956,6 +1100,37 @@ export async function decideTransfer(
     // manager-only approvals and never reaches the offerer (decision 163).
     approvals,
   });
+}
+
+/** The seat split at the handover: the offerer keeps the part before it, the replacement the rest. */
+async function startedPlan(
+  tx: DbTransaction,
+  data: TransferData,
+  seat: Assignment,
+  handoverAt: string
+) {
+  const { segments } = await seatOf(tx, seat);
+  return planExecution(tx, {
+    dutyId: data.dutyId,
+    slotId: data.slotId,
+    segments: handoverSegments(
+      segments,
+      data.fromSoldierId,
+      data.acceptedBy!,
+      handoverAt
+    ),
+    mode: "volunteer",
+  });
+}
+function startedToken(
+  plan: Awaited<ReturnType<typeof planExecution>>,
+  row: Workflow,
+  data: TransferData,
+  duty: Duty
+) {
+  return createHash("sha256")
+    .update(`${reviewToken(plan.state, row, data, duty)}:${plan.token}`)
+    .digest("hex");
 }
 
 /** Closes open transfer and swap offers when their duty is cancelled or republished with new details. */
