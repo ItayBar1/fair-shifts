@@ -207,7 +207,8 @@ export type Field = {
     | "select"
     | "multiselect"
     | "checkbox"
-    | "password";
+    | "password"
+    | "custom";
   required?: boolean;
   options?: { value: string; label: string }[];
   value?: string | number | boolean | string[];
@@ -216,102 +217,117 @@ export type Field = {
   max?: number;
   step?: string;
   full?: boolean;
+  /** Tells the caller what a text, number or date field now holds. */
+  onChange?: (value: string) => void;
+  /**
+   * What a `custom` field shows instead of an input. It renders its own controls
+   * and, to take part in the form, a hidden input named like the field.
+   */
+  custom?: ReactNode;
 };
 export function Fields({ fields }: { fields: Field[] }) {
   return (
     <div className="form-grid">
-      {fields.map((field) => (
-        <label
-          className={`field ${field.full ? "full" : ""} ${field.type === "checkbox" ? "check-field" : ""}`}
-          key={field.name}
-        >
-          {field.type === "checkbox" ? (
-            <>
-              <input
-                aria-label={field.label}
-                type="checkbox"
-                name={field.name}
-                defaultChecked={Boolean(field.value)}
-                required={field.required}
-              />
-              <span>
-                {field.label}
-                {field.hint && <small>{field.hint}</small>}
-              </span>
-            </>
-          ) : (
-            <>
-              <span>
-                {field.label}
-                {field.required && (
-                  <span aria-hidden="true" className="required">
-                    {" "}
-                    *
-                  </span>
-                )}
-              </span>
-              {field.type === "select" || field.type === "multiselect" ? (
-                <span className="select-wrap">
-                  <select
-                    aria-label={field.label}
-                    name={field.name}
-                    multiple={field.type === "multiselect"}
-                    defaultValue={
-                      field.type === "multiselect"
-                        ? Array.isArray(field.value)
-                          ? field.value
-                          : []
-                        : String(field.value ?? "")
-                    }
-                    required={field.required}
-                  >
-                    {field.type !== "multiselect" && !field.value && (
-                      <option value="">בחירה…</option>
-                    )}
-                    {field.options?.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={15} />
-                </span>
-              ) : field.type === "textarea" ? (
-                <textarea
-                  aria-label={field.label}
-                  name={field.name}
-                  defaultValue={str(field.value)}
-                  required={field.required}
-                  rows={3}
-                />
-              ) : (
+      {fields.map((field) =>
+        field.type === "custom" ? (
+          <div className="field full" key={field.name}>
+            {field.custom}
+          </div>
+        ) : (
+          <label
+            className={`field ${field.full ? "full" : ""} ${field.type === "checkbox" ? "check-field" : ""}`}
+            key={field.name}
+          >
+            {field.type === "checkbox" ? (
+              <>
                 <input
                   aria-label={field.label}
+                  type="checkbox"
                   name={field.name}
-                  type={field.type || "text"}
-                  defaultValue={str(field.value)}
+                  defaultChecked={Boolean(field.value)}
                   required={field.required}
-                  min={field.min}
-                  max={field.max}
-                  step={field.step}
-                  dir={
-                    [
-                      "number",
-                      "email",
-                      "date",
-                      "datetime-local",
-                      "time",
-                    ].includes(field.type || "")
-                      ? "ltr"
-                      : undefined
-                  }
                 />
-              )}
-              {field.hint && <small>{field.hint}</small>}
-            </>
-          )}
-        </label>
-      ))}
+                <span>
+                  {field.label}
+                  {field.hint && <small>{field.hint}</small>}
+                </span>
+              </>
+            ) : (
+              <>
+                <span>
+                  {field.label}
+                  {field.required && (
+                    <span aria-hidden="true" className="required">
+                      {" "}
+                      *
+                    </span>
+                  )}
+                </span>
+                {field.type === "select" || field.type === "multiselect" ? (
+                  <span className="select-wrap">
+                    <select
+                      aria-label={field.label}
+                      name={field.name}
+                      multiple={field.type === "multiselect"}
+                      defaultValue={
+                        field.type === "multiselect"
+                          ? Array.isArray(field.value)
+                            ? field.value
+                            : []
+                          : String(field.value ?? "")
+                      }
+                      required={field.required}
+                    >
+                      {field.type !== "multiselect" && !field.value && (
+                        <option value="">בחירה…</option>
+                      )}
+                      {field.options?.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} />
+                  </span>
+                ) : field.type === "textarea" ? (
+                  <textarea
+                    aria-label={field.label}
+                    name={field.name}
+                    defaultValue={str(field.value)}
+                    required={field.required}
+                    rows={3}
+                    onChange={(e) => field.onChange?.(e.target.value)}
+                  />
+                ) : (
+                  <input
+                    aria-label={field.label}
+                    name={field.name}
+                    type={field.type || "text"}
+                    defaultValue={str(field.value)}
+                    required={field.required}
+                    min={field.min}
+                    max={field.max}
+                    step={field.step}
+                    onChange={(e) => field.onChange?.(e.target.value)}
+                    dir={
+                      [
+                        "number",
+                        "email",
+                        "date",
+                        "datetime-local",
+                        "time",
+                      ].includes(field.type || "")
+                        ? "ltr"
+                        : undefined
+                    }
+                  />
+                )}
+                {field.hint && <small>{field.hint}</small>}
+              </>
+            )}
+          </label>
+        )
+      )}
     </div>
   );
 }

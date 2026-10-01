@@ -295,12 +295,10 @@ test("managers are outside the ranking, the pickers and a soldier's lists, and t
   await fresh.goto(`/duties/${open}`);
   await fresh.getByRole("button", { name: "שיבוץ ידני", exact: true }).click();
   const options = await fresh
-    .getByLabel("בחירת חייל")
-    .locator("option")
+    .getByRole("radiogroup", { name: "בחירת חייל" })
+    .locator("strong")
     .allTextContents();
-  expect(options.filter((text) => text !== "בחירה…").sort()).toEqual(
-    ["אלון", "בר", "חייל שמתמנה"].sort()
-  );
+  expect([...options].sort()).toEqual(["אלון", "בר", "חייל שמתמנה"].sort());
   await fresh.keyboard.press("Escape");
 
   // A soldier sees no manager in the table or among the possible replacements,
