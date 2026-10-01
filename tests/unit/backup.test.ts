@@ -272,6 +272,71 @@ describe("Google Drive adapter", () => {
     );
     expect(query).toContain("trashed = false");
   });
+  it("lists the encrypted dumps newest first without the database, leaving the deletion log and foreign files out (ticket #35)", async () => {
+    const calls: Call[] = [];
+    const storage = fakeDrive(
+      () =>
+        Response.json({
+          files: [
+            {
+              id: "new",
+              name: "fair-shifts-20261001-033000-aaaaaaaa.dump.age",
+              size: "20",
+              sha256Checksum: "n",
+              createdTime: "2026-10-01T00:30:05.000Z",
+              appProperties: { fairShiftsRun: "run-2" },
+            },
+            {
+              id: "log",
+              name: "deletion-log.jsonl",
+              size: "3",
+              sha256Checksum: "l",
+              createdTime: "2026-10-01T00:31:00.000Z",
+              appProperties: {
+                fairShiftsRun: "log-1",
+                fairShiftsKind: "deletion-log",
+              },
+            },
+            {
+              id: "old",
+              name: "fair-shifts-20260930-033000-bbbbbbbb.dump.age",
+              size: "10",
+              sha256Checksum: "o",
+              createdTime: "2026-09-30T00:30:05.000Z",
+              appProperties: { fairShiftsRun: "run-1" },
+            },
+            {
+              id: "other",
+              name: "notes.txt",
+              size: "1",
+              createdTime: "2026-09-01T00:00:00.000Z",
+            },
+          ],
+        }),
+      calls
+    );
+    expect(await storage.listBackups()).toEqual([
+      {
+        id: "new",
+        size: 20,
+        sha256: "n",
+        name: "fair-shifts-20261001-033000-aaaaaaaa.dump.age",
+        createdAt: new Date("2026-10-01T00:30:05.000Z"),
+      },
+      {
+        id: "old",
+        size: 10,
+        sha256: "o",
+        name: "fair-shifts-20260930-033000-bbbbbbbb.dump.age",
+        createdAt: new Date("2026-09-30T00:30:05.000Z"),
+      },
+    ]);
+    const url = new URL(calls.at(-1)!.url);
+    const query = url.searchParams.get("q")!;
+    expect(query).toContain("'folder-1' in parents");
+    expect(query).toContain("trashed = false");
+    expect(url.searchParams.get("orderBy")).toBe("createdTime desc");
+  });
   it("tags the deletion log as its own kind and finds it again without the database (decision 196)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fs-drive-kind-"));
     scratch.push(dir);
@@ -415,6 +480,12 @@ describe("backup screen helpers", () => {
     expect(formatBytes(1536)).toBe("1.5 KB");
     expect(formatBytes(undefined)).toBe("—");
   });
+  it("shows the restore notice switch to managers and the technical account, never to a soldier (decision 200)", () => {
+    expect(hiddenPreferenceTypes("manager")).not.toContain("restore");
+    expect(hiddenPreferenceTypes("technical")).not.toContain("restore");
+    expect(hiddenPreferenceTypes("soldier")).toContain("restore");
+    expect(hiddenPreferenceTypes(undefined)).toContain("restore");
+  });
   it("shows the operations email switch to the technical account only", () => {
     expect(hiddenPreferenceTypes("technical")).toEqual([
       "departure",
@@ -425,6 +496,7 @@ describe("backup screen helpers", () => {
       "departure",
       "operations",
       "deletion",
+      "restore",
     ]);
     // A soldier's form keeps the hidden switch as it was.
     const payload = preferencesPayload(
