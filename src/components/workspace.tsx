@@ -23,11 +23,13 @@ import {
   RefreshCw,
   ChevronLeft,
   CircleHelp,
+  Send,
 } from "lucide-react";
 import { type AppState, type Action, str, obj } from "@/client/types";
 import { unreadCount } from "@/client/notifications";
 import { Notice, Empty } from "./ui";
 import { CalendarView, DutyDetail, FairnessView, Dashboard } from "./views";
+import { PublishDrafts } from "./publish-drafts";
 import {
   SoldiersView,
   EligibilityView,
@@ -60,6 +62,7 @@ const managementLinks = [
   { path: "/manage/constraints", title: "סבבי אילוצים", icon: CalendarOff },
   { path: "/manage/catalog", title: "קטלוג תורנויות", icon: ClipboardList },
   { path: "/manage/planning", title: "תכנון ושיבוץ", icon: CalendarDays },
+  { path: "/manage/publish", title: "פרסום טיוטות", icon: Send },
   { path: "/manage/scores", title: "ניקוד והיסטוריה", icon: Scale },
   { path: "/manage/imports", title: "ייבוא חיילים", icon: Upload },
   { path: "/manage/audit", title: "יומן פעולות", icon: History },
@@ -83,6 +86,7 @@ const descriptions: Record<string, string> = {
   "/fairness": "חלוקה שקופה מתחילה במידע משותף.",
   "/manage": "מה שדורש החלטה, ומה שכבר מוכן להמשך.",
   "/manage/planning": "מתכננים את התקופה וממלאים את המקומות הפנויים.",
+  "/manage/publish": "מפרסמים כמה טיוטות יחד. החסומות נשארות טיוטה.",
   "/manage/soldiers": "פרטי החיילים והנתונים שעליהם נשען השיבוץ.",
   "/constraints": "מגישים בזמן, עוקבים אחרי ההחלטה.",
   "/requests": "הסכמות, החלפות ובקשות במקום אחד.",
@@ -207,7 +211,9 @@ export function Workspace({ path }: { path: string }) {
     ? "פרטי תורנות"
     : effectivePath.startsWith("/manage/audit/")
       ? "יומן פעולות"
-      : allLinks.find((l) => l.path === effectivePath)?.title || "המערכת";
+      : effectivePath.startsWith("/manage/publish/")
+        ? "פרסום טיוטות"
+        : allLinks.find((l) => l.path === effectivePath)?.title || "המערכת";
   const unread = unreadCount(state.notifications);
   // A manager takes no part in duties and submits no constraints (decision 192).
   const ownLinks = manager
@@ -266,6 +272,18 @@ export function Workspace({ path }: { path: string }) {
       return <CatalogView state={state} action={action} />;
     if (effectivePath === "/manage/planning")
       return <PlanningView state={state} action={action} />;
+    if (effectivePath === "/manage/publish")
+      return <PublishDrafts state={state} action={action} />;
+    // The run's drafts come marked: /manage/publish/run/<planning run id>.
+    if (effectivePath.startsWith("/manage/publish/run/"))
+      return (
+        <PublishDrafts
+          key={effectivePath}
+          state={state}
+          action={action}
+          runId={effectivePath.split("/")[4]}
+        />
+      );
     if (["/constraints", "/manage/constraints"].includes(effectivePath))
       return (
         <ConstraintsView

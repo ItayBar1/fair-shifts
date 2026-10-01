@@ -11,7 +11,7 @@ import {
   manager,
   type Actor,
 } from "./repository";
-import { invariant } from "./errors";
+import { AppError, invariant } from "./errors";
 import { id, text, population, gender } from "./validation";
 import {
   MANAGER_BLOCKER_MESSAGE,
@@ -19,6 +19,7 @@ import {
   genderCondition,
 } from "../domain/eligibility";
 import { calculatePrice } from "../domain/pricing";
+import { publishBlock } from "../domain/publication";
 import { instant, resolveLocalTime, interval } from "../domain/time";
 import type {
   Assignment,
@@ -538,52 +539,17 @@ export async function assignDuty(
     });
   return { id: assignmentId };
 }
-export async function publishDuty(
+/**
+ * Publishes one loaded draft: the duty row, a site notice and a mail for every
+ * soldier holding a seat in it, and the audit record. Shared by the single and
+ * the batch publish, which only differ in how they decide the draft is ready.
+ */
+export async function publishRow(
   tx: DbTransaction,
   actor: Actor,
-  payload: unknown,
-  expectedVersion?: number
+  row: typeof duties.$inferSelect,
+  auditData: Record<string, unknown> = {}
 ) {
-  manager(actor);
-  const input = z.object({ id, confirmed: z.literal(true) }).parse(payload);
-  const [row] = await tx.select().from(duties).where(eq(duties.id, input.id));
-  invariant(row, "not_found", "תורנות לא נמצאה", 404);
-  currentVersion(row.version, expectedVersion);
-  invariant(
-    row.data.status === "draft" &&
-      instant(row.data.start).toMillis() > Date.now(),
-    "cannot_publish",
-    "ניתן לפרסם טיוטה שטרם התחילה"
-  );
-  const state = await loadDomain(tx);
-  for (const assignment of state.assignments.filter(
-    (item) => item.dutyId === row.id && item.status === "reserved"
-  )) {
-    const person = state.soldiers.find(
-      (item) => item.id === assignment.soldierId
-    );
-    const slot = row.data.slots.find((item) => item.id === assignment.slotId);
-    invariant(
-      person && slot,
-      "invalid_assignment",
-      "שיבוץ דורש בדיקה לפני פרסום"
-    );
-    const result = evaluateEligibility(person, row.data, slot, {
-      duties: state.duties,
-      assignments: state.assignments,
-      mode: "manual",
-      ignoreAssignmentIds: [assignment.id],
-      approvals: assignment.approvals,
-      pendingReviewConfirmed: assignment.pendingReviewConfirmed,
-    });
-    invariant(
-      result.status === "eligible",
-      "assignment_changed",
-      "נתוני השיבוץ השתנו. יש לטפל בהתאמה לפני פרסום",
-      422,
-      result
-    );
-  }
   const version = row.version + 1;
   await tx
     .update(duties)
@@ -632,6 +598,30 @@ export async function publishDuty(
       ),
     });
   }
-  await audit(tx, actor, "duty.publish", row.id);
+  await audit(tx, actor, "duty.publish", row.id, auditData);
   return { id: row.id, version };
+}
+export async function publishDuty(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const input = z.object({ id, confirmed: z.literal(true) }).parse(payload);
+  const [row] = await tx.select().from(duties).where(eq(duties.id, input.id));
+  invariant(row, "not_found", "תורנות לא נמצאה", 404);
+  currentVersion(row.version, expectedVersion);
+  const state = await loadDomain(tx);
+  const duty = state.duties.find((item) => item.id === row.id);
+  invariant(duty, "not_found", "תורנות לא נמצאה", 404);
+  const block = publishBlock(state, duty, Date.now());
+  if (block)
+    throw new AppError(
+      block.code,
+      block.message,
+      block.status,
+      block.eligibility
+    );
+  return publishRow(tx, actor, row);
 }
