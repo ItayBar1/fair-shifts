@@ -155,6 +155,26 @@ describe("gender", () => {
       shown(soldier({ gender: "other" }), { genders: ["male", "other"] }, day)
     ).toBe(true);
   });
+  it("treats every gender selected as no filter, so a soldier with none stays (decision 198)", () => {
+    const everyone = ["male", "female", "other"];
+    expect(shown(soldier(), { genders: everyone }, day)).toBe(true);
+    expect(shown(soldier({ gender: "male" }), { genders: everyone }, day)).toBe(
+      true
+    );
+    // The partial filter keeps hiding a soldier with none recorded.
+    expect(shown(soldier(), { genders: ["male", "female"] }, day)).toBe(false);
+  });
+  it("does not count the full selection as an active or different filter", () => {
+    const everyone = filters({ genders: ["male", "female", "other"] });
+    expect(activeGroups(everyone)).toEqual([]);
+    expect(sameFilters(everyone, emptyFilters)).toBe(true);
+    expect(activeGroups(filters({ genders: ["male", "female"] }))).toEqual([
+      "genders",
+    ]);
+    expect(
+      sameFilters(filters({ genders: ["male", "female"] }), emptyFilters)
+    ).toBe(false);
+  });
 });
 
 describe("exemptions apply at the duty date", () => {
@@ -526,6 +546,18 @@ describe("defaults from the duty and the role", () => {
   it("starts with no filter when nothing is required", () => {
     expect(defaultFilters([{}, {}], ranks)).toEqual(emptyFilters);
     expect(defaultFilters([], ranks)).toEqual(emptyFilters);
+  });
+  it("does not filter by gender for a duty or role with every gender (decision 198)", () => {
+    const everyone: Requirements = { genders: ["male", "female", "other"] };
+    expect(defaultFilters([everyone], ranks).genders).toEqual([]);
+    expect(defaultFilters([everyone, {}], ranks)).toEqual(emptyFilters);
+    // Every gender on the duty and one on the role: the role's condition decides.
+    expect(
+      defaultFilters([everyone, { genders: ["female"] }], ranks).genders
+    ).toEqual(["female"]);
+    expect(defaultFilters([{ genders: [] }, everyone], ranks).genders).toEqual(
+      []
+    );
   });
   it("fills populations, genders, qualifications, capabilities and the blocking exemptions", () => {
     const duty: Requirements = {

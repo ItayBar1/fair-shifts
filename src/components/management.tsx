@@ -49,6 +49,7 @@ import {
   ConditionsSummary,
   SoldierConditions,
   capabilityOptions,
+  genderHint,
   genders,
 } from "./eligibility-conditions";
 import type { Gender, RankClause, Requirements } from "@/domain/types";
@@ -815,7 +816,7 @@ function CatalogForm({
       type: "multiselect",
       options: genders,
       value: Array.isArray(initial?.genders) ? initial.genders.map(String) : [],
-      hint: "ללא בחירה — ללא תנאי מגדר",
+      hint: genderHint,
     },
     {
       name: "capabilityIds",
@@ -985,6 +986,7 @@ function CatalogForm({
               <div className="subsection">
                 <ConditionToggles
                   legend={`מגדר מותר לתפקיד ${i + 1}`}
+                  hint={genderHint}
                   options={genders}
                   value={role.requirements.genders ?? []}
                   onChange={(value) =>

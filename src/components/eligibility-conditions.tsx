@@ -12,6 +12,8 @@ import {
 import { Badge, Form, Notice } from "./ui";
 import { ImpactList } from "./personnel-history";
 
+/** Shown beside every gender condition: all three is the same as none (decision 198). */
+export const genderHint = "כל המגדרים = ללא תנאי מגדר";
 export const genders = [
   { value: "male", label: "זכר" },
   { value: "female", label: "נקבה" },
@@ -37,11 +39,13 @@ export function ConditionToggles({
   options,
   value,
   onChange,
+  hint,
 }: {
   legend: string;
   options: { value: string; label: string }[];
   value: string[];
   onChange: (value: string[]) => void;
+  hint?: string;
 }) {
   return (
     <fieldset className="toggle-group">
@@ -66,6 +70,7 @@ export function ConditionToggles({
       ) : (
         <span className="muted">אין ערכים בקטלוג</span>
       )}
+      {hint && <small className="muted">{hint}</small>}
     </fieldset>
   );
 }

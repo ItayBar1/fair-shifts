@@ -1,5 +1,10 @@
 import { DateTime } from "luxon";
-import { matchesRank, populationFits, rankAt } from "@/domain/eligibility";
+import {
+  genderCondition,
+  matchesRank,
+  populationFits,
+  rankAt,
+} from "@/domain/eligibility";
 import {
   UNIT_ZONE,
   coveredByRanges,
@@ -160,10 +165,9 @@ export function matchesFilters(
   range: InstantRange
 ): boolean {
   if (!matchesSearch(soldier, filters.search)) return false;
-  if (
-    filters.genders.length &&
-    !(soldier.gender && filters.genders.includes(soldier.gender))
-  )
+  // Every gender selected is no gender filter, so a soldier without one stays (decision 198).
+  const genders = genderCondition(filters.genders);
+  if (genders && !(soldier.gender && genders.includes(soldier.gender)))
     return false;
   if (filters.capabilities.some((id) => !soldier.capabilities?.includes(id)))
     return false;
@@ -277,9 +281,10 @@ export function defaultFilters(
   const populations = requirements.flatMap((set) =>
     set.populations?.length ? [set.populations as string[]] : []
   );
-  const genders = requirements.flatMap((set) =>
-    set.genders?.length ? [set.genders as string[]] : []
-  );
+  const genders = requirements.flatMap((set) => {
+    const condition = genderCondition(set.genders);
+    return condition ? [condition as string[]] : [];
+  });
   const ranks = requirements.flatMap((set) =>
     set.ranks?.length
       ? [
@@ -318,8 +323,14 @@ export function defaultFilters(
 export const requirementsOf = (row?: Record<string, unknown>): Requirements =>
   obj(row?.requirements) as Requirements;
 
+/** A group counts as set only when it limits the list: every gender selected does not (decision 198). */
+const limits = (filters: PickerFilters, group: FilterGroup) =>
+  group === "genders"
+    ? Boolean(genderCondition(filters.genders))
+    : filters[group].length > 0;
+
 export const activeGroups = (filters: PickerFilters): FilterGroup[] =>
-  filterGroups.filter((group) => filters[group].length > 0);
+  filterGroups.filter((group) => limits(filters, group));
 
 /** The filters with every group cleared; the search text stays. */
 export const clearedFilters = (filters: PickerFilters): PickerFilters => ({
@@ -329,8 +340,11 @@ export const clearedFilters = (filters: PickerFilters): PickerFilters => ({
 
 /** Whether two filter sets select the same groups and values, whatever their order. */
 export const sameFilters = (a: PickerFilters, b: PickerFilters) =>
-  filterGroups.every(
-    (group) =>
-      a[group].length === b[group].length &&
-      a[group].every((value) => b[group].includes(value))
-  );
+  filterGroups.every((group) => {
+    const left = limits(a, group) ? a[group] : [];
+    const right = limits(b, group) ? b[group] : [];
+    return (
+      left.length === right.length &&
+      left.every((value) => right.includes(value))
+    );
+  });

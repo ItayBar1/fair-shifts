@@ -529,36 +529,53 @@ describe("a restore drill", () => {
   it("brings a backup of an older schema up to this version's", async () => {
     await seed();
     await drainDeletionLog(logConfig());
-    const [latest] = (
+    // The database as it was before migration 0008 (which added the index below) and everything after it.
+    const journal = JSON.parse(
+      await readFile("./drizzle/meta/_journal.json", "utf8")
+    ) as { entries: { when: number; tag: string }[] };
+    const since = journal.entries.find((entry) =>
+      entry.tag.startsWith("0008_")
+    )!.when;
+    const removed = (
       await pool.query(
-        "select id, hash, created_at from drizzle.__drizzle_migrations order by created_at desc limit 1"
+        "select id, hash, created_at from drizzle.__drizzle_migrations where created_at >= $1",
+        [since]
       )
     ).rows;
-    // Make the database look like the version before the last migration (0008 added this index).
+    expect(removed.length).toBeGreaterThanOrEqual(1);
     await pool.query("drop index auth_account_user_provider");
-    await pool.query("delete from drizzle.__drizzle_migrations where id = $1", [
-      latest.id,
-    ]);
+    await pool.query(
+      "delete from drizzle.__drizzle_migrations where created_at >= $1",
+      [since]
+    );
     try {
       await takeBackup();
     } finally {
-      await pool.query(
-        "insert into drizzle.__drizzle_migrations (id, hash, created_at) values ($1, $2, $3)",
-        [latest.id, latest.hash, latest.created_at]
-      );
+      for (const row of removed)
+        await pool.query(
+          "insert into drizzle.__drizzle_migrations (id, hash, created_at) values ($1, $2, $3)",
+          [row.id, row.hash, row.created_at]
+        );
       await pool.query(
         "create unique index auth_account_user_provider on auth_account (user_id, provider_id)"
       );
     }
     const { report, database } = await drill({ keep: true });
     expect(report.outcome).toBe("passed");
-    expect(report.schema.inBackup).toBe(report.schema.inApp - 1);
+    expect(report.schema.inBackup).toBe(report.schema.inApp - removed.length);
     const { rows } = await dumpOf(database!);
     expect(
       await rows(
         "select 1 from pg_indexes where indexname = 'auth_account_user_provider'"
       )
     ).toHaveLength(1);
+    expect(
+      (
+        await rows(
+          "select count(*)::int as n from drizzle.__drizzle_migrations"
+        )
+      )[0].n
+    ).toBe(report.schema.inApp);
   });
 
   it("refuses a backup written by a newer version, and runs no other check on it", async () => {

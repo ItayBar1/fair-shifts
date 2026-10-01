@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { evaluateEligibility } from "../../src/domain/eligibility";
+import {
+  evaluateEligibility,
+  genderCondition,
+} from "../../src/domain/eligibility";
 import { windowBoundary } from "../../src/domain/time";
 import { duty, soldier } from "../fixtures";
 import type {
@@ -68,6 +71,57 @@ describe("gender conditions", () => {
   });
   it("ignores gender when the duty sets no gender condition", () =>
     expect(codes(soldier(), duty()).status).toBe("eligible"));
+});
+
+// Decision 198: every gender is no gender condition.
+describe("a gender condition with every gender", () => {
+  const everyone = ["male", "female", "other"] as const;
+  it("reads an empty, missing or full list as no condition", () => {
+    expect(genderCondition(undefined)).toBeUndefined();
+    expect(genderCondition([])).toBeUndefined();
+    expect(genderCondition([...everyone])).toBeUndefined();
+    expect(
+      genderCondition(["other", "male", "female", "male"])
+    ).toBeUndefined();
+  });
+  it("keeps a partial list as a real condition", () => {
+    expect(genderCondition(["male", "female"])).toEqual(["male", "female"]);
+    expect(genderCondition(["female", "female"])).toEqual(["female"]);
+  });
+  it("does not block a soldier without a gender, in every mode", () => {
+    const target = duty({ requirements: { genders: [...everyone] } });
+    expect(codes(soldier(), target, automatic).status).toBe("eligible");
+    expect(codes(soldier(), target, manual).status).toBe("eligible");
+    expect(codes(soldier({ gender: "other" }), target).status).toBe("eligible");
+  });
+  it("does not block through a role with every gender either", () => {
+    const target = duty({
+      slots: [
+        { id: "s", role: "תורן", requirements: { genders: [...everyone] } },
+      ],
+    });
+    expect(codes(soldier(), target).status).toBe("eligible");
+  });
+  it("still blocks a soldier without a gender when two of three are listed", () => {
+    const target = duty({ requirements: { genders: ["male", "female"] } });
+    const result = codes(soldier(), target, manual);
+    expect(result.blockers).toEqual(["gender"]);
+    expect(result.messages[0]).toContain("מידע חסר");
+    expect(codes(soldier({ gender: "other" }), target).blockers).toEqual([
+      "gender",
+    ]);
+  });
+  it("lets the role's own condition decide when the duty lists every gender", () => {
+    const target = duty({
+      requirements: { genders: [...everyone] },
+      slots: [{ id: "s", role: "תורן", requirements: { genders: ["male"] } }],
+    });
+    expect(codes(soldier(), target).blockers).toEqual(["gender"]);
+    expect(codes(soldier({ gender: "female" }), target).blockers).toEqual([
+      "gender",
+    ]);
+    expect(codes(soldier({ gender: "male" }), target).status).toBe("eligible");
+  });
 });
 
 describe("capability conditions", () => {
