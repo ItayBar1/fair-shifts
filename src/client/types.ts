@@ -71,7 +71,23 @@ export function displayDate(value: unknown, withTime = false) {
       : {}),
   }).format(date);
 }
+/**
+ * A soldier's state leaves duty managers out of its lists (decision 192) and
+ * sends only their names in `names`, so a duty that still mentions one shows it.
+ */
 export const personName = (state: AppState, id: unknown) =>
-  str(state.soldiers.find((s) => s.id === id)?.name, "חייל");
+  str(
+    state.soldiers.find((s) => s.id === id)?.name ??
+      obj(state.names)[String(id)],
+    "חייל"
+  );
+/**
+ * Who a manager may put in a seat: not deleted and not a manager. `keep` lists
+ * people already in the seat, so the current value still shows and can be replaced.
+ */
+export const assignableSoldiers = (state: AppState, keep: unknown[] = []) =>
+  state.soldiers.filter(
+    (row) => !row.deletedAt && (!row.isManager || keep.includes(row.id))
+  );
 export const dutyName = (state: AppState, id: unknown) =>
   str(state.duties.find((d) => d.id === id)?.name, "תורנות");

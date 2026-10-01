@@ -153,6 +153,13 @@ export async function submitConstraint(
   payload: unknown,
   expectedVersion?: number
 ) {
+  // A manager is not assigned to duties, so has no constraints to submit (decision 192).
+  invariant(
+    actor.role !== "manager",
+    "forbidden",
+    "אחראי תורנויות אינו משובץ לתורנויות ולכן אינו מגיש אילוצים",
+    403
+  );
   invariant(
     actor.role !== "technical" && actor.soldierId,
     "forbidden",

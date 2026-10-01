@@ -24,6 +24,8 @@ const planned = DateTime.now()
   .plus({ days: 12 })
   .toISODate()!;
 let manager: Actor;
+// A manager takes no part in duties (decision 192), so a second soldier is the other available one.
+let second: string;
 test.beforeAll(async () => {
   if (
     !process.env.TEST_DATABASE_URL ||
@@ -39,6 +41,7 @@ test.beforeAll(async () => {
     ["אחראי תכנון", "500001", false],
     ["תורן זמין", "500002", false],
     ["תורן באי־פעילות", "500003", true],
+    ["תורן זמין נוסף", "500005", false],
   ] as const) {
     const id = randomUUID();
     const data = soldier({
@@ -51,6 +54,7 @@ test.beforeAll(async () => {
     await db.insert(balances).values({ soldierId: id });
     ids[name] = id;
   }
+  second = ids["תורן זמין נוסף"];
   const account = await createInvitedAccount({
     name: "אחראי תכנון",
     email: managerEmail,
@@ -124,7 +128,7 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
   await page.getByLabel("עד תאריך", { exact: true }).fill(planned);
   await page.getByRole("button", { name: "יצירת ריצת תכנון" }).click();
   await expect(page.getByText(/הסתיים · 1 מקומות לא מאוישים/)).toBeVisible();
-  // Two eligible soldiers take two seats; nobody is forced into the third.
+  // Two eligible soldiers take two seats; nobody, the manager included, is forced into the third.
   expect(await db.select().from(assignments)).toHaveLength(2);
 
   const runs = page.locator("section").filter({
@@ -202,7 +206,7 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
   await db
     .update(balances)
     .set({ current: 2 })
-    .where(eq(balances.soldierId, manager.soldierId!));
+    .where(eq(balances.soldierId, second));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(approveButton).toHaveCount(0);
   await expect(

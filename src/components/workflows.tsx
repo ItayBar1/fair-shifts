@@ -475,7 +475,11 @@ function AccountsPanel({
 }) {
   return (
     <Panel title="חשבונות והרשאות">
-      <Notice>החשבון הטכני נפרד מרשימת החיילים ומנהל את הרשאות האחראים.</Notice>
+      <Notice>
+        החשבון הטכני נפרד מרשימת החיילים ומנהל את הרשאות האחראים. אחראי אינו
+        משובץ לתורנויות: מינוי חייל מסמן את שיבוציו הקיימים לטיפול האחראים,
+        והסרת ההרשאה מחזירה אותו לשיבוץ.
+      </Notice>
       {accounts.map((row) => (
         <div className="task-item" key={row.id}>
           <strong className="grow">{str(row.name)}</strong>

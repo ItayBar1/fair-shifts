@@ -4,6 +4,7 @@ import {
   type AppState,
   type Action,
   type Row,
+  assignableSoldiers,
   str,
   rows,
   obj,
@@ -32,9 +33,10 @@ export function ManualAssignment({
       label: "בחירת חייל",
       type: "select",
       required: true,
-      options: state.soldiers
-        .filter((row) => !row.deletedAt)
-        .map((row) => ({ value: row.id, label: str(row.name) })),
+      options: assignableSoldiers(state).map((row) => ({
+        value: row.id,
+        label: str(row.name),
+      })),
     },
     ...callUpFields(duty),
   ];

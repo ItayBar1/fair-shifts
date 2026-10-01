@@ -63,6 +63,11 @@ export interface Soldier {
   personalNumber: string;
   version: number;
   deletedAt?: Instant;
+  /**
+   * Derived from the account role when the unit is loaded, never stored in the
+   * soldier's data: a duty manager is never assigned to a duty (decision 192).
+   */
+  isManager?: boolean;
   currentScore: number;
   service: ServiceProfile;
   populationHistory: EffectivePopulation[];

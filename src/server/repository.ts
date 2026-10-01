@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "./db";
 import { records, soldiers, balances, duties, assignments } from "./schema";
+import { user } from "./auth-schema";
 import { AppError, invariant } from "./errors";
 import type { Constraint } from "../domain/types";
 import type { Actor } from "./auth/accounts";
@@ -114,6 +115,15 @@ export async function loadDomain(tx: DbTransaction) {
     .from(records)
     .where(eq(records.kind, "constraint"));
   const scores = new Map(scoreRows.map((row) => [row.soldierId, row.current]));
+  // The role at this moment decides: a duty manager is never assigned (decision 192).
+  const managers = new Set(
+    (
+      await tx
+        .select({ soldierId: user.soldierId })
+        .from(user)
+        .where(and(eq(user.role, "manager"), isNull(user.deletedAt)))
+    ).map((row) => row.soldierId)
+  );
   return {
     soldiers: people.map((row) => ({
       ...row.data,
@@ -123,6 +133,8 @@ export async function loadDomain(tx: DbTransaction) {
       version: row.version,
       currentScore: scores.get(row.id) ?? 0,
       deletedAt: row.deletedAt?.toISOString(),
+      // Set from the account alone, so a stale stored value never counts.
+      isManager: managers.has(row.id) || undefined,
       constraints: constraintRows
         .filter((c) => c.subjectId === row.id)
         .flatMap((c) => {

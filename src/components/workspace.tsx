@@ -209,7 +209,12 @@ export function Workspace({ path }: { path: string }) {
       ? "יומן פעולות"
       : allLinks.find((l) => l.path === effectivePath)?.title || "המערכת";
   const unread = unreadCount(state.notifications);
+  // A manager takes no part in duties and submits no constraints (decision 192).
+  const ownLinks = manager
+    ? commonLinks.filter((item) => item.path !== "/constraints")
+    : commonLinks;
   const restricted =
+    (effectivePath === "/constraints" && manager) ||
     (effectivePath.startsWith("/manage") && !manager) ||
     (effectivePath.startsWith("/technical") && !technical) ||
     (technical &&
@@ -330,7 +335,7 @@ export function Workspace({ path }: { path: string }) {
           <span className="live-dot" /> מרחב היחידה
         </div>
         <nav aria-label="ניווט ראשי">
-          {technical ? navigation(technicalLinks) : navigation(commonLinks)}
+          {technical ? navigation(technicalLinks) : navigation(ownLinks)}
           {manager && (
             <>
               <div className="nav-section">ניהול היחידה</div>

@@ -13,7 +13,10 @@ import {
 } from "./repository";
 import { invariant } from "./errors";
 import { id, text, population, gender } from "./validation";
-import { evaluateEligibility } from "../domain/eligibility";
+import {
+  MANAGER_BLOCKER_MESSAGE,
+  evaluateEligibility,
+} from "../domain/eligibility";
 import { calculatePrice } from "../domain/pricing";
 import { instant, resolveLocalTime, interval } from "../domain/time";
 import type {
@@ -424,7 +427,9 @@ export async function assignDuty(
   invariant(
     eligibility.status !== "blocked",
     eligibility.status,
-    "לא ניתן להשלים שיבוץ: נדרשת בדיקת התאמה",
+    eligibility.blockers.some((row) => row.code === "manager")
+      ? MANAGER_BLOCKER_MESSAGE
+      : "לא ניתן להשלים שיבוץ: נדרשת בדיקת התאמה",
     422,
     eligibility
   );

@@ -200,21 +200,16 @@ describe("constraint round notices", () => {
     expect(await refresh(now)).toBe(1);
     expect(await refresh(now + 60_000)).toBe(0);
     const opening = await notices(round.id, "opening");
+    // A duty manager takes no part in duties, so the opening does not reach one (decision 192).
     expect(subjects(opening)).toEqual(
-      sorted(
-        manager.soldierId,
-        secondManager.soldierId,
-        member.soldierId,
-        other.soldierId,
-        withoutAccount
-      )
+      sorted(member.soldierId, other.soldierId, withoutAccount)
     );
     expect(
       opening.find((row) => row.subjectId === withoutAccount)?.data.accountId
     ).toBeUndefined();
     const emails = await roundEmails(round.id);
     expect(emails.map((row) => row.recipientAccountId).sort()).toEqual(
-      sorted(manager.id, secondManager.id, member.id, other.id)
+      sorted(member.id, other.id)
     );
     expect(new Set(emails.map((row) => row.kind))).toEqual(
       new Set(["round-opening"])
@@ -224,13 +219,9 @@ describe("constraint round notices", () => {
     );
 
     // Preferences are read at delivery: the site notice stays, the email is cancelled.
-    expect(await deliverAll()).toEqual(
-      sorted(
-        roundEventKey(round.id, 0, "opening", manager.id),
-        roundEventKey(round.id, 0, "opening", secondManager.id),
-        roundEventKey(round.id, 0, "opening", other.id)
-      )
-    );
+    expect(await deliverAll()).toEqual([
+      roundEventKey(round.id, 0, "opening", other.id),
+    ]);
     const [muted] = (await roundEmails(round.id)).filter(
       (row) => row.recipientAccountId === member.id
     );
@@ -239,6 +230,17 @@ describe("constraint round notices", () => {
       error: "preference_disabled",
     });
 
+    // Neither manager has a notice of the round, on the site or by email.
+    for (const person of [manager, secondManager]) {
+      expect(
+        (await readState(person)).notifications.filter(
+          (row) => (row as Record<string, unknown>).roundId === round.id
+        )
+      ).toEqual([]);
+      expect(
+        emails.filter((row) => row.recipientAccountId === person.id)
+      ).toEqual([]);
+    }
     // A soldier sees only their own notice and none of the delivery bookkeeping.
     const soldierView = await readState(member);
     expect(soldierView.roundNotices).toEqual([]);
@@ -255,8 +257,8 @@ describe("constraint round notices", () => {
         phase: "start",
         notice: "opening",
         status: "sent",
-        recipients: 5,
-        emails: 4,
+        recipients: 3,
+        emails: 2,
       }),
     ]);
   });
@@ -265,6 +267,8 @@ describe("constraint round notices", () => {
     const now = Date.now();
     const closesAt = now + 2 * DAY;
     const round = await openRound(now - 60_000, closesAt);
+    const idle = await invite("חייל שלא הגיש", "soldier", "00010");
+    const tardy = await invite("חייל שמגיש באיחור", "soldier", "00011");
     await refresh(now);
     await deliverAll();
     // "No constraints" completes the submission; a rejected item is still a submission.
@@ -292,25 +296,22 @@ describe("constraint round notices", () => {
     expect(await refresh(due)).toBe(1);
     expect(await refresh(due + 60_000)).toBe(0);
     const closing = await notices(round.id, "closing");
-    expect(subjects(closing)).toEqual(
-      sorted(manager.soldierId, secondManager.soldierId)
-    );
+    expect(subjects(closing)).toEqual(sorted(idle.soldierId, tardy.soldierId));
     expect(closing[0].data.body).toContain(
       DateTime.fromMillis(closesAt, { zone: ZONE }).toFormat("dd.MM.yyyy HH:mm")
     );
 
     // Submitting between queueing and delivery cancels that soldier's reminder.
-    await command(secondManager, "constraint.submit", {
+    await command(tardy, "constraint.submit", {
       roundId: round.id,
       none: true,
     });
     expect(await deliverAll()).toEqual([
-      roundEventKey(round.id, 0, "closing", manager.id),
+      roundEventKey(round.id, 0, "closing", idle.id),
     ]);
     const [late] = (await roundEmails(round.id)).filter(
       (row) =>
-        row.recipientAccountId === secondManager.id &&
-        row.kind === "round-closing"
+        row.recipientAccountId === tardy.id && row.kind === "round-closing"
     );
     expect(late.status).toBe("cancelled");
   });
@@ -345,7 +346,7 @@ describe("constraint round notices", () => {
     });
     expect(await refresh(Date.now())).toBe(1);
     expect(subjects(await notices(round.id, "reopening"))).toEqual(
-      sorted(manager.soldierId, secondManager.soldierId, other.soldierId)
+      sorted(other.soldierId)
     );
 
     // Extending an open round is also a new generation; the old one is cancelled.
@@ -364,7 +365,7 @@ describe("constraint round notices", () => {
     ).toEqual([]);
     expect(await refresh(Date.now())).toBe(1);
     expect(subjects(await notices(round.id, "extension"))).toEqual(
-      sorted(manager.soldierId, secondManager.soldierId, other.soldierId)
+      sorted(other.soldierId)
     );
     // An email of an older generation is never delivered.
     await db.transaction((tx) =>
@@ -378,7 +379,7 @@ describe("constraint round notices", () => {
       })
     );
     const sent = await deliverAll();
-    expect(sent).toHaveLength(3);
+    expect(sent).toHaveLength(1);
     expect(sent.every((key) => key.startsWith(`round:${round.id}:2:`))).toBe(
       true
     );
@@ -415,13 +416,13 @@ describe("constraint round notices", () => {
     expect(await refresh(now)).toBe(2);
     expect(await notices(late.id, "opening")).toEqual([]);
     expect(subjects(await notices(late.id, "closing"))).toEqual(
-      sorted(manager.soldierId, secondManager.soldierId, other.soldierId)
+      sorted(other.soldierId)
     );
     expect(
       (await markers(late.id)).map((row) => `${row.phase}:${row.status}`).sort()
     ).toEqual(["closing:sent", "start:merged"]);
     expect(await markers(missed.id)).toEqual([]);
-    expect(await deliverAll()).toHaveLength(3);
+    expect(await deliverAll()).toHaveLength(1);
 
     // An email still queued when the window ends is skipped, not sent late.
     const short = await openRound(now - 60_000, now + HOUR);
@@ -447,8 +448,8 @@ describe("constraint round notices", () => {
     const round = await openRound(now - 60_000, now + 3 * DAY);
     const results = await Promise.all([refresh(now), refresh(now)]);
     expect(results.sort()).toEqual([0, 1]);
-    expect(await notices(round.id, "opening")).toHaveLength(4);
-    expect(await roundEmails(round.id)).toHaveLength(4);
+    expect(await notices(round.id, "opening")).toHaveLength(2);
+    expect(await roundEmails(round.id)).toHaveLength(2);
   });
 
   it("schedules by the Israeli calendar when winter time starts", async () => {

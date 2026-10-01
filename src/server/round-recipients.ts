@@ -31,9 +31,10 @@ function receives(
 }
 
 /**
- * Soldiers whose service overlaps the target period and who still have access,
- * including managers who serve as soldiers. Soldiers without an account get the
- * site notice only.
+ * Soldiers whose service overlaps the target period and who still have access.
+ * A duty manager is not assigned to duties and so is not a recipient (decision
+ * 192, which replaces the inclusion in decision 169). Soldiers without an
+ * account get the site notice only.
  */
 export async function roundRecipients(
   tx: DbTransaction,
@@ -45,7 +46,11 @@ export async function roundRecipients(
   ).filter((person) => receives(person, round.data as RoundData, now));
   const accounts = people.length
     ? await tx
-        .select({ id: user.id, soldierId: user.soldierId })
+        .select({
+          id: user.id,
+          soldierId: user.soldierId,
+          role: user.role,
+        })
         .from(user)
         .where(
           and(
@@ -57,11 +62,18 @@ export async function roundRecipients(
           )
         )
     : [];
-  return people.map((person) => ({
-    soldierId: person.id,
-    accountId:
-      accounts.find((account) => account.soldierId === person.id)?.id ?? null,
-  }));
+  const managers = new Set(
+    accounts
+      .filter((account) => account.role === "manager")
+      .map((account) => account.soldierId)
+  );
+  return people
+    .filter((person) => !managers.has(person.id))
+    .map((person) => ({
+      soldierId: person.id,
+      accountId:
+        accounts.find((account) => account.soldierId === person.id)?.id ?? null,
+    }));
 }
 
 /** Any item or "no constraints" declaration in the round, including a rejected one. */
@@ -102,10 +114,11 @@ export async function roundEmailRelevant(
   )
     return false;
   const [account] = await tx
-    .select({ soldierId: user.soldierId })
+    .select({ soldierId: user.soldierId, role: user.role })
     .from(user)
     .where(eq(user.id, accountId));
-  if (!account?.soldierId) return false;
+  // By the role at delivery time: a soldier appointed after the notice is queued no longer receives it.
+  if (!account?.soldierId || account.role === "manager") return false;
   const [person] = await tx
     .select()
     .from(soldiers)
