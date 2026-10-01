@@ -14,6 +14,7 @@ import {
   personName,
 } from "@/client/types";
 import { asInstant, requirementsOf } from "@/client/soldier-picker";
+import { deletedSeats, suggestDeletedSplit } from "@/client/deleted-seats";
 import { Badge, Modal, Notice, Panel } from "./ui";
 import { SoldierPicker } from "./soldier-picker";
 
@@ -93,6 +94,7 @@ export function ExecutionPeriods({
   duty: Row;
 }) {
   const slots = rows(duty.slots);
+  const urgent = deletedSeats(state, str(duty.id));
   const history = rows(state.executionChanges)
     .filter((row) => row.dutyId === duty.id)
     .sort((a, b) => str(b.recordedAt).localeCompare(str(a.recordedAt)));
@@ -101,6 +103,24 @@ export function ExecutionPeriods({
       title="תקופות ביצוע"
       subtitle="מי ביצע בפועל כל חלק של התורנות. כל רגע בתורנות שייך למבצע אחד או מסומן ״לא בוצע״; בתעריף יומי הניקוד יחסי לזמן בפועל."
     >
+      {urgent.length > 0 && (
+        <Notice tone="danger">
+          <strong>טיפול דחוף: חייל נמחק בזמן שהתורנות מתבצעת.</strong>{" "}
+          {urgent
+            .map(
+              (row) =>
+                `${personName(state, row.soldierId)} (נמחק ${displayDate(
+                  state.soldiers.find((s) => s.id === row.soldierId)?.deletedAt,
+                  true
+                )})`
+            )
+            .join(", ")}
+          . המקום נשאר על שמו עד שתרשמו עד מתי ביצע בפועל, מי מחליף אותו בהמשך
+          ומה הניקוד. עד אז השיבוץ אינו נזקף אוטומטית. בעריכה מוצע שהחייל ביצע
+          עד רגע המחיקה ושהמשך התורנות ממתין למחליף; אפשר לשנות כל תקופה, או
+          להסיר את החייל מהמקום כדי שלא יזקף לו כלום.
+        </Notice>
+      )}
       {slots.map((slot) => {
         const segments = seatSegments(state, duty, slot.id);
         return (
@@ -195,10 +215,22 @@ function SeatEditor({
   slot: Row;
   segments: ReturnType<typeof seatSegments>;
 }) {
-  const initial = (): Segment[] =>
-    recorded.length
-      ? recorded.map(({ soldierId, start, end }) => ({ soldierId, start, end }))
-      : [{ soldierId: null, start: str(duty.start), end: str(duty.end) }];
+  const initial = (): Segment[] => {
+    if (!recorded.length)
+      return [{ soldierId: null, start: str(duty.start), end: str(duty.end) }];
+    // A soldier deleted while the duty ran is offered the part up to the deletion;
+    // the rest waits for a replacement (decision 196). The manager may change both.
+    return recorded.flatMap(({ soldierId, start, end, rowId }) => {
+      const whole = { soldierId, start, end };
+      const row = state.assignments.find((item) => item.id === rowId);
+      const person = state.soldiers.find((item) => item.id === soldierId);
+      if (!row || row.deletionDecidedAt) return [whole];
+      return suggestDeletedSplit(
+        whole,
+        person?.deletedAt ? str(person.deletedAt) : undefined
+      );
+    });
+  };
   const [open, setOpen] = useState(false);
   const [segments, setSegments] = useState<Segment[]>(initial);
   const [allocationEdits, setAllocationEdits] = useState<
@@ -380,6 +412,9 @@ function SeatEditor({
                   }}
                   requirements={[requirementsOf(duty), requirementsOf(slot)]}
                   keep={recorded.flatMap((item) =>
+                    item.soldierId ? [item.soldierId] : []
+                  )}
+                  keepDeleted={recorded.flatMap((item) =>
                     item.soldierId ? [item.soldierId] : []
                   )}
                   emptyOption={{ value: "", label: "לא בוצע" }}

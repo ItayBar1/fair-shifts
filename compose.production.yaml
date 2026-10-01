@@ -17,6 +17,9 @@ x-app: &app
   env_file:
     - path: ${FAIR_SHIFTS_CONFIG_DIR:?FAIR_SHIFTS_CONFIG_DIR is required}/app.env
       required: true
+  # Only the worker has the volume; the site reads the log's state from the database.
+  environment:
+    DELETION_LOG_DIRECTORY: /var/lib/fair-shifts-deletion-log
   stop_grace_period: 30s
   depends_on:
     db:
@@ -71,6 +74,9 @@ services:
   worker:
     <<: *app
     pull_policy: never
+    # The independent deletion log, outside the database and its backups (decision 196).
+    volumes:
+      - deletion-log:/var/lib/fair-shifts-deletion-log
     networks: [internal, egress]
     depends_on:
       db:
@@ -117,3 +123,4 @@ networks:
 
 volumes:
   postgres-data:
+  deletion-log:
