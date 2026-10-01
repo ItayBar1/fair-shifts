@@ -539,6 +539,31 @@ small {
   color: var(--muted);
   font-size: 12px;
 }
+.stat-button {
+  text-align: start;
+  color: inherit;
+  min-width: 0;
+  cursor: pointer;
+}
+.stat-button > strong,
+.stat-button > small {
+  display: block;
+}
+.stat-button:hover,
+.stat-button.active {
+  border-color: var(--teal);
+  background: #f0f8f6;
+}
+.stat-button:focus-visible,
+.personal-row:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+.calendar-selection {
+  color: var(--muted);
+  padding: 0 20px;
+  font-size: 12px;
+}
 .stat-value {
   font-size: 32px;
   font-weight: 700;

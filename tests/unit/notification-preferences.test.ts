@@ -64,7 +64,7 @@ describe("notification preferences", () => {
       preferencesSchema.safeParse({ ...valid, accountId: "other" }).success
     ).toBe(false);
   });
-  it("keeps a form saved before the transfer, departure, operations and deletion types existed and starts them enabled", () => {
+  it("keeps a form saved before the transfer, departure, operations, deletion and restore types existed and starts them enabled", () => {
     const legacy = {
       custom: true,
       reminderHours: [12],
@@ -84,6 +84,7 @@ describe("notification preferences", () => {
           departure: true,
           operations: true,
           deletion: true,
+          restore: true,
         },
       },
       source: "personal",
@@ -112,6 +113,7 @@ describe("notification preferences", () => {
         departure: false,
         operations: false,
         deletion: false,
+        restore: false,
       },
     };
     for (const kind of ["login-code", "invitation", "email-change"] as const)
@@ -124,6 +126,7 @@ describe("notification preferences", () => {
       "transfer",
       "departure",
       "deletion",
+      "restore",
       "backup-alert",
     ] as const) {
       expect(emailAllowed(off, kind)).toBe(false);
@@ -168,6 +171,7 @@ describe("notification inbox helpers", () => {
         departure: false,
         operations: false,
         deletion: false,
+        restore: false,
       },
     });
     // A type the form does not show keeps its stored value.

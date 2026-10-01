@@ -11,6 +11,8 @@ import type { BackupFailureCode } from "../../domain/backup";
  * application created, found by the run id stamped on each file.
  */
 export type StoredFile = { id: string; size: number; sha256: string };
+/** An encrypted dump found in the storage: its name and when it was created. */
+export type StoredBackup = StoredFile & { name: string; createdAt: Date };
 export type BackupStorage = {
   kind: "drive" | "directory";
   /** Free bytes, or undefined when the target reports no limit. */
@@ -27,6 +29,11 @@ export type BackupStorage = {
   findRun(runId: string): Promise<StoredFile[]>;
   /** Every file of a kind the application uploaded, found without the database. */
   findKind(kind: string): Promise<StoredFile[]>;
+  /**
+   * The encrypted dumps the application uploaded, newest first, found without
+   * the database so that a restore works when the database is lost (ticket #35).
+   */
+  listBackups(): Promise<StoredBackup[]>;
   get(id: string): Promise<StoredFile | undefined>;
   /** The content of a file the application uploaded; undefined when it is gone. */
   read(id: string): Promise<Buffer | undefined>;
@@ -50,6 +57,7 @@ export async function fileDigest(path: string) {
 // ---------------------------------------------------------------- directory
 
 const RUN_PREFIX = "fair-shifts-";
+const DUMP_SUFFIX = ".dump.age";
 /** File names carry the run id: fair-shifts-<runId>--<name>. */
 export function directoryStorage(
   root: string,
@@ -96,6 +104,24 @@ export function directoryStorage(
         (await ours())
           .filter((name) => name.startsWith(`${RUN_PREFIX}${kind}-`))
           .map(describe)
+      );
+    },
+    async listBackups() {
+      const found: StoredBackup[] = [];
+      for (const id of await ours()) {
+        // A backup is fair-shifts-<runId>--<name>.dump.age; other kinds carry their kind first.
+        const split = id.indexOf("--");
+        if (split < 0 || !id.endsWith(DUMP_SUFFIX)) continue;
+        const kind = id.slice(RUN_PREFIX.length, split);
+        if (!/^[0-9a-f-]{36}$/.test(kind)) continue;
+        found.push({
+          ...(await describe(id)),
+          name: id.slice(split + 2),
+          createdAt: (await stat(join(root, id))).mtime,
+        });
+      }
+      return found.sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
       );
     },
     async get(id) {
@@ -302,6 +328,36 @@ export function driveStorage(
           `appProperties has { key='${KIND_MARK}' and value='${kind}' }`
         )
       ).map(stored);
+    },
+    async listBackups() {
+      const parent = await folderId();
+      const params = new URLSearchParams({
+        q: `'${parent}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: `files(${FILE_FIELDS},name,createdTime,appProperties)`,
+        orderBy: "createdTime desc",
+        pageSize: "1000",
+        spaces: "drive",
+      });
+      const response = await call(`${DRIVE}/files?${params}`);
+      if (response.status === 404) return [];
+      const { files } = (await response.json()) as {
+        files: (DriveFile & {
+          name?: string;
+          createdTime?: string;
+          appProperties?: Record<string, string>;
+        })[];
+      };
+      // The deletion log and other kinds carry a kind mark; a backup does not.
+      return files
+        .filter(
+          (file) =>
+            file.name?.endsWith(DUMP_SUFFIX) && !file.appProperties?.[KIND_MARK]
+        )
+        .map((file) => ({
+          ...stored(file),
+          name: file.name!,
+          createdAt: new Date(file.createdTime ?? 0),
+        }));
     },
     async read(id) {
       const response = await call(

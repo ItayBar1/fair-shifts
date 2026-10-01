@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { unitTransaction, type DbTransaction } from "./db";
+import { unitTransaction, type Database, type DbTransaction } from "./db";
 import { soldiers } from "./schema";
 import { user } from "./auth-schema";
 import { audit, createRecord, type Actor } from "./repository";
@@ -52,10 +52,15 @@ export type ApplyResult =
  * does not yet show. Safe to run again: a soldier already deleted is left alone,
  * and one the database does not know is skipped. The gate opens for this check
  * only when the log verified and all of it was applied.
+ *
+ * An isolated restore (ticket #35) passes the scratch `database` it works on.
+ * A drill also passes `restoreLocal: false`, because it only reads the live
+ * log and must not write the live file.
  */
 export async function applyLoggedDeletions(
   config: DeletionLogConfig = deletionLogConfig(),
-  now = new Date()
+  now = new Date(),
+  options: { database?: Database; restoreLocal?: boolean } = {}
 ): Promise<ApplyResult> {
   return unitTransaction(async (tx) => {
     const verification = await verifyDeletionLog(tx, config, { now });
@@ -91,7 +96,10 @@ export async function applyLoggedDeletions(
     }
     const head = verification.entries.at(-1);
     // A fresh volume, or a copy that was behind, gets the whole verified log.
-    if (verification.warnings.some((w) => w.startsWith("local_")))
+    if (
+      options.restoreLocal !== false &&
+      verification.warnings.some((w) => w.startsWith("local_"))
+    )
       await restoreLocalCopy(config, verification.entries);
     await mergeState(tx, {
       headSeq: head?.seq ?? 0,
@@ -120,7 +128,7 @@ export async function applyLoggedDeletions(
       notInDatabase,
       head: head?.seq ?? 0,
     };
-  });
+  }, options.database);
 }
 
 /**

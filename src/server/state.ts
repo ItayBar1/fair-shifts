@@ -9,8 +9,9 @@ import { populationAt, rankAt, serviceSummary } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
 import { readMailStatus } from "./operations/email";
-import { backupState } from "./operations/backup";
+import { backupConfig, backupState } from "./operations/backup";
 import { readDeletionLogStatus } from "./operations/deletion-log";
+import { readDrillStatus } from "./operations/restore";
 import { projectRequests } from "./transfers";
 import { projectSwaps } from "./swaps";
 import { projectCancellationRequests } from "./cancellation-requests";
@@ -150,13 +151,17 @@ export async function readState(actor: Actor) {
             (row) =>
               row.key !== "worker" &&
               row.key !== "mail" &&
-              row.key !== "deletion-log"
+              row.key !== "deletion-log" &&
+              row.key !== "restore-drill" &&
+              row.key !== "restore-report"
           )
           .map((row) => ({ id: row.key, ...row.data })),
         health: await readHealth(tx),
         mail: await readMailStatus(tx),
         // Counts and times only: no soldier, id or content (decision 196).
         deletionLog: await readDeletionLogStatus(tx),
+        // Dates and a verdict only (decision 200).
+        restoreDrill: await readDrillStatus(tx, backupConfig()),
       };
     }
     const state = await loadDomain(tx);

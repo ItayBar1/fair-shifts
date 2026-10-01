@@ -160,7 +160,7 @@ test("personal assignments on desktop and mobile, private mail highlight and vis
     .getByRole("link", { name: "להיסטוריה שלי בלוח התורנויות" })
     .click();
   await expect(
-    page.getByRole("button", { name: "התורנויות שלי" })
+    page.getByRole("button", { name: "התורנויות שלי", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
 
   await page.setViewportSize({ width: 390, height: 844 });

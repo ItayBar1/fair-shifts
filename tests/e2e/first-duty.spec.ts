@@ -1276,7 +1276,9 @@ test("multi-day duties appear on every Israeli day and month, independent of the
     member.locator(".duty-row").filter({ hasText: "לילה חוצה חודש" })
   ).toHaveCount(1);
   await member.getByRole("button", { name: "תצוגת חודש" }).click();
-  await member.getByRole("button", { name: "התורנויות שלי" }).click();
+  await member
+    .getByRole("button", { name: "התורנויות שלי", exact: true })
+    .click();
   await expect(end).toBeVisible();
   await member.getByRole("button", { name: "כל היחידה" }).click();
 

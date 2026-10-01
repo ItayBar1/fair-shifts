@@ -65,7 +65,9 @@ export type OutboxError =
   | "superseded"
   | "recipient_unavailable"
   | "preference_disabled"
-  | "reserved_address";
+  | "reserved_address"
+  /** Cancelled when the system was restored from a backup (decision 200). */
+  | "restored";
 
 type Closable = { attempts: number; error: string | null };
 /**
