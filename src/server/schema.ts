@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   pgTable,
+  bigserial,
   uuid,
   text,
   integer,
@@ -119,6 +120,41 @@ export const assignments = pgTable(
       .where(sql`${table.status} in ('reserved', 'held')`),
     index("assignment_soldier").on(table.soldierId),
     check("assignment_nonnegative", sql`${table.points} >= 0`),
+  ]
+);
+// An append-only, private projection of changes to published assignments.
+// A DB trigger records every writer, including execution and transfer paths.
+export const assignmentFeed = pgTable(
+  "assignment_feed",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    soldierId: uuid("soldier_id")
+      .notNull()
+      .references(() => soldiers.id),
+    dutyId: uuid("duty_id")
+      .notNull()
+      .references(() => duties.id),
+    assignmentId: uuid("assignment_id"),
+    kind: text("kind").notNull(),
+    snapshot: jsonb("snapshot")
+      .$type<{
+        name: string;
+        role: string;
+        start: string;
+        end: string;
+        location: string;
+      }>()
+      .notNull(),
+    happenedAt: timestamp("happened_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("assignment_feed_soldier_id").on(t.soldierId, t.id),
+    check(
+      "assignment_feed_kind",
+      sql`${t.kind} in ('new','updated','cancelled')`
+    ),
   ]
 );
 export const balances = pgTable(

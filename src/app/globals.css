@@ -341,6 +341,55 @@ small {
   overflow: hidden;
   padding: 24px;
 }
+.my-assignment-list {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+}
+.my-assignment {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.my-assignment.mail-highlight {
+  border-color: var(--teal);
+  background: #f0f9f8;
+}
+.my-assignment-heading,
+.my-assignment-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.my-assignment-heading {
+  justify-content: space-between;
+}
+.my-assignment-heading h3 {
+  font-size: 16px;
+  margin: 0;
+}
+.my-assignment-details {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.my-assignment-details div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.my-assignment-details dt {
+  color: var(--muted);
+}
+.my-assignment-details dd {
+  margin: 0;
+}
 .panel-head {
   display: flex;
   align-items: center;

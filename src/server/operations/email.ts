@@ -93,6 +93,7 @@ type EnqueueInput = {
   title: string;
   body: string;
   href?: string;
+  dutyIds?: string[];
   secret?: string;
   destination?: string;
   priority?: number;
@@ -100,11 +101,13 @@ type EnqueueInput = {
 };
 export async function enqueueEmail(tx: DbTransaction, input: EnqueueInput) {
   const { secret, ...values } = input;
+  const singleDuty = /^\/duties\/([0-9a-f-]{36})$/.exec(values.href ?? "");
   await tx
     .insert(emailOutbox)
     .values({
       id: randomUUID(),
       ...values,
+      dutyIds: values.dutyIds ?? (singleDuty ? [singleDuty[1]] : []),
       encryptedSecret: secret ? sealSecret(secret) : null,
     })
     .onConflictDoNothing({ target: emailOutbox.eventKey });

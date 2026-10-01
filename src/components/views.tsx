@@ -109,8 +109,14 @@ export function Stat({
     </div>
   );
 }
-export function CalendarView({ state }: { state: AppState }) {
-  const [onlyMine, setOnlyMine] = useState(false);
+export function CalendarView({
+  state,
+  initialOnlyMine = false,
+}: {
+  state: AppState;
+  initialOnlyMine?: boolean;
+}) {
+  const [onlyMine, setOnlyMine] = useState(initialOnlyMine);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"list" | "month">("month");
   const [month, setMonth] = useState(() =>

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   CalendarDays,
+  CalendarCheck2,
   Scale,
   CalendarOff,
   ArrowLeftRight,
@@ -28,6 +29,7 @@ import { type AppState, type Action, str, obj } from "@/client/types";
 import { unreadCount } from "@/client/notifications";
 import { Notice, Empty } from "./ui";
 import { CalendarView, DutyDetail, FairnessView, Dashboard } from "./views";
+import { MyAssignmentsView } from "./my-assignments";
 import {
   SoldiersView,
   EligibilityView,
@@ -47,6 +49,7 @@ import {
 } from "./workflows";
 const commonLinks = [
   { path: "/calendar", title: "לוח התורנויות", icon: CalendarDays },
+  { path: "/my-assignments", title: "השיבוצים שלי", icon: CalendarCheck2 },
   { path: "/fairness", title: "טבלת הצדק", icon: Scale },
   { path: "/constraints", title: "האילוצים שלי", icon: CalendarOff },
   { path: "/requests", title: "החלפות ובקשות", icon: ArrowLeftRight },
@@ -80,6 +83,7 @@ const technicalLinks = [
 ];
 const descriptions: Record<string, string> = {
   "/calendar": "כל התורנויות במקום אחד. תמונה משותפת, ברורה ועדכנית.",
+  "/my-assignments": "התורנויות שפורסמו עבורך, ועדכונים מאז הביקור הקודם.",
   "/fairness": "חלוקה שקופה מתחילה במידע משותף.",
   "/manage": "מה שדורש החלטה, ומה שכבר מוכן להמשך.",
   "/manage/planning": "מתכננים את התקופה וממלאים את המקומות הפנויים.",
@@ -104,7 +108,13 @@ async function fetchState(): Promise<AppState | null> {
     );
   return data;
 }
-export function Workspace({ path }: { path: string }) {
+export function Workspace({
+  path,
+  calendarMine = false,
+}: {
+  path: string;
+  calendarMine?: boolean;
+}) {
   const router = useRouter();
   const [state, setState] = useState<AppState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -211,7 +221,20 @@ export function Workspace({ path }: { path: string }) {
   const unread = unreadCount(state.notifications);
   // A manager takes no part in duties and submits no constraints (decision 192).
   const ownLinks = manager
-    ? commonLinks.filter((item) => item.path !== "/constraints")
+    ? commonLinks.filter(
+        (item) =>
+          item.path !== "/constraints" &&
+          (item.path !== "/my-assignments" ||
+            state.assignments.some(
+              (assignment) =>
+                assignment.soldierId === state.actor.soldierId &&
+                state.duties.some(
+                  (duty) =>
+                    duty.id === assignment.dutyId &&
+                    (duty.status === "published" || duty.wasPublished)
+                )
+            ))
+      )
     : commonLinks;
   const restricted =
     (effectivePath === "/constraints" && manager) ||
@@ -244,7 +267,9 @@ export function Workspace({ path }: { path: string }) {
           text="אפשר להמשיך לאחד המסכים בתפריט."
         />
       );
-    if (effectivePath === "/calendar") return <CalendarView state={state} />;
+    if (effectivePath === "/calendar")
+      return <CalendarView state={state} initialOnlyMine={calendarMine} />;
+    if (effectivePath === "/my-assignments") return <MyAssignmentsView />;
     if (effectivePath.startsWith("/duties/"))
       return (
         <DutyDetail
