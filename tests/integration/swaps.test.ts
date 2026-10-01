@@ -711,10 +711,11 @@ describe("mutual swap by consent before the start", () => {
     // A seat whose duty already started is not on offer.
     const third = await publishedDuty([{ person: chen }], 4, "סיור");
     await startNow(third.id);
-    // A started fixed-rate seat cannot be split until fixed shares are supported (#19).
-    await expect(
-      offer(alon, first.id, [(await seatOf(third.id, chen)).id])
-    ).rejects.toThrow("#19");
+    // A started fixed-rate seat can be offered, but its split needs a manager's allocation.
+    const startedOffer = await offer(alon, first.id, [
+      (await seatOf(third.id, chen)).id,
+    ]);
+    expect(startedOffer.id).toBeTruthy();
     // A manager takes no part in duties, so never offers a swap, on anyone's behalf (decision 192).
     const seatA = await seatOf(first.id, alon);
     await expect(

@@ -105,9 +105,19 @@ const at = (offset: number) =>
  */
 async function runningDuty(
   seats: (Actor | null)[],
-  options: { startedHoursAgo?: number; hours?: number; fixed?: boolean } = {}
+  options: {
+    startedHoursAgo?: number;
+    hours?: number;
+    fixed?: boolean;
+    callUpBonus?: number;
+  } = {}
 ) {
-  const { startedHoursAgo = 30, hours = 48, fixed = false } = options;
+  const {
+    startedHoursAgo = 30,
+    hours = 48,
+    fixed = false,
+    callUpBonus = 0,
+  } = options;
   const type = await command(manager, "dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: fixed ? "fixed" : "daily", base: 4 },
@@ -131,6 +141,7 @@ async function runningDuty(
         dutyId: duty.id,
         slotId: created.data.slots[index].id,
         soldierId: person.soldierId,
+        ...(callUpBonus && { callUpBonus }),
       },
       version
     );
@@ -576,28 +587,186 @@ describe("execution periods of a started seat", () => {
     ).toHaveLength(2);
   });
 
-  it("does not split a fixed-rate seat until fixed shares are supported", async () => {
-    const duty = await runningDuty([alon], { fixed: true });
+  it("requires an explicit fixed-price and bonus split, then credits each performer once", async () => {
+    const duty = await runningDuty([alon], { fixed: true, callUpBonus: 3 });
+    const original = await rowOf(duty.id, alon);
+    expect(original.points).toBe(7);
+    const payload = {
+      dutyId: duty.id,
+      slotId: duty.slots[0].id,
+      segments: segments(duty, [
+        [alon, 18],
+        [bar, 48],
+      ]),
+      reason: "חילוף באמצע הביצוע",
+    };
+    const draft = await command(manager, "execution.preview", payload);
+    expect(draft.allocationRequired).toBe(true);
+    await expect(
+      command(manager, "execution.apply", { ...payload, token: draft.token })
+    ).rejects.toThrow("חלוקת בסיס");
     await expect(
       command(manager, "execution.preview", {
-        dutyId: duty.id,
-        slotId: duty.slots[0].id,
-        segments: segments(duty, [
-          [alon, 18],
-          [bar, 48],
-        ]),
-        reason: "x",
+        ...payload,
+        allocations: [
+          { soldierId: alon.soldierId, fixedBase: "1", fixedExtra: "2" },
+          { soldierId: bar.soldierId, fixedBase: "3", fixedExtra: "2" },
+        ],
       })
-    ).rejects.toThrow("#19");
-    const seat = await rowOf(duty.id, alon);
-    await expect(
-      command(
-        alon,
-        "transfer.offer",
-        { assignmentId: seat.id, candidateIds: [bar.soldierId] },
-        seat.version
+    ).rejects.toThrow("התוספת הקבועה");
+    const allocations = [
+      { soldierId: alon.soldierId, fixedBase: "1", fixedExtra: "1" },
+      { soldierId: bar.soldierId, fixedBase: "3", fixedExtra: "2" },
+    ];
+    const preview = await command(manager, "execution.preview", {
+      ...payload,
+      allocations,
+    });
+    expect(
+      (preview.changes as { price: { points: number } }[]).map(
+        (item) => item.price.points
       )
-    ).rejects.toThrow("#19");
+    ).toEqual([2, 5]);
+    const replayKey = randomUUID();
+    const result = await command(
+      manager,
+      "execution.apply",
+      { ...payload, allocations, token: preview.token },
+      undefined,
+      replayKey
+    );
+    expect((await rowOf(duty.id, alon)).data).toMatchObject({
+      originalPoints: 7,
+      fixedBaseAllocation: "1",
+      extraPoints: "1",
+    });
+    expect((await rowOf(duty.id, bar)).data).toMatchObject({
+      fixedBaseAllocation: "3",
+      extraPoints: "2",
+    });
+    expect(await balance(alon)).toBe(2);
+    expect(await balance(bar)).toBe(0);
+    expect(
+      (
+        await command(
+          manager,
+          "execution.apply",
+          { ...payload, allocations, token: preview.token },
+          undefined,
+          replayKey
+        )
+      ).id
+    ).toBe(result.id);
+    const change = (
+      await db
+        .select()
+        .from(records)
+        .where(eq(records.kind, "execution_change"))
+    )[0];
+    expect(change.data).toMatchObject({
+      fixedExtraTotal: "3",
+      allocationAfter: allocations,
+    });
+  });
+
+  it("adds a fixed bonus to daily time without intermediate rounding and rejects a stale split", async () => {
+    const duty = await runningDuty([alon], { callUpBonus: 3 });
+    const payload = {
+      dutyId: duty.id,
+      slotId: duty.slots[0].id,
+      segments: segments(duty, [
+        [alon, 18],
+        [bar, 48],
+      ]),
+      reason: "חילוף עם חלוקת הזנקה",
+    };
+    const allocations = [
+      { soldierId: alon.soldierId, fixedExtra: "1.25" },
+      { soldierId: bar.soldierId, fixedExtra: "1.75" },
+    ];
+    const first = await command(manager, "execution.preview", {
+      ...payload,
+      allocations,
+    });
+    expect(
+      (
+        first.changes as {
+          price: {
+            base: string;
+            extras: string;
+            totalExact: string;
+            points: number;
+          };
+        }[]
+      ).map((item) => item.price)
+    ).toMatchObject([
+      { base: "3", extras: "1.25", totalExact: "4.25", points: 4 },
+      { base: "5", extras: "1.75", totalExact: "6.75", points: 7 },
+    ]);
+    const other = [
+      { soldierId: alon.soldierId, fixedExtra: "2" },
+      { soldierId: bar.soldierId, fixedExtra: "1" },
+    ];
+    const second = await command(secondManager, "execution.preview", {
+      ...payload,
+      allocations: other,
+    });
+    await command(secondManager, "execution.apply", {
+      ...payload,
+      allocations: other,
+      token: second.token,
+    });
+    await expect(
+      command(manager, "execution.apply", {
+        ...payload,
+        allocations,
+        token: first.token,
+      })
+    ).rejects.toThrow("השתנו");
+    expect(await balance(alon)).toBe(5);
+    expect((await rowOf(duty.id, bar)).points).toBe(6);
+  });
+
+  it("corrects credited fixed shares by the difference and keeps the seat's original total", async () => {
+    const duty = await runningDuty([alon], { fixed: true, callUpBonus: 3 });
+    const parts = segments(duty, [
+      [alon, 18],
+      [bar, 48],
+    ]);
+    await save(manager, duty, parts, {
+      allocations: [
+        { soldierId: alon.soldierId, fixedBase: "1", fixedExtra: "1" },
+        { soldierId: bar.soldierId, fixedBase: "3", fixedExtra: "2" },
+      ],
+    });
+    expect(await balance(alon)).toBe(2);
+
+    await save(manager, duty, parts, {
+      allocations: [
+        { soldierId: alon.soldierId, fixedBase: "2", fixedExtra: "1" },
+        { soldierId: bar.soldierId, fixedBase: "2", fixedExtra: "2" },
+      ],
+    });
+    expect(await balance(alon)).toBe(3);
+    expect((await rowOf(duty.id, bar)).points).toBe(4);
+    expect((await rowOf(duty.id, alon)).data.originalPoints).toBe(7);
+
+    const draft = await command(manager, "execution.preview", {
+      dutyId: duty.id,
+      slotId: duty.slots[0].id,
+      segments: segments(duty, [
+        [alon, 18],
+        [null, 48],
+      ]),
+      reason: "המחליף לא ביצע",
+    });
+    expect(draft.allocation).toEqual([
+      {
+        soldierId: alon.soldierId,
+        fixedBase: "4",
+        fixedExtra: "3",
+      },
+    ]);
   });
 });
 
@@ -689,6 +858,81 @@ describe("a replacement requested after the start", () => {
     expect(notes).toContain("קיבלת חלק מתורנות");
   });
 
+  it("requires a manager's fixed shares and reason when approving a started transfer", async () => {
+    const duty = await runningDuty([alon], { fixed: true, callUpBonus: 3 });
+    const seat = await rowOf(duty.id, alon);
+    const offer = await command(
+      alon,
+      "transfer.offer",
+      { assignmentId: seat.id, candidateIds: [bar.soldierId] },
+      seat.version
+    );
+    const request = async () =>
+      (await db.select().from(records).where(eq(records.id, offer.id)))[0];
+    await command(
+      bar,
+      "transfer.respond",
+      { id: offer.id, decision: "accept", confirmed: true },
+      (await request()).version
+    );
+    const waiting = await request();
+    const handoverAt = new Date(
+      new Date(duty.data.start).getTime() + 18 * HOUR
+    ).toISOString();
+    const draft = await command(
+      manager,
+      "transfer.review",
+      { id: offer.id, handoverAt },
+      waiting.version
+    );
+    expect(
+      (draft.execution as { allocationRequired: boolean }).allocationRequired
+    ).toBe(true);
+    const allocations = [
+      { soldierId: alon.soldierId, fixedBase: "1", fixedExtra: "1" },
+      { soldierId: bar.soldierId, fixedBase: "3", fixedExtra: "2" },
+    ];
+    const review = await command(
+      manager,
+      "transfer.review",
+      { id: offer.id, handoverAt, allocations },
+      waiting.version
+    );
+    await expect(
+      command(
+        manager,
+        "transfer.decide",
+        {
+          id: offer.id,
+          decision: "approve",
+          confirmed: true,
+          previewToken: review.previewToken,
+          handoverAt,
+          allocations,
+        },
+        waiting.version
+      )
+    ).rejects.toThrow("סיבה לחלוקת");
+    await command(
+      manager,
+      "transfer.decide",
+      {
+        id: offer.id,
+        decision: "approve",
+        confirmed: true,
+        previewToken: review.previewToken,
+        handoverAt,
+        allocations,
+        allocationReason: "החלוקה לפי הביצוע שהוסכם",
+      },
+      waiting.version
+    );
+    expect((await request()).data.status).toBe("completed");
+    expect((await rowOf(duty.id, alon)).points).toBe(2);
+    expect((await rowOf(duty.id, bar)).points).toBe(5);
+    expect(await balance(alon)).toBe(2);
+  });
+
   it("swaps a started seat at a handover for a whole seat that has not started", async () => {
     const running = await runningDuty([alon]);
     const later = await runningDuty([bar], { startedHoursAgo: -48, hours: 24 });
@@ -772,6 +1016,77 @@ describe("a replacement requested after the start", () => {
       (await seatRows(later.id)).find((row) => row.id === seatB.id)?.status
     ).toBe("cancelled");
     expect(await balance(alon)).toBe(3);
+  });
+
+  it("splits the fixed value of the started side of a swap and keeps the other side whole", async () => {
+    const running = await runningDuty([alon], { fixed: true, callUpBonus: 3 });
+    const later = await runningDuty([bar], {
+      startedHoursAgo: -48,
+      hours: 24,
+      fixed: true,
+    });
+    const seatA = await rowOf(running.id, alon);
+    const seatB = await rowOf(later.id, bar);
+    const offer = await command(
+      alon,
+      "swap.offer",
+      { assignmentId: seatA.id, targetAssignmentIds: [seatB.id] },
+      seatA.version
+    );
+    const request = async () =>
+      (await db.select().from(records).where(eq(records.id, offer.id)))[0];
+    await command(
+      bar,
+      "swap.respond",
+      {
+        id: offer.id,
+        assignmentId: seatB.id,
+        decision: "accept",
+        confirmed: true,
+      },
+      (await request()).version
+    );
+    const waiting = await request();
+    const handoverAt = new Date(
+      new Date(running.data.start).getTime() + 18 * HOUR
+    ).toISOString();
+    const allocationSides = [
+      {
+        slotId: running.slots[0].id,
+        allocations: [
+          { soldierId: alon.soldierId, fixedBase: "1", fixedExtra: "1" },
+          { soldierId: bar.soldierId, fixedBase: "3", fixedExtra: "2" },
+        ],
+      },
+    ];
+    const review = await command(
+      manager,
+      "swap.review",
+      { id: offer.id, handoverAt, allocationSides },
+      waiting.version
+    );
+    expect(
+      (review.sides as { execution?: { allocationExplicit: boolean } }[])[0]
+        ?.execution?.allocationExplicit
+    ).toBe(true);
+    await command(
+      manager,
+      "swap.decide",
+      {
+        id: offer.id,
+        decision: "approve",
+        confirmed: true,
+        previewToken: review.previewToken,
+        handoverAt,
+        allocationSides,
+        allocationReason: "חלוקת שווי קבוע לפי הביצוע",
+      },
+      waiting.version
+    );
+    expect((await request()).data.status).toBe("completed");
+    expect((await rowOf(running.id, alon)).points).toBe(2);
+    expect((await rowOf(running.id, bar)).points).toBe(5);
+    expect((await rowOf(later.id, alon)).points).toBe(4);
   });
 
   it("closes a referred cancellation request once the seat's periods are recorded", async () => {

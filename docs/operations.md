@@ -90,7 +90,7 @@ sh scripts/production.sh down      # remove containers; the volume and data stay
 
 ריצה אחת בכל פעם (`flock`). push חדש לא עוצר פריסה או מיגרציה באמצע, והוא נפרס בסבב הבא. אין פריסה כשהתיקייה אינה על main או כשיש בה שינויים שלא נשמרו.
 
-**גיבוי לפני מיגרציה:** ב־staging בלי גיבוי (`BACKUP_STORAGE` ריק) גרסה עם שינוי מסד נפרסת, ובלוג נכתב שלא נעשה גיבוי. זו החלטת המשתמש, כי הנתונים סינתטיים. ב־production, או כש־`BACKUP_STORAGE` מוגדר, גרסה כזו **אינה** נפרסת אוטומטית: מריצים ״גיבוי עכשיו״ במסך ״גיבוי ושחזור״, מחכים ל״אומת״, ואז פורסים ידנית. גיבוי אוטומטי לפני מיגרציה עדיין לא מומש (#36 נשאר פתוח עד #37 ו־#35).
+**גיבוי לפני מיגרציה (הכרעה 191):** כש־`BACKUP_STORAGE` מוגדר, לפני פריסה של גרסה עם שינוי מסד הטיימר מריץ `scripts/backup-before-deploy.ts` בעובד של הגרסה שעדיין פעילה. הפקודה מחכה לגיבוי שכבר ממתין או רץ, מבקשת גיבוי משלה ומחכה ל״אומת״, גם דרך הניסיונות החוזרים אחרי 15 דקות ואחרי שעה. רק אז הגרסה נפרסת. במסך ״גיבוי ושחזור״ הריצה מסומנת ״לפני עדכון גרסה״. הגרסה נעצרת כשהגיבוי נכשל סופית (החשבון הטכני מקבל את ההתראה הרגילה), כשהעובד לא לקח את הריצה 10 דקות אחרי מועדה, או כשמצב שחזור פעיל. ב־production בלי גיבוי מוגדר גרסה כזו נעצרת. ב־staging בלי גיבוי (`BACKUP_STORAGE` ריק) היא נפרסת בלי גיבוי, ובלוג נכתב זאת. זו החלטת המשתמש, כי הנתונים סינתטיים. גם אחרי גיבוי, פריסה שנכשלה אחרי המיגרציה אינה חוזרת אוטומטית; נוהל השחזור מהגיבוי שייך לכרטיס [#35](https://github.com/ItayBar1/fair-shifts/issues/35).
 
 ### התקנה בשרת
 
@@ -113,10 +113,10 @@ systemctl list-timers 'fair-shifts-deploy@*'
 journalctl -u "fair-shifts-deploy@$USER" -n 50      # auto-deploy lines
 touch /opt/fair-shifts/deploy-state/paused          # pause for maintenance or a manual deployment
 rm /opt/fair-shifts/deploy-state/paused             # resume
-rm /opt/fair-shifts/deploy-state/stopped            # retry a stopped commit, e.g. after a CI re-run passed
+rm /opt/fair-shifts/deploy-state/stopped            # retry a stopped commit, e.g. after a CI re-run passed or a backup was fixed
 ```
 
-יחידה שנכשלה מופיעה ב־`systemctl --failed`. כדי לפרוס ידנית בזמן שהטיימר פעיל, משהים קודם ומחדשים אחרי הפריסה. אחרי פריסה ידנית של commit אחר מ־main, רושמים אותו: `git rev-parse HEAD > /opt/fair-shifts/deploy-state/deployed`.
+יחידה שנכשלה מופיעה ב־`systemctl --failed`. גרסה שנעצרה בלי גיבוי מאומת (`no verified backup` בלוג): בודקים את הריצה במסך ״גיבוי ושחזור״ ואת העובד (`sh scripts/production.sh logs --tail 50 worker`), מתקנים, ומוחקים את `stopped` כדי לנסות שוב. כדי לפרוס ידנית בזמן שהטיימר פעיל, משהים קודם ומחדשים אחרי הפריסה. אחרי פריסה ידנית של commit אחר מ־main, רושמים אותו: `git rev-parse HEAD > /opt/fair-shifts/deploy-state/deployed`.
 
 ## סביבת ה־staging
 
@@ -224,4 +224,4 @@ sh scripts/production-smoke.sh
 
 - staging (#25), כניסת Google (#26) ו־Brevo (#28) נבדקו בחשבונות בדיקה, והתוצאות מתועדות בכרטיסים. חריגה מהמכסה של הספק נבדקה רק ב־Docker.
 - גיבוי מול Drive אמיתי (כרטיס #37) ושחזור מבודד עם החלת מחיקות (#35).
-- פריסה אוטומטית (#36): רצה בשרת ופרסה שלוש גרסאות, ובדיקת Git אמיתי מכסה גם כשל וחזרה (`scripts/auto-deploy-test.sh`). בשרת טרם הודגמו תקלה וחזרה, וגיבוי אוטומטי לפני מיגרציה טרם מומש.
+- פריסה אוטומטית (#36): רצה בשרת, ותקלה וחזרה הודגמו שם ב־30.09.2026. הגיבוי לפני מיגרציה נבדק ב־Docker בלבד (`scripts/auto-deploy-test.sh` ו־`tests/integration/backup.test.ts`), ובשרת יודגם אחרי חיבור הגיבוי ל־Drive (#37). נוהל שחזור אחרי מיגרציה שנכשלה שייך ל־#35.

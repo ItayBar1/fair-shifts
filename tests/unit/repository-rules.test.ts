@@ -27,7 +27,10 @@ describe("main branch rules", () => {
     const contexts = (
       checks.required_status_checks as { context: string }[]
     ).map((check) => check.context);
-    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8").replace(
+      /\r\n/g,
+      "\n"
+    );
     const jobs = workflow.slice(workflow.indexOf("\njobs:"));
     for (const context of contexts)
       expect(jobs).toMatch(new RegExp(`\\n  ${context}:\\n`));

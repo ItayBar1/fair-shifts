@@ -46,7 +46,15 @@ case "$1" in
     status=ok
     [ ! -e "$STUB/unhealthy-$version" ] || status=degraded
     printf '{\n  "status": "%s",\n  "version": "%s"\n}\n' "$status" "$version" ;;
-  exec) exit 0 ;;
+  exec)
+    # The backup before a migration: records the requested version, the
+    # version it runs in and the version that is live at that moment.
+    case "$*" in
+      *backup-before-deploy*)
+        for argument; do target=$argument; done
+        echo "${APP_VERSION:-} $(cat "$STUB/running") $target" >>"$STUB/backups"
+        [ ! -e "$STUB/fail-backup" ] || exit 1 ;;
+    esac ;;
 esac
 EOF
 chmod +x "$work/bin/curl"
@@ -191,33 +199,56 @@ expect_status 1 "מיגרציה נכשלה"
 if grep -q " up " "$work/calls"; then fail "מיגרציה נכשלה: בוצעה חזרה"; fi
 expect_output "no automatic rollback" "מיגרציה נכשלה"
 
-step 'שינוי מסד כשיש גיבוי או ב־production: לא פורסים אוטומטית'
+step 'שינוי מסד כשהגיבוי מוגדר: גיבוי מאומת בגרסה הפעילה ואז פריסה'
 configure staging drive
+live=$(running)
 eighth=$(push eighth 0003_change)
 ci "$eighth" success
 tick
-expect_status 1 "מיגרציה עם גיבוי"
-expect_no_deploy "מיגרציה עם גיבוי"
-expect_output "verified backup" "מיגרציה עם גיבוי"
-configure production
+expect_status 0 "מיגרציה עם גיבוי"
+expect_running "$eighth" "מיגרציה עם גיבוי"
+[ "$(cat "$work/backups" 2>/dev/null)" = "$live $live $(short "$eighth")" ] ||
+  fail "מיגרציה עם גיבוי: הגיבוי לא נלקח בגרסה הפעילה לפני הפריסה ($(cat "$work/backups" 2>/dev/null))"
+[ "$(grep -n 'backup-before-deploy' "$work/calls" | cut -d: -f1)" = 1 ] ||
+  fail "מיגרציה עם גיבוי: הגיבוי אינו הפעולה הראשונה"
+
+step 'גיבוי שנכשל לפני שינוי מסד: לא פורסים'
+: >"$work/backups"
+touch "$work/fail-backup"
 ninth=$(push ninth 0004_change)
 ci "$ninth" success
 tick
+rm "$work/fail-backup"
+expect_status 1 "גיבוי נכשל"
+[ -s "$work/backups" ] || fail "גיבוי נכשל: לא התבקש גיבוי"
+if grep -q " deploy\| up " "$work/calls"; then fail "גיבוי נכשל: בוצעה פריסה"; fi
+expect_running "$eighth" "גיבוי נכשל"
+expect_output "no verified backup" "גיבוי נכשל"
+[ "$(cat "$work/state/stopped")" = "$ninth" ] || fail "גיבוי נכשל: לא נרשמה עצירה"
+
+step 'שינוי מסד ב־production בלי גיבוי מוגדר: לא פורסים'
+configure production
+tenth=$(push tenth 0005_change)
+ci "$tenth" success
+tick
 expect_status 1 "מיגרציה ב־production"
 expect_no_deploy "מיגרציה ב־production"
+expect_output "backups are not configured" "מיגרציה ב־production"
 
-step 'ב־production בלי שינוי מסד: פורסים'
-tenth=$(push tenth)
-ci "$tenth" success
-echo "$ninth" >"$work/state/deployed"
+step 'ב־production עם גיבוי ובלי שינוי מסד: פורסים בלי לגבות'
+configure production drive
+eleventh=$(push eleventh)
+ci "$eleventh" success
+echo "$tenth" >"$work/state/deployed"
 tick
 expect_status 0 "production בלי מיגרציה"
-expect_running "$tenth" "production בלי מיגרציה"
+expect_running "$eleventh" "production בלי מיגרציה"
+if grep -q "backup-before-deploy" "$work/calls"; then fail "production בלי מיגרציה: התבקש גיבוי"; fi
 configure staging
 
 step 'השהיה, שינויים מקומיים ופריסה שכבר רצה: אין פריסה'
-eleventh=$(push eleventh)
-ci "$eleventh" success
+twelfth=$(push twelfth)
+ci "$twelfth" success
 touch "$work/state/paused"
 tick
 expect_status 0 "מושהה"
@@ -240,7 +271,7 @@ expect_status 0 "פריסה אחרת רצה"
 expect_no_deploy "פריסה אחרת רצה"
 tick
 expect_status 0 "אחרי שחרור הנעילה"
-expect_running "$eleventh" "אחרי שחרור הנעילה"
+expect_running "$twelfth" "אחרי שחרור הנעילה"
 
 if [ "$failures" -gt 0 ]; then
   printf '\nבדיקת הפריסה האוטומטית: %s כשלים\n' "$failures" >&2

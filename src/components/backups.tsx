@@ -150,7 +150,13 @@ export function BackupsView({
                   return (
                     <tr key={row.id}>
                       <td>{displayDate(row.createdAt, true)}</td>
-                      <td>{row.trigger === "manual" ? "ידני" : "יומי"}</td>
+                      <td>
+                        {row.beforeDeploy
+                          ? "לפני עדכון גרסה"
+                          : row.trigger === "manual"
+                            ? "ידני"
+                            : "יומי"}
+                      </td>
                       <td>
                         <Badge tone={tone}>{label}</Badge>
                       </td>

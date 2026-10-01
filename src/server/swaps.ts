@@ -33,7 +33,8 @@ import {
   parseHandover,
   planExecution,
   seatOf,
-  splitBlocker,
+  fixedAllocationInput,
+  type FixedAllocation,
   type ExecutionPlan,
 } from "./execution";
 import { remainingPeriod } from "./transfers";
@@ -135,23 +136,13 @@ function afterSwap(
 }
 
 /** A seat can be offered until its own period ends; after the start only if it can be split. */
-function movable(state: Domain, seat: Assignment, duty: Duty, whose: string) {
+function movable(seat: Assignment, duty: Duty, whose: string) {
   invariant(
     instant(executionPeriod(seat, duty).end).toMillis() > Date.now(),
     "performance_ended",
     `הביצוע בתורנות ${whose} כבר הסתיים. תיקון ביצוע נעשה בידי אחראי`
   );
   if (!hasStarted(duty)) return;
-  const blocker = splitBlocker(
-    duty,
-    state.assignments.filter(
-      (row) =>
-        row.dutyId === duty.id &&
-        row.slotId === seat.slotId &&
-        row.status !== "cancelled"
-    )
-  );
-  invariant(!blocker, "not_swappable", blocker!);
 }
 
 export async function offerSwap(
@@ -197,7 +188,7 @@ export async function offerSwap(
     "ניתן להציע להחלפה רק שיבוץ בתורנות שפורסמה"
   );
   // After the start an offer is still possible, but it always goes to a manager (decision 183).
-  movable(state, seat, duty, "שלך");
+  movable(seat, duty, "שלך");
   const open = await openSeatRequests(tx);
   invariant(
     !seatCommitted(open, seat.id),
@@ -226,7 +217,7 @@ export async function offerSwap(
       "invalid_target",
       "אפשר להחליף רק עם תורנות שפורסמה"
     );
-    movable(state, target, other, `של ${other.name}`);
+    movable(target, other, `של ${other.name}`);
     invariant(
       !(target.dutyId === seat.dutyId && hasStarted(other)),
       "invalid_target",
@@ -1059,6 +1050,15 @@ const handovers = {
   targetHandoverAt: z.string().max(40).optional(),
   targetHandoverOffset: z.number().optional(),
 };
+const allocationSidesInput = z
+  .array(
+    z.object({
+      slotId: id,
+      allocations: z.array(fixedAllocationInput),
+    })
+  )
+  .max(2);
+type AllocationSide = { slotId: string; allocations: FixedAllocation[] };
 function handoverTimes(input: {
   handoverAt?: string;
   handoverOffset?: number;
@@ -1088,6 +1088,7 @@ async function startedSwap(
     duty: Duty;
     other: Duty;
     at: { seat?: string; target?: string };
+    allocationSides?: AllocationSide[];
   }
 ) {
   const { data, state, entry } = input;
@@ -1156,6 +1157,9 @@ async function startedSwap(
         ),
         mode: "volunteer",
         overrides: counterpart,
+        allocations: input.allocationSides?.find(
+          (item) => item.slotId === side.row.slotId
+        )?.allocations,
       });
       const change = plan.changes.find(
         (item) => item.soldierId === side.incoming
@@ -1214,6 +1218,8 @@ async function decideStartedSwap(
       handoverOffset?: number;
       targetHandoverAt?: string;
       targetHandoverOffset?: number;
+      allocationSides?: AllocationSide[];
+      allocationReason?: string;
     };
     row: Workflow;
     data: SwapData;
@@ -1239,7 +1245,18 @@ async function decideStartedSwap(
     "אחת התורנויות כבר התחילה. יש לבדוק שוב ולהזין את מועד החילוף",
     409
   );
-  const planned = await startedSwap(tx, { ...context, at });
+  const planned = await startedSwap(tx, {
+    ...context,
+    at,
+    allocationSides: input.allocationSides,
+  });
+  invariant(
+    planned.moves.every((move) => !move.plan?.allocationRequired) ||
+      input.allocationReason,
+    "allocation_reason_required",
+    "נדרשת סיבה לחלוקת הניקוד בין המבצעים",
+    422
+  );
   invariant(
     input.previewToken === planned.token,
     "stale_preview",
@@ -1294,9 +1311,14 @@ async function decideStartedSwap(
                 side.at
               ),
               mode: "volunteer",
+              allocations: input.allocationSides?.find(
+                (item) => item.slotId === side.row.slotId
+              )?.allocations,
             });
       const execution = await commitExecution(tx, actor, plan, {
-        reason: `החלפה במהלך ביצוע בין ${fromName} ל${toName}`,
+        reason:
+          input.allocationReason ??
+          `החלפה במהלך ביצוע בין ${fromName} ל${toName}`,
         mode: "volunteer",
         approvalKeys: input.approvalKeys,
         approvalReason: input.approvalReason,
@@ -1411,7 +1433,13 @@ export async function reviewSwap(
   payload: unknown,
   expectedVersion?: number
 ) {
-  const input = z.object({ id, ...handovers }).parse(payload);
+  const input = z
+    .object({
+      id,
+      ...handovers,
+      allocationSides: allocationSidesInput.optional(),
+    })
+    .parse(payload);
   const { row, data, state, entry, seat, target, duty, other, changed } =
     await awaitingManager(tx, actor, input.id, expectedVersion);
   if (changed || !seat || !target || !duty || !other)
@@ -1440,6 +1468,7 @@ export async function reviewSwap(
       duty,
       other,
       at,
+      allocationSides: input.allocationSides,
     });
     return {
       valid: true,
@@ -1511,6 +1540,8 @@ export async function decideSwap(
         approvalKeys: z.array(z.string()).default([]),
         confirmed: z.literal(true),
         ...handovers,
+        allocationSides: allocationSidesInput.optional(),
+        allocationReason: z.string().trim().min(1).max(2000).optional(),
       }),
     ])
     .parse(payload);

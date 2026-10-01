@@ -5692,8 +5692,7 @@ describe("first duty vertical slice", () => {
           (item) => (item as { title?: string }).title
         )
       ).toContain("העברה ממתינה לטיפול");
-      // An offer after the start is possible (decision 183), but a fixed-rate seat cannot be
-      // split between performers until fixed shares are supported (#19).
+      // A second offer for the same started seat is still refused while the first is active.
       await expect(
         command(
           "transfer.offer",
@@ -5701,7 +5700,7 @@ describe("first duty vertical slice", () => {
           1,
           actor
         )
-      ).rejects.toThrow("#19");
+      ).rejects.toThrow("כבר קיימת הצעת העברה");
     });
     it("closes offers on decline, withdrawal, a changed duty and cancellation", async () => {
       const { row, actor, seat, first, second } = await seatFixture();

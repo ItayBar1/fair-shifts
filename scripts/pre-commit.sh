@@ -5,14 +5,18 @@ cd "$(git rev-parse --show-toplevel)"
 # Formatting and tests execute in Docker. Git runs on the host to archive the index.
 . scripts/git-mounts.sh
 sh scripts/docker.sh build tools
-sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules "$@" \
+sh scripts/docker.sh run --rm --no-deps -v "$workspace_mount:/app" -v /app/node_modules "$@" \
   -e GIT_AUTHOR_NAME="$(git var GIT_AUTHOR_IDENT | sed 's/ <.*//')" \
   -e GIT_AUTHOR_EMAIL="$(git var GIT_AUTHOR_IDENT | sed 's/.*<\([^>]*\)>.*/\1/')" \
   -e GIT_COMMITTER_NAME="$(git var GIT_COMMITTER_IDENT | sed 's/ <.*//')" \
   -e GIT_COMMITTER_EMAIL="$(git var GIT_COMMITTER_IDENT | sed 's/.*<\([^>]*\)>.*/\1/')" \
   tools sh -c 'git config --global --add safe.directory /app && pnpm exec lint-staged'
 
-commit_snapshot_dir=$(mktemp -d "${TMPDIR:-/tmp}/fair-shifts-commit.XXXXXX")
+if command -v cygpath >/dev/null 2>&1; then
+  commit_snapshot_dir=$(mktemp -d "$PWD/.fair-shifts-commit.XXXXXX")
+else
+  commit_snapshot_dir=$(mktemp -d "${TMPDIR:-/tmp}/fair-shifts-commit.XXXXXX")
+fi
 commit_project="fair-shifts-commit-$$"
 cleanup() {
   exit_status=$?
