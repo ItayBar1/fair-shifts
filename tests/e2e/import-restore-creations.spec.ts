@@ -12,6 +12,8 @@ import { soldier } from "../fixtures";
 
 const managerEmail = "restore-manager@example.invalid";
 const activeEmail = "restore-active@example.invalid";
+const deleterEmail = "restore-deleter@example.invalid";
+const deletedEmail = "restore-deleted@example.invalid";
 
 test.beforeAll(async () => {
   if (
@@ -37,6 +39,29 @@ test.beforeAll(async () => {
     email: managerEmail,
     role: "manager",
     soldierId: id,
+  });
+  // A second manager for the second test: a sign-in code is sent once a minute.
+  const second = randomUUID();
+  const secondData = soldier({
+    id: second,
+    name: "אחראי מחיקה בשחזור",
+    personalNumber: "000302",
+  });
+  await db.insert(soldiers).values({
+    id: second,
+    name: secondData.name,
+    personalNumber: secondData.personalNumber,
+    data: secondData,
+  });
+  await db
+    .insert(soldierContacts)
+    .values({ soldierId: second, email: deleterEmail });
+  await db.insert(balances).values({ soldierId: second });
+  await createInvitedAccount({
+    name: secondData.name,
+    email: deleterEmail,
+    role: "manager",
+    soldierId: second,
   });
 });
 
@@ -205,4 +230,86 @@ test("cancels a new soldier without activity and waits for a decision on one who
     .from(soldiers)
     .where(eq(soldiers.personalNumber, "000312"));
   expect(kept.name).toBe("קליטה שנכנסה");
+});
+
+test("deletes the user of a new soldier with activity when the manager decides so", async ({
+  page,
+  browser,
+}) => {
+  await login(page, deleterEmail);
+  await page.goto("/manage/imports");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(new Uint8Array(await createImportTemplate()).buffer);
+  workbook
+    .getWorksheet("חיילים")!
+    .addRow([
+      "000321",
+      "קליטה למחיקה",
+      deletedEmail,
+      "0500000321",
+      "רחוב ייבוא 5",
+      2,
+    ]);
+  await page.getByLabel("קובץ XLSX").setInputFiles({
+    name: "to-delete.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(new Uint8Array(await workbook.xlsx.writeBuffer())),
+  });
+  await page
+    .getByRole("button", { name: "הצגת תצוגה מקדימה", exact: true })
+    .click();
+  await page.getByLabel("סיבת הייבוא").fill("קליטה סינתטית למחיקה");
+  await page
+    .getByLabel("בדקתי את כל השורות ואת ברירות המחדל לקליטה חדשה")
+    .check();
+  await page
+    .getByRole("button", { name: "אישור ושמירת הייבוא", exact: true })
+    .click();
+  await expect(page.getByText(/הייבוא נשמר בשלמותו/)).toBeVisible();
+  // The soldier signs in once: activity, so the restore cannot simply cancel the intake.
+  const soldierContext = await browser.newContext();
+  await login(await soldierContext.newPage(), deletedEmail);
+  await soldierContext.close();
+
+  await page
+    .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
+    .click();
+  const creations = page.getByRole("region", { name: "קליטות חדשות באצווה" });
+  const row = creations.getByRole("row", { name: /קליטה למחיקה/ });
+  await expect(row.getByText("יש פעילות", { exact: true })).toBeVisible();
+  // Deleting the user is offered next to keeping the soldier, with its impact.
+  await page.getByLabel("החלטה עבור קליטת קליטה למחיקה").selectOption("delete");
+  await expect(row.getByText(/מחיקה מפנה 0 מקומות עתידיים/)).toBeVisible();
+  await page.getByLabel("סיבת השחזור וההכרעות").fill("לא היה אמור להיקלט");
+  await page.getByLabel("בדקתי את השדות ואת ההחלטות ומאשר/ת את השחזור").check();
+  await page.getByRole("button", { name: "אישור השחזור", exact: true }).click();
+  await expect(page.getByText(/שחזור הייבוא הושלם/)).toBeVisible();
+  await expect(page.getByText(/המשתמש נמחק בהכרעת שחזור/)).toBeVisible();
+
+  const [deleted] = await db
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.personalNumber, "000321"));
+  expect(deleted.deletedAt).not.toBeNull();
+  expect(deleted.name).toBe("קליטה למחיקה");
+  const [contact] = await db
+    .select()
+    .from(soldierContacts)
+    .where(eq(soldierContacts.soldierId, deleted.id));
+  expect([contact.email, contact.phone, contact.address]).toEqual([
+    null,
+    null,
+    null,
+  ]);
+  const [account] = await db
+    .select()
+    .from(user)
+    .where(eq(user.soldierId, deleted.id));
+  expect(account.deletedAt).not.toBeNull();
+  // The number stays with the history: it is not free for a new intake.
+  await page.screenshot({
+    path: "test-results/import-restore-deleted.png",
+    fullPage: false,
+  });
 });

@@ -43,6 +43,7 @@ import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
 import { AddPeriod, PersonnelHistory, ProfileEdit } from "./personnel-history";
 import { AuditLink } from "./audit";
+import { SoldierDeletion } from "./soldier-deletion";
 import {
   ConditionToggles,
   ConditionsSummary,
@@ -500,30 +501,11 @@ export function SoldiersView({
                 payload={{ soldierId: selected.id }}
                 version={selected.version}
               />
-              <ActionDialog
-                title="מחיקת משתמש"
-                buttonLabel="מחיקת המשתמש והמידע הרגיש"
-                fields={[
-                  {
-                    name: "reason",
-                    label: "סיבת המחיקה",
-                    type: "textarea",
-                    required: true,
-                    full: true,
-                  },
-                  {
-                    name: "confirmed",
-                    label:
-                      "הבנתי שפרטי הקשר והמידע הרגיש יימחקו, שיבוצים עתידיים יתפנו וההיסטוריה הנדרשת תישמר",
-                    type: "checkbox",
-                    required: true,
-                  },
-                ]}
+              <SoldierDeletion
+                person={selected}
                 action={action}
-                type="soldier.delete"
-                payload={{ id: selected.id }}
-                version={selected.version}
-                danger
+                self={selected.id === state.actor.soldierId}
+                onDone={() => setSelected(null)}
               />
             </div>
           </details>
