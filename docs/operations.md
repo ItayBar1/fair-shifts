@@ -200,7 +200,38 @@ age-keygen -y ~/fair-shifts-backup.key   # prints the public key for AGE_RECIPIE
 
 הקובץ הפרטי נשמר מחוץ לשרת ומחוץ ל־Drive, לפחות בשני עותקים בידי המנהל הטכני. בלעדיו אי אפשר לפענח אף גיבוי. פענוח לבדיקה: `age --decrypt -i fair-shifts-backup.key <file> > backup.dump`, ואחריו `pg_restore` למסד מבודד בלבד.
 
-חשבון Google, מצב האפליקציה ב־OAuth (במצב Testing אסימון הרענון פג אחרי שבעה ימים) ובדיקת ההעלאה והשחזור מול Drive אמיתי שייכים לכרטיס [#37](https://github.com/ItayBar1/fair-shifts/issues/37). עד אז הגיבוי לא נבדק מול Drive אמיתי.
+### חיבור Drive וחידוש הרשאה
+
+כרטיס [#37](https://github.com/ItayBar1/fair-shifts/issues/37). ההגדרה בחשבון Google הייעודי:
+
+1. פרויקט Cloud נפרד מהפרויקט של כניסת Google, ובו Google Drive API מופעל.
+2. ב־Google Auth Platform: ב־Audience ‏External, ב־Data Access ההרשאה `.../auth/drive.file` בלבד, והאפליקציה מפורסמת (**In production**). במצב Testing אסימון הרענון פג אחרי שבעה ימים.
+3. לקוח OAuth מסוג Web application, עם redirect ‏`https://developers.google.com/oauthplayground`. סוד הלקוח מוצג פעם אחת בלבד, ונשמר מיד במנהל הסיסמאות.
+4. אסימון רענון ב־[OAuth Playground](https://developers.google.com/oauthplayground):
+   - בגלגל השיניים: Access type ‏Offline, ו־**Use your own OAuth credentials** עם הלקוח מסעיף 3.
+   - ההרשאה `drive.file`, התחברות עם החשבון הייעודי, ואז Exchange.
+   - **במסך ההסכמה צריך להופיע שם האפליקציה מ־Branding.** אם מופיע "Google OAuth 2.0 Playground", האסימון שייך ללקוח של Google ויידחה. הגיבוי ייכשל כ"הרשאה פגה", ויש להסיר את הגישה של Playground ב־[האפליקציות המקושרות](https://myaccount.google.com/connections).
+
+**הרשאה שפגה או בוטלה:** הגיבוי נכשל מיד, בלי ניסיונות חוזרים, והחשבון הטכני מקבל הודעה ומייל. מפיקים אסימון חדש לפי סעיף 4 ומחליפים רק אותו:
+
+```sh
+cd /opt/fair-shifts/app && [ "$(git rev-parse HEAD)" = "$(cat /opt/fair-shifts/deploy-state/deployed)" ] && touch /opt/fair-shifts/deploy-state/paused && echo "OK: timer paused" || echo "STOP: checkout differs from the live version"
+read -rsp 'Drive refresh token: ' token; echo   # paste this line on its own
+env=/opt/fair-shifts/config/app.env; { grep -v '^GOOGLE_DRIVE_REFRESH_TOKEN=' "$env"; printf 'GOOGLE_DRIVE_REFRESH_TOKEN=%s\n' "$token"; } > "$env.new" && chmod 600 "$env.new" && mv "$env.new" "$env"; unset token
+sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && sh scripts/production.sh health && rm -f /opt/fair-shifts/deploy-state/paused
+```
+
+אחר כך מריצים ״גיבוי עכשיו״ ומוודאים שהוא מגיע ל״אומת״.
+
+**מה נבדק מול Drive אמיתי ב־staging (01.10.2026):**
+
+- גיבוי יומי וגיבוי ידני אומתו.
+- **הרשאה שבוטלה:** כשל מיידי בניסיון אחד, עם הודעה ומייל, ואחר כך חזרה לעבודה עם אסימון חדש.
+- **כשל רשת:** ניתוק זמני של העובד. הריצה נכשלה זמנית, נוסתה שוב אחרי 15 דקות ואומתה בניסיון השני, בלי התראה.
+- **שמירה של 30 עותקים:** 28 גיבויים ברצף. נשארו 30 עותקים, שני הוותיקים נמחקו לצמיתות (לא לאשפה), וקובץ שהועלה ידנית לתיקיית הגיבויים וקובץ מחוץ לה נשארו.
+- **נפח:** המקום הפנוי שהמסך מציג תואם את Google. נפח שנגמר באמת לא נבדק מול Drive, כי צריך למלא 15GB; ההתנהגות הזאת נבדקה ב־Docker.
+
+ההורדה, הפענוח והשחזור המבודד מ־Drive שייכים ל־#35 ול־#37.
 
 ## יומן מחיקות עצמאי ושחזור מחיקות
 
@@ -261,5 +292,5 @@ sh scripts/production-smoke.sh
 ## מה עוד לא נבדק
 
 - staging (#25), כניסת Google (#26) ו־Brevo (#28) נבדקו בחשבונות בדיקה, והתוצאות מתועדות בכרטיסים. חריגה מהמכסה של הספק נבדקה רק ב־Docker.
-- גיבוי ועותק יומן המחיקות מול Drive אמיתי (כרטיס #37), ושחזור מבודד שמשתמש בפקודות יומן המחיקות (#35). הפקודות והשער נבדקו ב־Docker מול מסד ואחסון תיקייה.
-- פריסה אוטומטית (#36): רצה בשרת, ותקלה וחזרה הודגמו שם ב־30.09.2026. הגיבוי לפני מיגרציה נבדק ב־Docker בלבד (`scripts/auto-deploy-test.sh` ו־`tests/integration/backup.test.ts`), ובשרת יודגם אחרי חיבור הגיבוי ל־Drive (#37). נוהל שחזור אחרי מיגרציה שנכשלה שייך ל־#35.
+- הגיבוי נבדק מול Drive אמיתי ב־01.10.2026 (ראו "חיבור Drive וחידוש הרשאה"), חוץ מנפח שנגמר באמת. עדיין לא נבדקו: עותק יומן המחיקות ב־Drive, שנוצר רק עם המחיקה הראשונה, ושחזור מבודד מגיבוי שהורד מ־Drive עם פקודות יומן המחיקות (#35, ‏#37). הפקודות והשער נבדקו ב־Docker מול מסד ואחסון תיקייה.
+- פריסה אוטומטית (#36): רצה בשרת, ותקלה וחזרה הודגמו שם ב־30.09.2026. הגיבוי לפני מיגרציה נבדק ב־Docker בלבד (`scripts/auto-deploy-test.sh` ו־`tests/integration/backup.test.ts`), הגיבוי ב־staging מחובר ל־Drive מ־01.10.2026, ולכן ההדגמה בשרת תהיה במיזוג הראשון שמשנה את המסד. נוהל שחזור אחרי מיגרציה שנכשלה שייך ל־#35.
