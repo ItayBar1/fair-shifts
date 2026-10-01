@@ -12,6 +12,7 @@ import { LotteryButton, LotteryHistory } from "./planning";
 import { ScoreDecisions } from "./score-decisions";
 import { ManagerReturns } from "./manager-returns";
 import { ExecutionPeriods, referredRequests } from "./execution-periods";
+import { deletedSeats } from "@/client/deleted-seats";
 import { TransferOffer } from "./transfers";
 import { SwapOffer } from "./swaps";
 import {
@@ -44,6 +45,7 @@ import {
   population,
   personName,
   displayDate,
+  dutyName,
 } from "@/client/types";
 import {
   type DaySegment,
@@ -622,9 +624,12 @@ function handlingSummary(state: AppState) {
   const departed = state.soldiers.filter(
     (s) => !s.deletedAt && s.serviceStatus === "service_ended"
   );
+  // A soldier deleted while a duty ran: urgent, until a manager records the periods (decision 196).
+  const urgent = deletedSeats(state);
   const concerns = state.assignments.filter(
     (a) =>
       ["reserved", "held"].includes(str(a.status)) &&
+      !urgent.includes(a) &&
       (a.needsReview ||
         (Array.isArray(a.needsAttention) && a.needsAttention.length > 0))
   );
@@ -637,6 +642,7 @@ function handlingSummary(state: AppState) {
     returns,
     departed,
     concerns,
+    urgent,
   };
 }
 export function handlingCount(state: AppState) {
@@ -648,7 +654,8 @@ export function handlingCount(state: AppState) {
     item.referred.length +
     item.returns.length +
     item.departed.length +
-    item.concerns.length
+    item.concerns.length +
+    item.urgent.length
   );
 }
 /** Why a reserved assignment needs a manager's attention, from the codes the server stored. */
@@ -676,6 +683,7 @@ export function Dashboard({
     returns,
     departed,
     concerns,
+    urgent,
   } = handlingSummary(state);
   const transfers = requests.filter((r) => r.type === "transfer");
   const swaps = requests.filter((r) => r.type === "swap");
@@ -710,7 +718,7 @@ export function Dashboard({
         />
         <Stat
           label="שיבוצים לטיפול"
-          value={concerns.length}
+          value={concerns.length + urgent.length}
           detail="נדרשת בדיקת אחראי"
           icon={AlertTriangle}
           tone="violet"
@@ -718,6 +726,28 @@ export function Dashboard({
       </div>
       <div className="two-columns">
         <Panel title="על סדר היום" subtitle="החלטות שיקדמו את התכנון">
+          {urgent.map((a) => (
+            <Link
+              className="task-item"
+              href={`/duties/${a.dutyId}`}
+              key={`deleted-${a.id}`}
+            >
+              <span className="task-symbol red">
+                <AlertTriangle size={20} />
+              </span>
+              <span>
+                <strong>
+                  דחוף: {personName(state, a.soldierId)} נמחק באמצע{" "}
+                  {dutyName(state, a.dutyId)}
+                </strong>
+                <small>
+                  יש לרשום עד מתי ביצע בפועל, מי מחליף אותו בהמשך ומה הניקוד.
+                  הזקיפה האוטומטית של השיבוץ עצורה עד ההכרעה.
+                </small>
+              </span>
+              <ChevronLeft size={18} />
+            </Link>
+          ))}
           <Link className="task-item" href="/manage/constraints">
             <span className="task-symbol amber">
               <Clock3 size={20} />
@@ -1101,10 +1131,14 @@ export function DutyDetail({
                 {assignment ? (
                   <>
                     <Status value={assignment.status} />
-                    {(assignment.needsReview === true ||
-                      (Array.isArray(assignment.needsAttention) &&
-                        assignment.needsAttention.length > 0)) && (
-                      <Badge tone="warning">דורש טיפול</Badge>
+                    {manager && deletedSeats(state, id).includes(assignment) ? (
+                      <Badge tone="danger">דחוף: החייל נמחק</Badge>
+                    ) : (
+                      (assignment.needsReview === true ||
+                        (Array.isArray(assignment.needsAttention) &&
+                          assignment.needsAttention.length > 0)) && (
+                        <Badge tone="warning">דורש טיפול</Badge>
+                      )
                     )}
                     {manager &&
                       Array.isArray(assignment.needsAttention) &&

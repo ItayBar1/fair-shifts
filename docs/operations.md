@@ -23,6 +23,7 @@
 - **db** — PostgreSQL 18 עם נפח קבוע `postgres-data`. הוא מחובר רק לרשת `internal`, שאין לה יציאה אל מחוץ לשרת, ואין לו פורט פתוח.
 - **app** — Next.js במצב production. בכל עלייה נבדקת התצורה, ואחר כך מוחלות המיגרציות תחת נעילה. גם לו אין פורט פתוח; הגישה אליו עוברת רק דרך cloudflared ברשת הפנימית של Compose.
 - **worker** — אותה תמונה ואותה גרסה של האתר. הוא עולה רק אחרי שהאתר תקין, כלומר אחרי המיגרציות. כל דקה הוא רושם פעימה במסד ובקובץ שבודקת בדיקת הבריאות של הקונטיינר.
+- **נפח `deletion-log`** — נפח נפרד שהעובד כותב אליו את יומן המחיקות העצמאי (בסעיף הבא). הוא אינו חלק מהמסד ולא מהגיבויים, ואסור למחוק אותו: `down --volumes` מוחק גם אותו.
 - **cloudflared** — `cloudflare/cloudflared:2026.9.3`, בחיבור יוצא בלבד. אין צורך לפתוח פורטים נכנסים בחומת האש.
 
 לכל השירותים `restart: unless-stopped`, ‏`init` שמעביר אותות וזמן חסד לעצירה: 30 שניות לאתר ולעובד ו־60 למסד. היומנים מוגבלים ל־5 קבצים של 10MB לכל שירות. האתר והעובד רצים כמשתמש שאינו root.
@@ -199,7 +200,75 @@ age-keygen -y ~/fair-shifts-backup.key   # prints the public key for AGE_RECIPIE
 
 הקובץ הפרטי נשמר מחוץ לשרת ומחוץ ל־Drive, לפחות בשני עותקים בידי המנהל הטכני. בלעדיו אי אפשר לפענח אף גיבוי. פענוח לבדיקה: `age --decrypt -i fair-shifts-backup.key <file> > backup.dump`, ואחריו `pg_restore` למסד מבודד בלבד.
 
-חשבון Google, מצב האפליקציה ב־OAuth (במצב Testing אסימון הרענון פג אחרי שבעה ימים) ובדיקת ההעלאה והשחזור מול Drive אמיתי שייכים לכרטיס [#37](https://github.com/ItayBar1/fair-shifts/issues/37). עד אז הגיבוי לא נבדק מול Drive אמיתי.
+### חיבור Drive וחידוש הרשאה
+
+כרטיס [#37](https://github.com/ItayBar1/fair-shifts/issues/37). ההגדרה בחשבון Google הייעודי:
+
+1. פרויקט Cloud נפרד מהפרויקט של כניסת Google, ובו Google Drive API מופעל.
+2. ב־Google Auth Platform: ב־Audience ‏External, ב־Data Access ההרשאה `.../auth/drive.file` בלבד, והאפליקציה מפורסמת (**In production**). במצב Testing אסימון הרענון פג אחרי שבעה ימים.
+3. לקוח OAuth מסוג Web application, עם redirect ‏`https://developers.google.com/oauthplayground`. סוד הלקוח מוצג פעם אחת בלבד, ונשמר מיד במנהל הסיסמאות.
+4. אסימון רענון ב־[OAuth Playground](https://developers.google.com/oauthplayground):
+   - בגלגל השיניים: Access type ‏Offline, ו־**Use your own OAuth credentials** עם הלקוח מסעיף 3.
+   - ההרשאה `drive.file`, התחברות עם החשבון הייעודי, ואז Exchange.
+   - **במסך ההסכמה צריך להופיע שם האפליקציה מ־Branding.** אם מופיע "Google OAuth 2.0 Playground", האסימון שייך ללקוח של Google ויידחה. הגיבוי ייכשל כ"הרשאה פגה", ויש להסיר את הגישה של Playground ב־[האפליקציות המקושרות](https://myaccount.google.com/connections).
+
+**הרשאה שפגה או בוטלה:** הגיבוי נכשל מיד, בלי ניסיונות חוזרים, והחשבון הטכני מקבל הודעה ומייל. מפיקים אסימון חדש לפי סעיף 4 ומחליפים רק אותו:
+
+```sh
+cd /opt/fair-shifts/app && [ "$(git rev-parse HEAD)" = "$(cat /opt/fair-shifts/deploy-state/deployed)" ] && touch /opt/fair-shifts/deploy-state/paused && echo "OK: timer paused" || echo "STOP: checkout differs from the live version"
+read -rsp 'Drive refresh token: ' token; echo   # paste this line on its own
+env=/opt/fair-shifts/config/app.env; { grep -v '^GOOGLE_DRIVE_REFRESH_TOKEN=' "$env"; printf 'GOOGLE_DRIVE_REFRESH_TOKEN=%s\n' "$token"; } > "$env.new" && chmod 600 "$env.new" && mv "$env.new" "$env"; unset token
+sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && sh scripts/production.sh health && rm -f /opt/fair-shifts/deploy-state/paused
+```
+
+אחר כך מריצים ״גיבוי עכשיו״ ומוודאים שהוא מגיע ל״אומת״.
+
+**מה נבדק מול Drive אמיתי ב־staging (01.10.2026):**
+
+- גיבוי יומי וגיבוי ידני אומתו.
+- **הרשאה שבוטלה:** כשל מיידי בניסיון אחד, עם הודעה ומייל, ואחר כך חזרה לעבודה עם אסימון חדש.
+- **כשל רשת:** ניתוק זמני של העובד. הריצה נכשלה זמנית, נוסתה שוב אחרי 15 דקות ואומתה בניסיון השני, בלי התראה.
+- **שמירה של 30 עותקים:** 28 גיבויים ברצף. נשארו 30 עותקים, שני הוותיקים נמחקו לצמיתות (לא לאשפה), וקובץ שהועלה ידנית לתיקיית הגיבויים וקובץ מחוץ לה נשארו.
+- **נפח:** המקום הפנוי שהמסך מציג תואם את Google. נפח שנגמר באמת לא נבדק מול Drive, כי צריך למלא 15GB; ההתנהגות הזאת נבדקה ב־Docker.
+
+ההורדה, הפענוח והשחזור המבודד מ־Drive שייכים ל־#35 ול־#37.
+
+## יומן מחיקות עצמאי ושחזור מחיקות
+
+כרטיס [#34](https://github.com/ItayBar1/fair-shifts/issues/34), הכרעה 196. גיבוי מחזיר את המצב שהיה ברגע שנוצר, ולכן מחיקת משתמש שנעשתה אחריו מתבטלת בשחזור ומידע שנמחק חוזר. כדי למנוע זאת כל מחיקה נרשמת ביומן שאינו חלק מהמסד.
+
+- **מה ביומן:** שורה לכל מחיקה, עם מזהה פנימי של החייל, מועד המחיקה ושרשרת גיבובים (SHA-256) לשורה הקודמת. אין שם, מספר אישי, פרטי קשר או סיבה, ולכן שמירתו מחוץ למסד אינה שומרת מידע רגיש.
+- **איפה:** הקובץ `deletion-log.jsonl` בנפח `deletion-log` (בקונטיינר: `DELETION_LOG_DIRECTORY=/var/lib/fair-shifts-deletion-log`, מוגדר ב־`compose.production.yaml`, ואין צורך לשנות את `app.env`). עותק שלו נשמר בתיקיית הגיבויים ב־Drive כקובץ נפרד, שאינו נספר במחזור 30 העותקים. כשהגיבוי כבוי (`BACKUP_STORAGE` ריק) אין עותק, ואז אובדן הנפח הוא אובדן היומן. יומן ריק אינו מועתק; העותק הראשון נוצר עם המחיקה הראשונה.
+- **כתיבה:** המחיקה רושמת בעסקתה רשומה ממתינה, והעובד כותב אותה ליומן תוך שניות (אות `fair_shifts_deletion_log`) ובסבב הדקה. כתיבה שנכשלה אינה מעכבת מחיקה: הרשומה ממתינה וניסיון חוזר נעשה בכל דקה. כשל שנמשך עשר דקות מדווח לחשבון הטכני פעם ביום, בהודעת אתר ובמייל בסוג ״תקלות תפעול״. בלוג העובד: `Deletion log failure: …`.
+- **מה מוצג לטכני:** שורת ״יומן מחיקות עצמאי״ במסך ״מצב המערכת״: כבוי, תקלה בכתיבה, לא אומת, מספר ממתינות, ללא עותק ב־Drive או עותק מתעכב. אימות יומי (בלי דרישה לגישה ל־Drive) מעדכן את השורה.
+- **נזק:** קובץ שנחתך באמצע שורה אחרי קריסה מתוקן מעצמו. קובץ שנשבר, או שחסר כשיש היסטוריה, אינו מקבל שורות והעובד מנסה להחזיר אותו מהעותק ב־Drive; אם גם זה לא אפשרי, נוצרת התראה. עותק ב־Drive שנמצא לפני הקובץ המקומי או מספר היסטוריה אחרת אינו נדרס.
+
+### אחרי שחזור מגיבוי
+
+בשחזור, אחרי שהמסד שוחזר ולפני שהאתר והעובד נפתחים למשתמשים (מצב שחזור, `RESTORE_MODE=true` או שורת `restore` במסד), מריצים בשרת, בתיקיית היישום:
+
+```sh
+export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
+# 1. Read only: is the log whole, do its copies agree, does the database know anything it lacks?
+sh scripts/production.sh run --rm --no-deps worker node_modules/.bin/tsx scripts/deletion-log.ts verify
+# 2. Verify again and apply the deletions the restored database does not show yet.
+sh scripts/production.sh run --rm --no-deps worker node_modules/.bin/tsx scripts/deletion-log.ts apply
+```
+
+- `verify` מדפיס מצב כל עותק (מקומי ובאחסון), את הסיבות לאי־אימות ואזהרות (עותק שחסר או מפגר). קוד יציאה 0 רק כשהיומן מאומת.
+- `apply` מחילה כל מחיקה שביומן ושהמסד אינו מציג, לפי הסדר ובמועד המקורי, כמו מחיקה רגילה: פינוי שיבוצים עתידיים, סימון שיבוצים בתורנות שהחלה לטיפול דחוף, הסרת מידע רגיש וביטול גישה. חייל שכבר נמחק או שאינו במסד מדולג. הרצה חוזרת אינה משנה דבר. הפעולה נרשמת ביומן הפעולות, והאחראים מקבלים הודעה ומייל. בסיום החוסם `deletion_log` של שער השחזור יורד. השער נפתח לגישה ולמשלוח רק כשכל החוסמים ירדו; בדיקות נוספות של השחזור (#35) מצטרפות לאותו שער.
+- **יומן חסר או לא מאומת:** `apply` משאירה את הגישה והמשלוח חסומים ומדפיסה את הסיבה (`no_log`, ‏`local_broken`, ‏`remote_broken`, ‏`remote_unreadable`, ‏`diverged`, ‏`database_ahead`, ‏`database_mismatch`, ‏`unlogged_deletions`). מתקנים (למשל מחזירים את הקובץ או את העותק) ומריצים שוב. אם אי אפשר, ואחרי בירור מה נמחק מאז הגיבוי, אפשר לשחרר את החסימה בפקודה עם סיבה ועם משפט האישור המדויק:
+
+```sh
+DELETION_LOG_REASON="no log copy exists; deletions since the backup were checked by hand" \
+DELETION_LOG_ACKNOWLEDGE="deleted data may return" \
+sh scripts/production.sh run --rm --no-deps -e DELETION_LOG_REASON -e DELETION_LOG_ACKNOWLEDGE \
+  worker node_modules/.bin/tsx scripts/deletion-log.ts acknowledge
+```
+
+הפקודה נרשמת ביומן הפעולות עם הסיבה ועם סיבות אי־האימות, והאחראים מקבלים הודעה שמידע שנמחק עלול לחזור. היא אינה מחילה מחיקות: מחיקות שנעשו אחרי הגיבוי ואינן ביומן חוזרות על ידי אחראי.
+
+השחזור המבודד עצמו, בדיקות הנתונים הנוספות שלו והתרגיל הרבעוני שייכים לכרטיס [#35](https://github.com/ItayBar1/fair-shifts/issues/35), והם ישתמשו באותן פקודות ובאותו שער. הכתיבה של היומן ל־Drive נבדקה עד כה מול אחסון תיקייה בלבד; בדיקה מול Drive אמיתי שייכת ל־#37.
 
 ## משלוח מייל ומכסה
 
@@ -223,5 +292,5 @@ sh scripts/production-smoke.sh
 ## מה עוד לא נבדק
 
 - staging (#25), כניסת Google (#26) ו־Brevo (#28) נבדקו בחשבונות בדיקה, והתוצאות מתועדות בכרטיסים. חריגה מהמכסה של הספק נבדקה רק ב־Docker.
-- גיבוי מול Drive אמיתי (כרטיס #37) ושחזור מבודד עם החלת מחיקות (#35).
-- פריסה אוטומטית (#36): רצה בשרת, ותקלה וחזרה הודגמו שם ב־30.09.2026. הגיבוי לפני מיגרציה נבדק ב־Docker בלבד (`scripts/auto-deploy-test.sh` ו־`tests/integration/backup.test.ts`), ובשרת יודגם אחרי חיבור הגיבוי ל־Drive (#37). נוהל שחזור אחרי מיגרציה שנכשלה שייך ל־#35.
+- הגיבוי נבדק מול Drive אמיתי ב־01.10.2026 (ראו "חיבור Drive וחידוש הרשאה"), חוץ מנפח שנגמר באמת. עדיין לא נבדקו: עותק יומן המחיקות ב־Drive, שנוצר רק עם המחיקה הראשונה, ושחזור מבודד מגיבוי שהורד מ־Drive עם פקודות יומן המחיקות (#35, ‏#37). הפקודות והשער נבדקו ב־Docker מול מסד ואחסון תיקייה.
+- פריסה אוטומטית (#36): רצה בשרת, ותקלה וחזרה הודגמו שם ב־30.09.2026. הגיבוי לפני מיגרציה נבדק ב־Docker בלבד (`scripts/auto-deploy-test.sh` ו־`tests/integration/backup.test.ts`), הגיבוי ב־staging מחובר ל־Drive מ־01.10.2026, ולכן ההדגמה בשרת תהיה במיזוג הראשון שמשנה את המסד. נוהל שחזור אחרי מיגרציה שנכשלה שייך ל־#35.

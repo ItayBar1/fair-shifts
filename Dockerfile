@@ -30,6 +30,9 @@ RUN pnpm build
 FROM builder AS production
 ENV NODE_ENV=production
 RUN chown -R postgres:postgres /app/.next
+# The deletion log (decision 196) lives on its own volume, written by the worker as this user.
+RUN mkdir -p /var/lib/fair-shifts-deletion-log \
+    && chown postgres:postgres /var/lib/fair-shifts-deletion-log
 # Site and worker share one image; the health check compares their versions.
 ARG APP_VERSION=development
 ENV APP_VERSION=$APP_VERSION

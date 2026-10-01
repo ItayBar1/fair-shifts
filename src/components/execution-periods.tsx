@@ -6,7 +6,6 @@ import {
   type AppState,
   type Action,
   type Row,
-  assignableSoldiers,
   str,
   num,
   rows,
@@ -14,7 +13,10 @@ import {
   displayDate,
   personName,
 } from "@/client/types";
+import { asInstant, requirementsOf } from "@/client/soldier-picker";
+import { deletedSeats, suggestDeletedSplit } from "@/client/deleted-seats";
 import { Badge, Modal, Notice, Panel } from "./ui";
+import { SoldierPicker } from "./soldier-picker";
 
 // Execution periods of a seat in a duty that started (decision 183).
 
@@ -92,6 +94,7 @@ export function ExecutionPeriods({
   duty: Row;
 }) {
   const slots = rows(duty.slots);
+  const urgent = deletedSeats(state, str(duty.id));
   const history = rows(state.executionChanges)
     .filter((row) => row.dutyId === duty.id)
     .sort((a, b) => str(b.recordedAt).localeCompare(str(a.recordedAt)));
@@ -100,6 +103,24 @@ export function ExecutionPeriods({
       title="תקופות ביצוע"
       subtitle="מי ביצע בפועל כל חלק של התורנות. כל רגע בתורנות שייך למבצע אחד או מסומן ״לא בוצע״; בתעריף יומי הניקוד יחסי לזמן בפועל."
     >
+      {urgent.length > 0 && (
+        <Notice tone="danger">
+          <strong>טיפול דחוף: חייל נמחק בזמן שהתורנות מתבצעת.</strong>{" "}
+          {urgent
+            .map(
+              (row) =>
+                `${personName(state, row.soldierId)} (נמחק ${displayDate(
+                  state.soldiers.find((s) => s.id === row.soldierId)?.deletedAt,
+                  true
+                )})`
+            )
+            .join(", ")}
+          . המקום נשאר על שמו עד שתרשמו עד מתי ביצע בפועל, מי מחליף אותו בהמשך
+          ומה הניקוד. עד אז השיבוץ אינו נזקף אוטומטית. בעריכה מוצע שהחייל ביצע
+          עד רגע המחיקה ושהמשך התורנות ממתין למחליף; אפשר לשנות כל תקופה, או
+          להסיר את החייל מהמקום כדי שלא יזקף לו כלום.
+        </Notice>
+      )}
       {slots.map((slot) => {
         const segments = seatSegments(state, duty, slot.id);
         return (
@@ -194,10 +215,22 @@ function SeatEditor({
   slot: Row;
   segments: ReturnType<typeof seatSegments>;
 }) {
-  const initial = (): Segment[] =>
-    recorded.length
-      ? recorded.map(({ soldierId, start, end }) => ({ soldierId, start, end }))
-      : [{ soldierId: null, start: str(duty.start), end: str(duty.end) }];
+  const initial = (): Segment[] => {
+    if (!recorded.length)
+      return [{ soldierId: null, start: str(duty.start), end: str(duty.end) }];
+    // A soldier deleted while the duty ran is offered the part up to the deletion;
+    // the rest waits for a replacement (decision 196). The manager may change both.
+    return recorded.flatMap(({ soldierId, start, end, rowId }) => {
+      const whole = { soldierId, start, end };
+      const row = state.assignments.find((item) => item.id === rowId);
+      const person = state.soldiers.find((item) => item.id === soldierId);
+      if (!row || row.deletionDecidedAt) return [whole];
+      return suggestDeletedSplit(
+        whole,
+        person?.deletedAt ? str(person.deletedAt) : undefined
+      );
+    });
+  };
   const [open, setOpen] = useState(false);
   const [segments, setSegments] = useState<Segment[]>(initial);
   const [allocationEdits, setAllocationEdits] = useState<
@@ -211,12 +244,6 @@ function SeatEditor({
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  // A manager is never a performer (decision 192); one already recorded in the seat
-  // still shows, so the period can be given to someone else.
-  const soldiers = assignableSoldiers(
-    state,
-    recorded.map((segment) => segment.soldierId)
-  );
   const seatRows = state.assignments.filter(
     (row) =>
       row.dutyId === duty.id &&
@@ -366,60 +393,67 @@ function SeatEditor({
           <ol className="execution-segments">
             {segments.map((segment, index) => (
               <li key={index} className="execution-segment">
-                <label className="field">
-                  <span>מבצע בתקופה {index + 1}</span>
-                  <span className="select-wrap">
-                    <select
-                      aria-label={`מבצע בתקופה ${index + 1}`}
-                      value={segment.soldierId ?? ""}
-                      onChange={(event) => {
-                        const next = segments.map((item) => ({ ...item }));
-                        next[index]!.soldierId = event.target.value || null;
-                        edit(next);
-                      }}
+                {/* A manager is never a performer (decision 192); one already recorded
+                    in the seat is still listed, so the period can be given to someone else. */}
+                <SoldierPicker
+                  compact
+                  scope="period"
+                  state={state}
+                  label={`מבצע בתקופה ${index + 1}`}
+                  value={segment.soldierId ?? ""}
+                  onChange={(soldierId) => {
+                    const next = segments.map((item) => ({ ...item }));
+                    next[index]!.soldierId = soldierId || null;
+                    edit(next);
+                  }}
+                  range={{
+                    start: asInstant(segment.start),
+                    end: asInstant(segment.end),
+                  }}
+                  requirements={[requirementsOf(duty), requirementsOf(slot)]}
+                  keep={recorded.flatMap((item) =>
+                    item.soldierId ? [item.soldierId] : []
+                  )}
+                  keepDeleted={recorded.flatMap((item) =>
+                    item.soldierId ? [item.soldierId] : []
+                  )}
+                  emptyOption={{ value: "", label: "לא בוצע" }}
+                />
+                <div className="segment-times">
+                  <label className="field">
+                    <span>התחלה</span>
+                    <input
+                      aria-label={`תחילת תקופה ${index + 1}`}
+                      type="datetime-local"
+                      dir="ltr"
+                      value={local(segment.start)}
+                      disabled
+                    />
+                  </label>
+                  <label className="field">
+                    <span>סיום</span>
+                    <input
+                      aria-label={`סיום תקופה ${index + 1}`}
+                      type="datetime-local"
+                      dir="ltr"
+                      value={local(segment.end)}
+                      disabled={index === segments.length - 1}
+                      onChange={(event) =>
+                        event.target.value &&
+                        setBoundary(index, event.target.value)
+                      }
+                    />
+                  </label>
+                  {segments.length > 1 && (
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => removeAt(index)}
                     >
-                      <option value="">לא בוצע</option>
-                      {soldiers.map((row) => (
-                        <option key={row.id} value={row.id}>
-                          {str(row.name)}
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                </label>
-                <label className="field">
-                  <span>התחלה</span>
-                  <input
-                    aria-label={`תחילת תקופה ${index + 1}`}
-                    type="datetime-local"
-                    dir="ltr"
-                    value={local(segment.start)}
-                    disabled
-                  />
-                </label>
-                <label className="field">
-                  <span>סיום</span>
-                  <input
-                    aria-label={`סיום תקופה ${index + 1}`}
-                    type="datetime-local"
-                    dir="ltr"
-                    value={local(segment.end)}
-                    disabled={index === segments.length - 1}
-                    onChange={(event) =>
-                      event.target.value &&
-                      setBoundary(index, event.target.value)
-                    }
-                  />
-                </label>
-                {segments.length > 1 && (
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    onClick={() => removeAt(index)}
-                  >
-                    הסרת תקופה
-                  </button>
-                )}
+                      הסרת תקופה
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ol>

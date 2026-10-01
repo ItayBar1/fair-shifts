@@ -39,6 +39,7 @@ import {
   type DomainState,
 } from "./personnel";
 import { refreshRankReminders } from "./ranks";
+import { deletionSummary, eraseSoldier } from "./soldier-deletion";
 import { date, id, population, text } from "./validation";
 
 const changeSchema = z.object({
@@ -74,12 +75,15 @@ type RestoreRow = {
 };
 /**
  * Decision 174: a new soldier without activity since the import is cancelled
- * by full removal; with activity the row waits for the manager; a soldier
- * erased through the deletion flow closes without action.
+ * by full removal; with activity the row waits for the manager, who keeps the
+ * soldier or deletes the user (decision 192); a soldier erased through the
+ * deletion flow closes without action.
  */
 type Creation = {
   status: "cancel" | "activity" | "erased";
   activity: string[];
+  /** For a row with activity: what a deletion decision would do (ticket #33). */
+  deletion?: Awaited<ReturnType<typeof deletionSummary>>;
 };
 type RecordRow = typeof records.$inferSelect;
 type Context = {
@@ -273,7 +277,8 @@ async function restoreRows(
   )
     ? await restoreContext(tx, batchId)
     : undefined;
-  return details.map((row) => {
+  const result: RestoreRow[] = [];
+  for (const row of details) {
     const person = people.find((item) => item.id === row.subjectId);
     const contact = contacts.find((item) => item.soldierId === row.subjectId);
     const balance = scores.find((item) => item.soldierId === row.subjectId);
@@ -334,8 +339,10 @@ async function restoreRows(
         status: erased ? "erased" : activity.length ? "activity" : "cancel",
         activity,
       };
+      if (creation.status === "activity" && person)
+        creation.deletion = await deletionSummary(tx, person.id);
     }
-    return {
+    result.push({
       id: row.id,
       version: row.version,
       soldierId: row.subjectId,
@@ -356,8 +363,9 @@ async function restoreRows(
             creation,
           }
         : {}),
-    };
-  });
+    });
+  }
+  return result;
 }
 const contactKeys = ["email", "phone", "address"];
 function withoutContact(value: unknown) {
@@ -650,9 +658,9 @@ export async function applyImportRestore(
       reason: text,
       decisions: decisionsSchema,
       populationImpactConfirmed: z.boolean().default(false),
-      // A new soldier with activity is kept only by an explicit row decision.
+      // A new soldier with activity is kept or deleted only by an explicit row decision.
       creations: z
-        .array(z.object({ rowId: id, action: z.enum(["keep"]) }))
+        .array(z.object({ rowId: id, action: z.enum(["keep", "delete"]) }))
         .max(10000)
         .default([]),
     })
@@ -709,13 +717,19 @@ export async function applyImportRestore(
     "duplicate_decision",
     "נשלחה החלטה כפולה לשורת קליטה"
   );
-  for (const decision of input.creations)
+  for (const decision of input.creations) {
+    const creation = rows.find((row) => row.id === decision.rowId)?.creation;
     invariant(
-      rows.find((row) => row.id === decision.rowId)?.creation?.status ===
-        "activity",
+      creation?.status === "activity",
       "invalid_decision",
       "ההחלטה אינה שייכת לקליטה עם פעילות שממתינה להכרעה"
     );
+    invariant(
+      decision.action !== "delete" || creation.deletion?.deletable,
+      "invalid_decision",
+      "אי אפשר למחוק את החייל הזה במסלול השחזור. המנהל הטכני מסיר קודם את הרשאת האחראי"
+    );
+  }
   invariant(
     rows.some((row) => row.fields.length > 0) ||
       rows.some((row) => row.creation && row.creation.status !== "activity") ||
@@ -869,17 +883,38 @@ export async function applyImportRestore(
     );
   }
   let cancelled = 0;
+  let deleted = 0;
   let waiting = 0;
   for (const row of rows) {
     if (!row.creation) continue;
-    const keep = input.creations.some((decision) => decision.rowId === row.id);
-    if (row.creation.status === "activity" && !keep) {
+    const decision = input.creations.find((item) => item.rowId === row.id);
+    const keep = decision?.action === "keep";
+    const remove = decision?.action === "delete";
+    if (row.creation.status === "activity" && !keep && !remove) {
       waiting++;
       continue;
     }
     if (row.creation.status === "cancel") {
       await cancelCreation(tx, actor, batch.id, row, input.reason);
       cancelled++;
+    } else if (remove) {
+      // Deleting the user (decision 192): the soldier's data leaves every
+      // active copy and the future seats are vacated, with the managers told.
+      await eraseSoldier(tx, actor, row.soldierId!, {
+        reason: input.reason,
+        via: "import.restore",
+      });
+      const detail = await findRecord(tx, "import_row", row.id);
+      await updateRecord(tx, detail, {
+        ...detail.data,
+        newRowRestored: {
+          action: "deleted",
+          reason: input.reason,
+          actorId: actor.id,
+          at: new Date().toISOString(),
+        },
+      });
+      deleted++;
     } else {
       const detail = await findRecord(tx, "import_row", row.id);
       await updateRecord(tx, detail, {
@@ -901,7 +936,9 @@ export async function applyImportRestore(
           ? "cancelled"
           : row.creation.status === "erased"
             ? "erased"
-            : "kept",
+            : remove
+              ? "deleted"
+              : "kept",
     });
   }
   await refreshRankReminders(tx);
@@ -917,6 +954,7 @@ export async function applyImportRestore(
     changed,
     kept,
     cancelled,
+    deleted,
     populationMoves: populationMoved,
     pendingNew: waiting,
   });

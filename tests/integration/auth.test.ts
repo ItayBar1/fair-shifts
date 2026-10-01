@@ -4988,6 +4988,13 @@ describe("first duty vertical slice", () => {
       expect(creationOf(fresh, "נכנס אחרי תצוגה").creation).toEqual({
         status: "activity",
         activity: ["כניסה לחשבון"],
+        // A row with activity also shows what deleting the user would do (decision 192).
+        deletion: {
+          deletable: true,
+          vacated: 0,
+          inProgress: 0,
+          openRequests: 0,
+        },
       });
       const racing = { ...payload, token: fresh.token, reason: "ביטול במקביל" };
       const key = randomUUID();

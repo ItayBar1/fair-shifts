@@ -68,6 +68,7 @@ const labels: Record<string, string> = {
   "duty.update.publish": "עדכון ופרסום תורנות",
   "duty.update.draft": "החלת שינוי בטיוטה",
   "duty.cancel": "ביטול תורנות",
+  "assignment.gender_flag.clear": "ניקוי סימון מגדר שנבע מתנאי עם כל המגדרים",
   "lottery.draw": "הגרלה",
   "planning.create": "התחלת תכנון תקופה",
   "planning.complete": "סיום תכנון תקופה",
@@ -77,6 +78,7 @@ const labels: Record<string, string> = {
   "manager.return.keep": "השארת היתרה של אחראי שחזר",
   "soldier.create": "קליטת חייל",
   "soldier.update": "עדכון פרטי חייל",
+  "soldier.delete": "מחיקת משתמש",
   "soldier.timeline": "הוספת תקופה בפרופיל",
   "soldier.timeline.edit": "עריכת תקופה בפרופיל",
   "soldier.conditions": "עדכון תנאים אישיים",
@@ -226,6 +228,7 @@ function accountCategory(action: string) {
 const soldierTargets = new Set([
   "soldier.create",
   "soldier.update",
+  "soldier.delete",
   "soldier.timeline",
   "soldier.timeline.edit",
   "soldier.conditions",
@@ -663,6 +666,13 @@ export function projectAudit(
           break;
         case "technical.server-recovery":
           reason = text(envelope.reason);
+          break;
+        case "soldier.delete":
+          // The one reason kept past an erasure, by the user's decision (192).
+          reason = text(envelope.reason);
+          add("מקומות עתידיים שהתפנו", envelope.vacated);
+          add("שיבוצים בתורנות שהחלה", envelope.inProgress);
+          if (envelope.via === "import.restore") add("דרך", "שחזור ייבוא");
           break;
         default:
           if (action.startsWith("responsibility:")) {

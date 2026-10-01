@@ -17,6 +17,8 @@ import type {
   EligibilityContext,
   EligibilityReason,
   EligibilityResult,
+  Gender,
+  InstantRange,
   Population,
   RankClause,
   Requirements,
@@ -24,9 +26,31 @@ import type {
   SpecificApproval,
 } from "./types";
 
+/** Every gender value the unit records. */
+export const allGenders: readonly Gender[] = ["male", "female", "other"];
+
+/**
+ * The genders a duty or role really limits to, or undefined when there is no
+ * gender condition (decision 198). An empty list and a list with every gender
+ * are the same: gender decides nothing, so a soldier without a gender is not
+ * blocked. Saved lists are normalized to empty, so a gender value added later
+ * does not turn an older "all genders" choice into a real condition.
+ */
+export function genderCondition<T extends string>(
+  genders?: readonly T[]
+): T[] | undefined {
+  if (!genders?.length) return undefined;
+  if (allGenders.every((gender) => genders.includes(gender as unknown as T)))
+    return undefined;
+  return [...new Set(genders)];
+}
+
 export const MANAGER_BLOCKER_MESSAGE = "אחראי תורנויות אינו משובץ לתורנויות";
 
-export function populationAt(soldier: Soldier, at: string): Population {
+export function populationAt(
+  soldier: Pick<Soldier, "service" | "populationHistory">,
+  at: string
+): Population {
   const date = instant(at).toISODate()!;
   const history = [...soldier.populationHistory];
   if (soldier.service.permanentFrom)
@@ -79,7 +103,7 @@ export function populationMoves(before: Soldier, after: Soldier): boolean {
 }
 
 export function rankAt(
-  soldier: Soldier,
+  soldier: Pick<Soldier, "rankHistory">,
   at: string
 ): EffectiveRank | undefined {
   const date = instant(at).toISODate()!;
@@ -163,9 +187,13 @@ export function serviceSummary(
   };
 }
 
-function populationFits(
-  soldier: Soldier,
-  duty: Duty,
+/**
+ * Whether the soldier's population is one of `populations` over the whole range:
+ * at its start and at every dated change inside it. Shared with the soldier picker.
+ */
+export function populationFits(
+  soldier: Pick<Soldier, "service" | "populationHistory">,
+  duty: InstantRange,
   populations: Population[]
 ): boolean {
   const target = interval(duty);
@@ -280,10 +308,11 @@ export function evaluateEligibility(
         "אוכלוסיית השירות אינה מתאימה לכל התורנות",
         reference
       );
-    if (requirements.genders?.length) {
+    const genders = genderCondition(requirements.genders);
+    if (genders) {
       if (!soldier.gender)
         block("gender", "מידע חסר: מגדר נדרש לתורנות", reference);
-      else if (!requirements.genders.includes(soldier.gender))
+      else if (!genders.includes(soldier.gender))
         block("gender", "תנאי המגדר אינו מתקיים", reference);
     }
     for (const capability of requirements.capabilityIds ?? []) {

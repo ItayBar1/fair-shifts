@@ -16,6 +16,7 @@ import { id, text, population, gender } from "./validation";
 import {
   MANAGER_BLOCKER_MESSAGE,
   evaluateEligibility,
+  genderCondition,
 } from "../domain/eligibility";
 import { calculatePrice } from "../domain/pricing";
 import { instant, resolveLocalTime, interval } from "../domain/time";
@@ -56,12 +57,17 @@ const rankClause = z
       ),
     "נדרש תנאי דרגה תקין בתוך מסלול"
   );
+/** Every gender is no gender condition, saved as an empty list (decision 198). */
+const genderList = z
+  .array(gender)
+  .max(3)
+  .transform((list) => genderCondition(list) ?? []);
 export const requirementsInput = z.object({
   populations: z.array(population).min(1).optional(),
   ranks: z.array(rankClause).optional(),
   qualificationIds: z.array(id).optional(),
   blockingExemptionIds: z.array(id).optional(),
-  genders: z.array(gender).max(3).optional(),
+  genders: genderList.optional(),
   capabilityIds: z.array(id).max(50).optional(),
 });
 const catalogInput = z.object({
@@ -72,7 +78,7 @@ const catalogInput = z.object({
   ranks: z.array(rankClause).default([]),
   qualificationIds: z.array(id).default([]),
   exemptionIds: z.array(id).default([]),
-  genders: z.array(gender).max(3).default([]),
+  genders: genderList.default([]),
   capabilityIds: z.array(id).max(50).default([]),
   restBeforeMinutes: z.number().int().nonnegative().default(0),
   restAfterMinutes: z.number().int().nonnegative().default(0),

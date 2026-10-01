@@ -38,19 +38,18 @@ export async function reassessAssignments(
     const duty = state.duties.find((row) => row.id === assignment.dutyId);
     const slot = duty?.slots.find((row) => row.id === assignment.slotId);
     if (!person || !duty || !slot) continue;
-    const result = evaluateEligibility(
-      person,
-      executionDuty(duty, assignment),
-      slot,
-      {
-        duties: state.duties,
-        assignments: state.assignments,
-        mode: "manual",
-        ignoreAssignmentIds: [assignment.id],
-        approvals: assignment.approvals,
-        pendingReviewConfirmed: assignment.pendingReviewConfirmed,
-      }
-    );
+    // A deleted soldier's seat that a manager decided no longer needs attention (decision 196).
+    const decided = Boolean(person.deletedAt && assignment.deletionDecidedAt);
+    const result = decided
+      ? { blockers: [], approvalsRequired: [] }
+      : evaluateEligibility(person, executionDuty(duty, assignment), slot, {
+          duties: state.duties,
+          assignments: state.assignments,
+          mode: "manual",
+          ignoreAssignmentIds: [assignment.id],
+          approvals: assignment.approvals,
+          pendingReviewConfirmed: assignment.pendingReviewConfirmed,
+        });
     const reasons = [...result.blockers, ...result.approvalsRequired].map(
       (row) => row.code
     );

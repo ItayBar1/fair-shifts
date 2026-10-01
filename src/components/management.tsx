@@ -43,11 +43,13 @@ import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
 import { AddPeriod, PersonnelHistory, ProfileEdit } from "./personnel-history";
 import { AuditLink } from "./audit";
+import { SoldierDeletion } from "./soldier-deletion";
 import {
   ConditionToggles,
   ConditionsSummary,
   SoldierConditions,
   capabilityOptions,
+  genderHint,
   genders,
 } from "./eligibility-conditions";
 import type { Gender, RankClause, Requirements } from "@/domain/types";
@@ -500,30 +502,11 @@ export function SoldiersView({
                 payload={{ soldierId: selected.id }}
                 version={selected.version}
               />
-              <ActionDialog
-                title="מחיקת משתמש"
-                buttonLabel="מחיקת המשתמש והמידע הרגיש"
-                fields={[
-                  {
-                    name: "reason",
-                    label: "סיבת המחיקה",
-                    type: "textarea",
-                    required: true,
-                    full: true,
-                  },
-                  {
-                    name: "confirmed",
-                    label:
-                      "הבנתי שפרטי הקשר והמידע הרגיש יימחקו, שיבוצים עתידיים יתפנו וההיסטוריה הנדרשת תישמר",
-                    type: "checkbox",
-                    required: true,
-                  },
-                ]}
+              <SoldierDeletion
+                person={selected}
                 action={action}
-                type="soldier.delete"
-                payload={{ id: selected.id }}
-                version={selected.version}
-                danger
+                self={selected.id === state.actor.soldierId}
+                onDone={() => setSelected(null)}
               />
             </div>
           </details>
@@ -833,7 +816,7 @@ function CatalogForm({
       type: "multiselect",
       options: genders,
       value: Array.isArray(initial?.genders) ? initial.genders.map(String) : [],
-      hint: "ללא בחירה — ללא תנאי מגדר",
+      hint: genderHint,
     },
     {
       name: "capabilityIds",
@@ -1003,6 +986,7 @@ function CatalogForm({
               <div className="subsection">
                 <ConditionToggles
                   legend={`מגדר מותר לתפקיד ${i + 1}`}
+                  hint={genderHint}
                   options={genders}
                   value={role.requirements.genders ?? []}
                   onChange={(value) =>

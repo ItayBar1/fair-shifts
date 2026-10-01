@@ -1,7 +1,7 @@
 #!/bin/sh
 # Checks compose.production.yaml in Docker with synthetic secrets: refusal of
 # development secrets, startup, health and worker heartbeat, restart after a
-# crash, graceful stop and database persistence across down/up. cloudflared is
+# crash, graceful stop, database and deletion log persistence across down/up. cloudflared is
 # not started: it needs a real Cloudflare token (docs/operations.md).
 set -eu
 cd "$(dirname "$0")/.."
@@ -99,6 +99,14 @@ production exec -T db sh -c 'getent hosts example.com' >/dev/null 2>&1 &&
   fail 'למסד יש יציאה מחוץ לרשת הפנימית'
 psql "insert into operations_state (key, data) values ('smoke-marker', '{\"synthetic\": true}')" >/dev/null
 
+step 'יומן המחיקות העצמאי נוצר בנפח של העובד, בכתיבה של משתמש היישום'
+log_file=/var/lib/fair-shifts-deletion-log/deletion-log.jsonl
+for attempt in $(seq 1 30); do
+  production exec -T worker test -f "$log_file" && break
+  sleep 2
+done
+production exec -T worker test -f "$log_file" || fail 'יומן המחיקות לא נוצר בנפח'
+
 step 'העובד עולה מחדש אחרי קריסה'
 worker=$(production ps -q worker)
 # SIGKILL to every process except init (tini), which then exits with 137.
@@ -129,6 +137,7 @@ production down
 production up -d --wait db app worker
 [ "$(psql "select data->>'synthetic' from operations_state where key = 'smoke-marker'")" = true ] ||
   fail 'הנתונים לא נשמרו בנפח המסד'
+production exec -T worker test -f "$log_file" || fail 'יומן המחיקות לא נשמר בנפח'
 check_health
 
 step 'כל בדיקות תצורת ההפעלה עברו'
