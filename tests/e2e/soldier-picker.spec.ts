@@ -10,7 +10,13 @@ import { eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db } from "../../src/server/db";
 import { user, emailOutbox } from "../../src/server/auth-schema";
-import { balances, duties, soldiers } from "../../src/server/schema";
+import {
+  assignments,
+  balances,
+  duties,
+  dutyTypes,
+  soldiers,
+} from "../../src/server/schema";
 import {
   createInvitedAccount,
   type Actor,
@@ -622,4 +628,70 @@ test("a seat in a change proposal uses the same finder, and follows the times be
     (row: { dutyId: string }) => row.dutyId === draft.id
   );
   expect(change.seats[0].soldierId).toBe(ids.dana);
+});
+
+test("a duty type with every gender is no gender condition: the form says so and a soldier without a gender stays in the picker", async ({
+  browser,
+}) => {
+  const page = await signedIn(browser);
+  // Added here and removed at the end, so the counts of the other tests stay.
+  const unknownId = await addSoldier("unknown", "ללא מגדר", "880009", {
+    qualifications: [],
+  });
+  try {
+    await page.goto("/manage/catalog");
+    await page
+      .getByRole("button", { name: "סוג תורנות חדש", exact: true })
+      .click();
+    const form = page.getByRole("dialog");
+    await form.getByLabel("שם סוג התורנות").fill("כל המגדרים");
+    await form.getByLabel("ניקוד בסיס").fill("4");
+    await expect(form.getByText("כל המגדרים = ללא תנאי מגדר")).not.toHaveCount(
+      0
+    );
+    await form
+      .getByLabel("מגדר מותר", { exact: true })
+      .selectOption(["male", "female", "other"]);
+    await form.getByRole("button", { name: "שמירה", exact: true }).click();
+    await expect(form).not.toBeVisible();
+    const [saved] = await db
+      .select()
+      .from(dutyTypes)
+      .where(eq(dutyTypes.name, "כל המגדרים"));
+    expect(saved.data.genders).toEqual([]);
+    expect(saved.data.requirements).toMatchObject({ genders: [] });
+
+    const open = await createDuty("תורנות לכל המגדרים", saved.id);
+    const dialog = await openManual(page, open.id);
+    await expect(dialog.getByRole("radio", { name: /ללא מגדר/ })).toBeVisible();
+    // Every gender allowed is not a gender filter (the population filter is another rule).
+    await expect(dialog.getByText("מסונן לפי:")).not.toContainText("מגדר");
+    await openFilters(dialog);
+    await expect(
+      dialog.getByRole("group", { name: "מגדר" }).getByRole("checkbox", {
+        checked: true,
+      })
+    ).toHaveCount(0);
+    await dialog.getByRole("radio", { name: /ללא מגדר/ }).check();
+    await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
+    // The server agrees: no "missing gender" block, and the seat is assigned.
+    await expect(dialog).toContainText("ניקוד צפוי: 4");
+    await expect(dialog.getByText("מידע חסר: מגדר")).toHaveCount(0);
+    await dialog.getByLabel("בדקתי את ההתאמה ואת הניקוד").check();
+    await dialog
+      .getByRole("button", { name: "אישור השיבוץ", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    const state = await (await page.request.get("/api/v1/state")).json();
+    expect(
+      state.assignments.filter(
+        (row: { dutyId: string; soldierId: string }) =>
+          row.dutyId === open.id && row.soldierId === unknownId
+      )
+    ).toHaveLength(1);
+  } finally {
+    await db.delete(assignments).where(eq(assignments.soldierId, unknownId));
+    await db.delete(balances).where(eq(balances.soldierId, unknownId));
+    await db.delete(soldiers).where(eq(soldiers.id, unknownId));
+  }
 });
