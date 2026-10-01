@@ -160,7 +160,7 @@ export async function readState(actor: Actor) {
         mail: await readMailStatus(tx),
         // Counts and times only: no soldier, id or content (decision 196).
         deletionLog: await readDeletionLogStatus(tx),
-        // Dates and a verdict only (decision 199).
+        // Dates and a verdict only (decision 200).
         restoreDrill: await readDrillStatus(tx, backupConfig()),
       };
     }

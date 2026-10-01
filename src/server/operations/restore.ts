@@ -52,7 +52,7 @@ import {
 } from "../../domain/restore";
 
 /**
- * Restoring from a backup (decision 199, ticket #35).
+ * Restoring from a backup (decision 200, ticket #35).
  *
  * A backup is never restored over the live database. It is decrypted into a
  * database of its own, brought up to this version's schema, closed behind the
@@ -679,7 +679,7 @@ async function rowCounts(database: Executor): Promise<RestoreCounts> {
 /**
  * A backup is an old picture: whoever signed in or was waiting for a code then
  * may have lost access since, and mail that was queued has mostly been sent.
- * Both are cleared before the system opens (decision 199).
+ * Both are cleared before the system opens (decision 200).
  */
 export async function clearStaleAccess(tx: DbTransaction, now: Date) {
   const sessions = await tx.delete(session).returning({ id: session.id });
@@ -809,7 +809,7 @@ export async function readDrillStatus(
 
 /**
  * The worker's daily look: a drill overdue by more than 100 days is a notice
- * and an email to the technical account, again every 30 days (decision 199).
+ * and an email to the technical account, again every 30 days (decision 200).
  */
 export async function refreshDrillAlert(
   tx: DbTransaction,

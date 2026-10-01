@@ -93,7 +93,7 @@ if (
 )
   throw new Error("Integration tests require a dedicated *_test database");
 
-// Restoring from a backup into an isolated database (ticket #35, decision 199).
+// Restoring from a backup into an isolated database (ticket #35, decision 200).
 // The test database is the live system; every restore works in a database of its
 // own next to it. Synthetic people only.
 const LIVE = process.env.DATABASE_URL!;

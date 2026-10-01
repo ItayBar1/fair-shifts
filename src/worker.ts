@@ -58,7 +58,7 @@ await boss.work("unit-maintenance", async () => {
     await refreshRoundNotices(tx, now);
     await announceDepartures(tx, now);
     await refreshDutyReminders(tx, now);
-    // A restore drill overdue by more than 100 days reminds the technical account (decision 199).
+    // A restore drill overdue by more than 100 days reminds the technical account (decision 200).
     // In a savepoint: a failed reminder must not undo the settlement above.
     await tx
       .transaction((inner) => refreshDrillAlert(inner, backupConfig(), now))

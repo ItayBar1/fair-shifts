@@ -21,7 +21,7 @@ export type DbTransaction = Parameters<
 
 /**
  * A connection of its own to another database, for a restore that works on a
- * scratch copy and must never touch the live one (decision 199). The caller
+ * scratch copy and must never touch the live one (decision 200). The caller
  * ends the pool.
  */
 export function connectDatabase(connectionString: string) {

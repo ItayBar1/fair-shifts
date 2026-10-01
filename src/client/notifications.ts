@@ -80,7 +80,7 @@ export function preferencesPayload(
  * Types a role's form does not show: departure and deletion emails reach
  * managers only (decisions 170 and 196), operational alerts the technical
  * account only (decision 173), and the restore notice managers and the
- * technical account but not soldiers (decision 199).
+ * technical account but not soldiers (decision 200).
  */
 export function hiddenPreferenceTypes(role: unknown): PreferenceType[] {
   return preferenceTypes.filter(

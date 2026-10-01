@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { UNIT_ZONE } from "./time";
 
 /**
- * Restoring from a backup (decision 199, ticket #35). A backup is restored into
+ * Restoring from a backup (decision 200, ticket #35). A backup is restored into
  * a separate database, never over the live one; the deletions made since are
  * applied again, every check runs, and only a database that passed them can
  * replace the live one. These are the pure rules: what a check reports, when a
@@ -245,7 +245,7 @@ const display = (value: Date) =>
 
 /**
  * What the managers and the technical account are told once a restored
- * system opens (decision 199): when the backup was taken, that later changes
+ * system opens (decision 200): when the backup was taken, that later changes
  * are gone, that everyone was signed out, and what happened to queued mail.
  */
 export function restoreNoticeText(input: {

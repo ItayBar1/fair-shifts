@@ -448,7 +448,7 @@ function DeletionLogRow({ log }: { log: Record<string, unknown> }) {
   );
 }
 /**
- * The quarterly restore drill (decision 199): when a backup was last restored
+ * The quarterly restore drill (decision 200): when a backup was last restored
  * and checked end to end, and whether the next one is overdue.
  */
 function RestoreDrillRow({ drill }: { drill: Record<string, unknown> }) {

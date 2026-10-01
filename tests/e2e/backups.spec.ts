@@ -108,7 +108,7 @@ test("technical account sees backup status, failures and alerts, and requests a 
   const health = panel(page, "מצב המערכת");
   await expect(health.getByText("גיבוי אחרון")).toBeVisible();
   await expect(health.getByText("עדכני")).toBeVisible();
-  // No restore drill yet, and the first backup is young: nothing is overdue (decision 199).
+  // No restore drill yet, and the first backup is young: nothing is overdue (decision 200).
   const drillRow = health.locator(".task-item", {
     hasText: "תרגיל שחזור אחרון",
   });
@@ -165,7 +165,7 @@ test("technical account sees backup status, failures and alerts, and requests a 
   await expect(
     page.getByLabel("מייל: תקלות תפעול, כמו גיבוי שנכשל")
   ).toBeChecked();
-  // So is the notice that the system was restored from a backup (decision 199).
+  // So is the notice that the system was restored from a backup (decision 200).
   await expect(
     page.getByLabel("מייל: שחזור המערכת מגיבוי (לאחראים ולטכני)")
   ).toBeChecked();

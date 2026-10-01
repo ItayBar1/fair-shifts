@@ -66,7 +66,7 @@ export type OutboxError =
   | "recipient_unavailable"
   | "preference_disabled"
   | "reserved_address"
-  /** Cancelled when the system was restored from a backup (decision 199). */
+  /** Cancelled when the system was restored from a backup (decision 200). */
   | "restored";
 
 type Closable = { attempts: number; error: string | null };

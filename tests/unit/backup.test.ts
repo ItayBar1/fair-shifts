@@ -480,7 +480,7 @@ describe("backup screen helpers", () => {
     expect(formatBytes(1536)).toBe("1.5 KB");
     expect(formatBytes(undefined)).toBe("—");
   });
-  it("shows the restore notice switch to managers and the technical account, never to a soldier (decision 199)", () => {
+  it("shows the restore notice switch to managers and the technical account, never to a soldier (decision 200)", () => {
     expect(hiddenPreferenceTypes("manager")).not.toContain("restore");
     expect(hiddenPreferenceTypes("technical")).not.toContain("restore");
     expect(hiddenPreferenceTypes("soldier")).toContain("restore");
