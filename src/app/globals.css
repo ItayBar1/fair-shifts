@@ -565,6 +565,10 @@ small {
   background: #eaf1ff;
   color: var(--blue);
 }
+.task-symbol.red {
+  background: #fdebea;
+  color: var(--danger);
+}
 .shortcut-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

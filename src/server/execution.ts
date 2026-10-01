@@ -476,10 +476,15 @@ export async function planExecution(
   }
   for (const change of changes) {
     const person = state.soldiers.find((row) => row.id === change.soldierId);
+    if (!person?.deletedAt || change.kind === "keep") continue;
+    // The seat of a soldier deleted while the duty ran is decided here by the
+    // manager (decision 196): the part they performed is recorded, or they are
+    // removed from the seat. A period that was already credited changes only
+    // through the correction rules, which stay closed for a deleted account.
     invariant(
-      change.kind === "keep" || (person && !person.deletedAt),
+      ["update", "late", "cancel"].includes(change.kind),
       "deleted_soldier",
-      "אחד המבצעים נמחק. שינוי הביצוע שלו יטופל במסלול המחיקה"
+      "תקופה שכבר נזקפה לחייל שנמחק אינה ניתנת לשינוי"
     );
   }
 
@@ -829,8 +834,28 @@ export async function commitExecution(
   const outcomes: Record<string, unknown>[] = [];
   const touched: string[] = [];
   const affected = new Map<string, string>();
+  const decidedBy = (change: Change) => {
+    const person = state.soldiers.find((row) => row.id === change.soldierId);
+    return person?.deletedAt &&
+      change.row &&
+      ACTIVE.includes(change.row.status) &&
+      !change.row.deletionDecidedAt
+      ? {
+          deletionDecidedAt: nowIso,
+          deletionDecidedBy: actor.id,
+          // The seat has been handled; the flag of the deletion goes with it.
+          needsAttention: [],
+        }
+      : {};
+  };
   for (const change of changes) {
-    if (change.kind === "keep") continue;
+    if (change.kind === "keep") {
+      // Confirming a deleted soldier's period as recorded is also the manager's decision.
+      const decided = decidedBy(change);
+      if (decided.deletionDecidedAt)
+        await writeRow(tx, change.row!, { data: decided });
+      continue;
+    }
     const approvals = approvalsOf(
       plan,
       actor,
@@ -869,6 +894,7 @@ export async function commitExecution(
           }),
           approvals: [...(row!.approvals ?? []), ...approvals],
           executionId,
+          ...decidedBy(change),
         },
       });
       if (approvals.length)
@@ -1057,6 +1083,7 @@ export async function commitExecution(
       performance,
       executionId,
       creditedAt: row?.creditedAt ?? nowIso,
+      ...decidedBy(change),
     };
     if (row)
       await writeRow(tx, row, {
@@ -1328,7 +1355,8 @@ export async function applyExecution(
   );
   invariant(
     plan.changes.some((change) => change.kind !== "keep") ||
-      (await pendingReferral(tx, plan)),
+      (await pendingReferral(tx, plan)) ||
+      deletionPending(plan),
     "no_change",
     "לא הוזן שינוי בתקופות הביצוע"
   );
@@ -1345,6 +1373,22 @@ export async function applyExecution(
     approvalReason: input.approvalReason,
     reviewPending: input.reviewPending,
   });
+}
+
+/**
+ * A seat of a soldier deleted while the duty ran waits for the manager's decision
+ * (decision 196). Confirming the recorded period, without changing it, is one.
+ */
+function deletionPending(plan: ExecutionPlan) {
+  return plan.rows.some(
+    (row) =>
+      ACTIVE.includes(row.status) &&
+      !row.deletionDecidedAt &&
+      plan.state.soldiers.find(
+        (person) =>
+          person.id === (row.performance?.performerId ?? row.soldierId)
+      )?.deletedAt
+  );
 }
 
 /** A referred request lets the manager confirm the recorded periods without changing them. */

@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   beyondRetention,
   dailyBackupDue,
@@ -10,6 +13,7 @@ import {
 import { validateDeploymentConfig } from "../../src/server/config";
 import {
   BackupFailure,
+  directoryStorage,
   driveStorage,
 } from "../../src/server/operations/backup-storage";
 import { backupFreshness, formatBytes } from "../../src/client/backups";
@@ -268,6 +272,76 @@ describe("Google Drive adapter", () => {
     );
     expect(query).toContain("trashed = false");
   });
+  it("tags the deletion log as its own kind and finds it again without the database (decision 196)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fs-drive-kind-"));
+    scratch.push(dir);
+    const file = join(dir, "deletion-log.jsonl");
+    await writeFile(file, "x\n");
+    const calls: Call[] = [];
+    const storage = fakeDrive((call) => {
+      if (call.url.includes("uploadType=resumable"))
+        return new Response(null, {
+          status: 200,
+          headers: { location: "https://upload.example.invalid/session" },
+        });
+      if (call.init.method === "PUT")
+        return Response.json({ id: "f9", size: "2", sha256Checksum: "cc" });
+      return Response.json({
+        files: [{ id: "f9", size: "2", sha256Checksum: "cc" }],
+      });
+    }, calls);
+    await storage.upload({
+      path: file,
+      name: "deletion-log.jsonl",
+      runId: "deletion-log-1",
+      size: 2,
+      kind: "deletion-log",
+    });
+    const start = calls.find((call) =>
+      call.url.includes("uploadType=resumable")
+    )!;
+    expect(JSON.parse(String(start.init.body)).appProperties).toEqual({
+      fairShiftsRun: "deletion-log-1",
+      fairShiftsKind: "deletion-log",
+    });
+    // A backup upload carries no kind, so it is never mistaken for the log.
+    await storage.upload({
+      path: file,
+      name: "b.age",
+      runId: "run-9",
+      size: 2,
+    });
+    const plain = calls
+      .filter((call) => call.url.includes("uploadType=resumable"))
+      .at(-1)!;
+    expect(JSON.parse(String(plain.init.body)).appProperties).toEqual({
+      fairShiftsRun: "run-9",
+    });
+    expect(await storage.findKind("deletion-log")).toEqual([
+      { id: "f9", size: 2, sha256: "cc" },
+    ]);
+    const query = new URL(calls.at(-1)!.url).searchParams.get("q")!;
+    expect(query).toContain(
+      "appProperties has { key='fairShiftsKind' and value='deletion-log' }"
+    );
+    expect(query).toContain("trashed = false");
+  });
+  it("reads a file's content and treats a missing file as gone", async () => {
+    const calls: Call[] = [];
+    const storage = fakeDrive(
+      () => new Response("line one\n", { status: 200 }),
+      calls
+    );
+    expect((await storage.read("f 1"))!.toString()).toBe("line one\n");
+    expect(calls.at(-1)!.url).toContain("/files/f%201?alt=media");
+    const gone = fakeDrive(() => new Response(null, { status: 404 }));
+    expect(await gone.read("f1")).toBeUndefined();
+    expect(
+      await failure(
+        fakeDrive(() => new Response("", { status: 500 })).read("f1")
+      )
+    ).toBe("upload_failed");
+  });
   it("deletes permanently and treats a missing file as gone", async () => {
     const calls: Call[] = [];
     const storage = fakeDrive(() => new Response(null, { status: 404 }), calls);
@@ -275,6 +349,43 @@ describe("Google Drive adapter", () => {
     expect(calls.at(-1)!.init.method).toBe("DELETE");
     expect(calls.at(-1)!.url).toContain("/files/f1");
     expect(await storage.get("f1")).toBeUndefined();
+  });
+});
+
+const scratch: string[] = [];
+afterAll(async () => {
+  for (const dir of scratch) await rm(dir, { recursive: true, force: true });
+});
+
+describe("directory storage and the deletion log kind", () => {
+  it("lists the log apart from the backups, reads it, and refuses a path outside the folder", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fs-dir-kind-"));
+    scratch.push(dir);
+    const source = join(dir, "source.bin");
+    await writeFile(source, "content");
+    const storage = directoryStorage(join(dir, "store"));
+    const backup = await storage.upload({
+      path: source,
+      name: "dump.age",
+      runId: "run-1",
+      size: 7,
+    });
+    const log = await storage.upload({
+      path: source,
+      name: "deletion-log.jsonl",
+      runId: "deletion-log-1-abc",
+      size: 7,
+      kind: "deletion-log",
+    });
+    expect(
+      (await storage.findKind("deletion-log")).map((file) => file.id)
+    ).toEqual([log.id]);
+    expect((await storage.findRun("run-1")).map((file) => file.id)).toEqual([
+      backup.id,
+    ]);
+    expect((await storage.read(log.id))!.toString()).toBe("content");
+    expect(await storage.read("../source.bin")).toBeUndefined();
+    expect(await storage.read("fair-shifts-gone")).toBeUndefined();
   });
 });
 
@@ -305,11 +416,15 @@ describe("backup screen helpers", () => {
     expect(formatBytes(undefined)).toBe("—");
   });
   it("shows the operations email switch to the technical account only", () => {
-    expect(hiddenPreferenceTypes("technical")).toEqual(["departure"]);
+    expect(hiddenPreferenceTypes("technical")).toEqual([
+      "departure",
+      "deletion",
+    ]);
     expect(hiddenPreferenceTypes("manager")).toEqual(["operations"]);
     expect(hiddenPreferenceTypes("soldier")).toEqual([
       "departure",
       "operations",
+      "deletion",
     ]);
     // A soldier's form keeps the hidden switch as it was.
     const payload = preferencesPayload(

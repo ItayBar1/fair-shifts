@@ -377,6 +377,7 @@ export function TechnicalView({
           health={obj(state.health)}
           backups={obj(state.backups)}
           mail={obj(state.mail)}
+          deletionLog={obj(state.deletionLog)}
           now={new Date(str(state.serverNow)).getTime()}
         />
       )}
@@ -415,15 +416,47 @@ function HealthRow({
     </div>
   );
 }
+/**
+ * The independent deletion log (decision 196): whether deletions reach it, and
+ * whether the copy in storage and the last check agree.
+ */
+function DeletionLogRow({ log }: { log: Record<string, unknown> }) {
+  const pending = num(log.pending);
+  const unverified = obj(log.verified).status === "unverified";
+  const [label, tone] = !log.enabled
+    ? ["כבוי", "danger"]
+    : log.lastError
+      ? ["תקלה בכתיבה", "danger"]
+      : unverified
+        ? ["לא אומת", "danger"]
+        : pending > 0
+          ? [`${pending} ממתינות לכתיבה`, "warning"]
+          : log.storageCopy === "none"
+            ? ["ללא עותק ב־Drive", "warning"]
+            : log.storageCopy === "behind"
+              ? ["העותק ב־Drive מתעכב", "warning"]
+              : ["תקין", "success"];
+  return (
+    <HealthRow label="יומן מחיקות עצמאי">
+      <Badge tone={tone}>{label}</Badge>
+      <span>
+        {num(log.entries)} רישומים
+        {log.verifiedAt ? ` · נבדק ${displayDate(log.verifiedAt, true)}` : ""}
+      </span>
+    </HealthRow>
+  );
+}
 function HealthPanel({
   health,
   backups,
   mail,
+  deletionLog,
   now,
 }: {
   health: Record<string, unknown>;
   backups: Record<string, unknown>;
   mail: Record<string, unknown>;
+  deletionLog: Record<string, unknown>;
   now: number;
 }) {
   const worker = obj(health.worker);
@@ -455,6 +488,7 @@ function HealthPanel({
           {displayDate(backups.lastVerifiedAt, true)}
         </Link>
       </HealthRow>
+      <DeletionLogRow log={deletionLog} />
       {worker.status !== "ok" && (
         <Notice tone="warning">
           משימות רקע כמו זקיפה, תזכורות ומשלוח מייל אינן רצות כסדרן. יש לבדוק את

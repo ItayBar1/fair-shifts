@@ -15,6 +15,7 @@ export const emailTypeLabels: Record<PreferenceType, string> = {
   transfer: "החלפות והעברות של תורנויות",
   departure: "סיום שירות של חייל (לאחראים)",
   operations: "תקלות תפעול, כמו גיבוי שנכשל",
+  deletion: "מחיקת חייל שנשאר בה שיבוץ או מקום שהתפנה (לאחראים)",
 };
 
 type Row = Record<string, unknown>;
@@ -74,8 +75,9 @@ export function preferencesPayload(
 }
 
 /**
- * Types a role's form does not show: departure emails reach managers only
- * (decision 170), operational alerts the technical account only (decision 173).
+ * Types a role's form does not show: departure and deletion emails reach
+ * managers only (decisions 170 and 196), operational alerts the technical
+ * account only (decision 173).
  */
 export function hiddenPreferenceTypes(role: unknown): PreferenceType[] {
   return preferenceTypes.filter(

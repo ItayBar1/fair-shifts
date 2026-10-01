@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -20,10 +20,16 @@ export type BackupStorage = {
     name: string;
     runId: string;
     size: number;
+    /** Marks a file that is not a backup, such as the deletion log (decision 196). */
+    kind?: string;
   }): Promise<StoredFile>;
   /** Files an earlier attempt of the same run may have left behind. */
   findRun(runId: string): Promise<StoredFile[]>;
+  /** Every file of a kind the application uploaded, found without the database. */
+  findKind(kind: string): Promise<StoredFile[]>;
   get(id: string): Promise<StoredFile | undefined>;
+  /** The content of a file the application uploaded; undefined when it is gone. */
+  read(id: string): Promise<Buffer | undefined>;
   /** Permanent removal; a file that is already gone is not an error. */
   remove(id: string): Promise<void>;
 };
@@ -72,8 +78,8 @@ export function directoryStorage(
         used += (await stat(join(root, name))).size;
       return Math.max(0, quotaBytes - used);
     },
-    async upload({ path, name, runId }) {
-      const target = `${RUN_PREFIX}${runId}--${name}`;
+    async upload({ path, name, runId, kind }) {
+      const target = `${RUN_PREFIX}${kind ? `${kind}-` : ""}${runId}--${name}`;
       await mkdir(root, { recursive: true });
       await copyFile(path, join(root, target));
       return describe(target);
@@ -85,9 +91,20 @@ export function directoryStorage(
           .map(describe)
       );
     },
+    async findKind(kind) {
+      return Promise.all(
+        (await ours())
+          .filter((name) => name.startsWith(`${RUN_PREFIX}${kind}-`))
+          .map(describe)
+      );
+    },
     async get(id) {
       if (!id.startsWith(RUN_PREFIX) || id.includes("/")) return undefined;
       return (await ours()).includes(id) ? describe(id) : undefined;
+    },
+    async read(id) {
+      if (!id.startsWith(RUN_PREFIX) || id.includes("/")) return undefined;
+      return (await ours()).includes(id) ? readFile(join(root, id)) : undefined;
     },
     async remove(id) {
       if (!id.startsWith(RUN_PREFIX) || id.includes("/")) return;
@@ -102,6 +119,7 @@ const DRIVE = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 const FOLDER_MARK = "fairShiftsFolder";
 const RUN_MARK = "fairShiftsRun";
+const KIND_MARK = "fairShiftsKind";
 const FILE_FIELDS = "id,size,sha256Checksum";
 const REQUEST_TIMEOUT_MS = 60_000;
 const UPLOAD_TIMEOUT_MS = 30 * 60_000;
@@ -231,7 +249,7 @@ export function driveStorage(
         Number(storageQuota.limit) - Number(storageQuota.usage ?? 0)
       );
     },
-    async upload({ path, name, runId, size }) {
+    async upload({ path, name, runId, size, kind }) {
       const parent = await folderId();
       const session = await call(
         `${UPLOAD}?uploadType=resumable&fields=${FILE_FIELDS}`,
@@ -245,7 +263,10 @@ export function driveStorage(
           body: JSON.stringify({
             name,
             parents: [parent],
-            appProperties: { [RUN_MARK]: runId },
+            appProperties: {
+              [RUN_MARK]: runId,
+              ...(kind && { [KIND_MARK]: kind }),
+            },
           }),
         }
       );
@@ -274,6 +295,20 @@ export function driveStorage(
           `appProperties has { key='${RUN_MARK}' and value='${runId}' }`
         )
       ).map(stored);
+    },
+    async findKind(kind) {
+      return (
+        await list(
+          `appProperties has { key='${KIND_MARK}' and value='${kind}' }`
+        )
+      ).map(stored);
+    },
+    async read(id) {
+      const response = await call(
+        `${DRIVE}/files/${encodeURIComponent(id)}?alt=media`
+      );
+      if (response.status === 404) return undefined;
+      return Buffer.from(await response.arrayBuffer());
     },
     async get(id) {
       const response = await call(

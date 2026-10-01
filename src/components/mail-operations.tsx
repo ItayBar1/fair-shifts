@@ -26,6 +26,7 @@ const kindLabels: Record<string, string> = {
   "publication-change": "שינוי או ביטול שפורסם",
   transfer: "החלפות ובקשות",
   departure: "סיום שירות",
+  deletion: "מחיקת חייל שדורשת טיפול",
   "backup-alert": "התראת גיבוי",
 };
 const errorLabels: Record<string, string> = {

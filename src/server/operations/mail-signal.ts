@@ -49,6 +49,8 @@ type ListenOptions = {
   connectionString?: string;
   retryMs?: number;
   onListening?: () => void;
+  /** Another notification channel with the same reconnecting listener (decision 196). */
+  channel?: string;
 };
 /**
  * Listens on its own connection and reconnects after a loss. Every new
@@ -61,6 +63,7 @@ export function listenForMail(
     connectionString = process.env.DATABASE_URL,
     retryMs = 5_000,
     onListening,
+    channel = MAIL_CHANNEL,
   }: ListenOptions = {}
 ) {
   let client: Client | undefined;
@@ -81,13 +84,13 @@ export function listenForMail(
     if (stopped) return;
     const next = new Client({ connectionString });
     next.on("notification", (message) => {
-      if (message.channel === MAIL_CHANNEL) onSignal();
+      if (message.channel === channel) onSignal();
     });
     next.on("error", (error) => retry(next, error));
     next.on("end", () => retry(next));
     try {
       await next.connect();
-      await next.query(`listen ${MAIL_CHANNEL}`);
+      await next.query(`listen ${channel}`);
     } catch (error) {
       retry(next, error as Error);
       return;

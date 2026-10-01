@@ -96,7 +96,9 @@ export async function settleDue(tx: DbTransaction, now = new Date()) {
       .select()
       .from(soldiers)
       .where(eq(soldiers.id, assignment.soldierId));
-    if (person?.deletedAt) continue;
+    // The seat of a soldier deleted while the duty ran waits for the manager's
+    // decision (decision 196); once decided it is credited like any other.
+    if (person?.deletedAt && !assignment.data.deletionDecidedAt) continue;
     await postScore(tx, {
       soldierId: assignment.soldierId,
       sourceKey: `performance:${assignment.id}`,
