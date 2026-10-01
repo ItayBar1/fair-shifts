@@ -14,6 +14,7 @@ export const preferenceTypes = [
   "departure",
   "operations",
   "deletion",
+  "restore",
 ] as const;
 export type PreferenceType = (typeof preferenceTypes)[number];
 /** Emails only managers receive; a soldier's form keeps their stored value (decision 170). */
@@ -21,6 +22,8 @@ export const managerPreferenceTypes: readonly PreferenceType[] = [
   "departure",
   "deletion",
 ];
+/** Emails the managers and the technical account receive, and soldiers never do (decision 199). */
+export const staffPreferenceTypes: readonly PreferenceType[] = ["restore"];
 
 export const MAX_REMINDERS = 3;
 export const MAX_REMINDER_HOURS = 168;
@@ -47,6 +50,8 @@ export const preferencesSchema = z
         operations: z.boolean().default(true),
         // Added with decision 196, like operations.
         deletion: z.boolean().default(true),
+        // Added with decision 199, like operations.
+        restore: z.boolean().default(true),
       })
       .strict(),
   })
@@ -64,6 +69,7 @@ export const systemDefaults: Preferences = {
     departure: true,
     operations: true,
     deletion: true,
+    restore: true,
   },
 };
 
@@ -87,17 +93,19 @@ const preferenceByKind = {
   transfer: "transfer",
   departure: "departure",
   deletion: "deletion",
+  restore: "restore",
   "backup-alert": "operations",
 } as const satisfies Record<string, PreferenceType>;
 export type EmailKind =
   (typeof mandatoryEmailKinds)[number] | keyof typeof preferenceByKind;
 
-/** Types added after preferences were first stored (decisions 163, 170, 173 and 196). */
+/** Types added after preferences were first stored (decisions 163, 170, 173, 196 and 199). */
 const newTypeDefaults: Partial<Preferences["email"]> = {
   transfer: systemDefaults.email.transfer,
   departure: systemDefaults.email.departure,
   operations: systemDefaults.email.operations,
   deletion: systemDefaults.email.deletion,
+  restore: systemDefaults.email.restore,
 };
 
 export type PreferenceSource = "personal" | "unit" | "system";
@@ -121,7 +129,7 @@ function storedPreferences(value: unknown, requireCustom = true) {
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
   if (requireCustom && data.custom !== true) return null;
-  // A form saved before a type existed keeps its choices; the new type starts from the system default (decisions 163, 170, 173 and 196).
+  // A form saved before a type existed keeps its choices; the new type starts from the system default (decisions 163, 170, 173, 196 and 199).
   const parsed = preferencesSchema.safeParse({
     reminderHours: data.reminderHours,
     email:

@@ -19,10 +19,23 @@ export type DbTransaction = Parameters<
   Parameters<Database["transaction"]>[0]
 >[0];
 
+/**
+ * A connection of its own to another database, for a restore that works on a
+ * scratch copy and must never touch the live one (decision 199). The caller
+ * ends the pool.
+ */
+export function connectDatabase(connectionString: string) {
+  const own = new Pool({ connectionString, max: 4 });
+  // A scratch database is dropped with its connections open; that is not an error.
+  own.on("error", () => {});
+  return { pool: own, db: drizzle(own, { schema }) as Database };
+}
+
 export async function unitTransaction<T>(
-  work: (tx: DbTransaction, version: number) => Promise<T>
+  work: (tx: DbTransaction, version: number) => Promise<T>,
+  database: Database = db
 ): Promise<T> {
-  return db.transaction(async (tx) => {
+  return database.transaction(async (tx) => {
     await tx
       .insert(schema.unitLock)
       .values({ id: 1, version: 1 })

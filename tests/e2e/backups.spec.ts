@@ -2,7 +2,13 @@ import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../src/server/db";
-import { user, emailOutbox, backupRun } from "../../src/server/auth-schema";
+import {
+  user,
+  emailOutbox,
+  backupRun,
+  loginCode,
+  operationsState,
+} from "../../src/server/auth-schema";
 import { records } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
@@ -102,6 +108,12 @@ test("technical account sees backup status, failures and alerts, and requests a 
   const health = panel(page, "מצב המערכת");
   await expect(health.getByText("גיבוי אחרון")).toBeVisible();
   await expect(health.getByText("עדכני")).toBeVisible();
+  // No restore drill yet, and the first backup is young: nothing is overdue (decision 199).
+  const drillRow = health.locator(".task-item", {
+    hasText: "תרגיל שחזור אחרון",
+  });
+  await expect(drillRow.getByText("טרם בוצע")).toBeVisible();
+  await expect(drillRow.getByText("אין תרגיל מוצלח")).toBeVisible();
 
   // The alert arrives in the technical account's own notification center.
   await expect(
@@ -153,4 +165,56 @@ test("technical account sees backup status, failures and alerts, and requests a 
   await expect(
     page.getByLabel("מייל: תקלות תפעול, כמו גיבוי שנכשל")
   ).toBeChecked();
+  // So is the notice that the system was restored from a backup (decision 199).
+  await expect(
+    page.getByLabel("מייל: שחזור המערכת מגיבוי (לאחראים ולטכני)")
+  ).toBeChecked();
+});
+
+test("the restore drill row shows how long ago a backup was restored and checked end to end", async ({
+  page,
+}) => {
+  const ago = (days: number) =>
+    new Date(Date.now() - days * 86_400_000).toISOString();
+  const save = (data: Record<string, unknown>) =>
+    db
+      .insert(operationsState)
+      .values({ key: "restore-drill", data })
+      .onConflictDoUpdate({ target: operationsState.key, set: { data } });
+  await save({
+    lastPassedAt: ago(120),
+    restorePoint: ago(120),
+    lastAttemptAt: ago(1),
+    lastOutcome: "failed",
+  });
+  // The previous test asked for a code a moment ago; a new request would wait a minute.
+  await db.delete(loginCode).where(eq(loginCode.userId, technicalId));
+  await login(page, TECHNICAL);
+  const row = panel(page, "מצב המערכת").locator(".task-item", {
+    hasText: "תרגיל שחזור אחרון",
+  });
+  await expect(row.getByText("באיחור: 120 ימים")).toBeVisible();
+  await expect(row.getByText("הניסיון האחרון נכשל")).toBeVisible();
+  await page.screenshot({
+    path: "test-results/restore-drill-overdue.png",
+    fullPage: true,
+  });
+
+  // A drill that ended on the deletion log is not a failure of the data, but it is shown.
+  await save({
+    lastPassedAt: ago(10),
+    lastAttemptAt: ago(1),
+    lastOutcome: "needs_deletion_log",
+  });
+  await page.reload();
+  await expect(
+    row.getByText("יומן המחיקות לא אומת בניסיון האחרון")
+  ).toBeVisible();
+  await expect(row.getByText("הניסיון האחרון נכשל")).toHaveCount(0);
+
+  await save({ lastPassedAt: ago(10), restorePoint: ago(11) });
+  await page.reload();
+  await expect(row.getByText("תקין", { exact: true })).toBeVisible();
+  await expect(row.getByText("הצליח")).toBeVisible();
+  await expect(row.getByText("הניסיון האחרון נכשל")).toHaveCount(0);
 });

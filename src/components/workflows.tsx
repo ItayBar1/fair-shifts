@@ -378,6 +378,7 @@ export function TechnicalView({
           backups={obj(state.backups)}
           mail={obj(state.mail)}
           deletionLog={obj(state.deletionLog)}
+          restoreDrill={obj(state.restoreDrill)}
           now={new Date(str(state.serverNow)).getTime()}
         />
       )}
@@ -446,17 +447,54 @@ function DeletionLogRow({ log }: { log: Record<string, unknown> }) {
     </HealthRow>
   );
 }
+/**
+ * The quarterly restore drill (decision 199): when a backup was last restored
+ * and checked end to end, and whether the next one is overdue.
+ */
+function RestoreDrillRow({ drill }: { drill: Record<string, unknown> }) {
+  const state = str(drill.state);
+  const failed = drill.lastOutcome === "failed";
+  const [label, tone] =
+    state === "disabled"
+      ? ["אין גיבוי", "neutral"]
+      : state === "overdue"
+        ? [`באיחור: ${num(drill.daysSince)} ימים`, "danger"]
+        : state === "ok"
+          ? ["תקין", "success"]
+          : ["טרם בוצע", "warning"];
+  return (
+    <HealthRow label="תרגיל שחזור אחרון">
+      <Badge tone={tone}>{label}</Badge>
+      <span>
+        {drill.lastPassedAt
+          ? `הצליח ${displayDate(drill.lastPassedAt, true)}`
+          : state === "disabled"
+            ? ""
+            : "אין תרגיל מוצלח"}
+        {drill.restorePoint
+          ? ` · גיבוי מ־${displayDate(drill.restorePoint, true)}`
+          : ""}
+      </span>
+      {failed && <Badge tone="warning">הניסיון האחרון נכשל</Badge>}
+      {drill.lastOutcome === "needs_deletion_log" && (
+        <Badge tone="warning">יומן המחיקות לא אומת בניסיון האחרון</Badge>
+      )}
+    </HealthRow>
+  );
+}
 function HealthPanel({
   health,
   backups,
   mail,
   deletionLog,
+  restoreDrill,
   now,
 }: {
   health: Record<string, unknown>;
   backups: Record<string, unknown>;
   mail: Record<string, unknown>;
   deletionLog: Record<string, unknown>;
+  restoreDrill: Record<string, unknown>;
   now: number;
 }) {
   const worker = obj(health.worker);
@@ -489,6 +527,7 @@ function HealthPanel({
         </Link>
       </HealthRow>
       <DeletionLogRow log={deletionLog} />
+      <RestoreDrillRow drill={restoreDrill} />
       {worker.status !== "ok" && (
         <Notice tone="warning">
           משימות רקע כמו זקיפה, תזכורות ומשלוח מייל אינן רצות כסדרן. יש לבדוק את

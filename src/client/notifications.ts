@@ -3,6 +3,7 @@ import {
   MAX_REMINDER_HOURS,
   preferenceTypes,
   managerPreferenceTypes,
+  staffPreferenceTypes,
   technicalPreferenceTypes,
   type PreferenceType,
 } from "../domain/notification-preferences";
@@ -16,6 +17,7 @@ export const emailTypeLabels: Record<PreferenceType, string> = {
   departure: "סיום שירות של חייל (לאחראים)",
   operations: "תקלות תפעול, כמו גיבוי שנכשל",
   deletion: "מחיקת חייל שנשאר בה שיבוץ או מקום שהתפנה (לאחראים)",
+  restore: "שחזור המערכת מגיבוי (לאחראים ולטכני)",
 };
 
 type Row = Record<string, unknown>;
@@ -77,12 +79,16 @@ export function preferencesPayload(
 /**
  * Types a role's form does not show: departure and deletion emails reach
  * managers only (decisions 170 and 196), operational alerts the technical
- * account only (decision 173).
+ * account only (decision 173), and the restore notice managers and the
+ * technical account but not soldiers (decision 199).
  */
 export function hiddenPreferenceTypes(role: unknown): PreferenceType[] {
   return preferenceTypes.filter(
     (type) =>
       (managerPreferenceTypes.includes(type) && role !== "manager") ||
-      (technicalPreferenceTypes.includes(type) && role !== "technical")
+      (technicalPreferenceTypes.includes(type) && role !== "technical") ||
+      (staffPreferenceTypes.includes(type) &&
+        role !== "manager" &&
+        role !== "technical")
   );
 }

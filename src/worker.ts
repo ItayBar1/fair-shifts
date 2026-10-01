@@ -9,7 +9,8 @@ import { refreshRankReminders } from "./server/ranks";
 import { announceDepartures } from "./server/departures";
 import { recordWorkerHeartbeat } from "./server/operations/health";
 import { refreshRoundNotices } from "./server/round-notices";
-import { runBackupCycle } from "./server/operations/backup";
+import { backupConfig, runBackupCycle } from "./server/operations/backup";
+import { refreshDrillAlert } from "./server/operations/restore";
 import { refreshDutyReminders } from "./server/duty-reminders";
 import { listenForMail, singleFlight } from "./server/operations/mail-signal";
 import {
@@ -57,6 +58,16 @@ await boss.work("unit-maintenance", async () => {
     await refreshRoundNotices(tx, now);
     await announceDepartures(tx, now);
     await refreshDutyReminders(tx, now);
+    // A restore drill overdue by more than 100 days reminds the technical account (decision 199).
+    // In a savepoint: a failed reminder must not undo the settlement above.
+    await tx
+      .transaction((inner) => refreshDrillAlert(inner, backupConfig(), now))
+      .catch((error: unknown) =>
+        console.error(
+          "Drill reminder failed",
+          error instanceof Error ? error.name : "unknown"
+        )
+      );
     await recordWorkerHeartbeat(tx, { now, paused: false, credited });
   });
   await writeFile(heartbeatFile, new Date().toISOString());
