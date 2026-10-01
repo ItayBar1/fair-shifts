@@ -14,6 +14,7 @@ import {
 import { currentVersion, technical } from "./repository";
 import { invariant, AppError } from "./errors";
 import { previewSoldierUpdate, saveSoldier } from "./people";
+import { deleteSoldier, previewSoldierDeletion } from "./soldier-deletion";
 import {
   saveDutyType,
   createDuty,
@@ -171,6 +172,17 @@ export async function executeAction(actor: Actor, value: unknown) {
       case "soldier.update":
         id.parse(payload.id);
         result = await saveSoldier(tx, actor, payload, expectedVersion);
+        break;
+      case "soldier.delete.preview":
+        result = await previewSoldierDeletion(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
+        break;
+      case "soldier.delete":
+        result = await deleteSoldier(tx, actor, payload, expectedVersion);
         break;
       case "soldier.timeline.preview":
         result = await previewTimelineAdd(tx, actor, payload, expectedVersion);

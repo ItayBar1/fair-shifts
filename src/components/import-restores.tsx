@@ -106,8 +106,8 @@ export function ImportRestore({
             populationImpactConfirmed: populationConfirmed,
             decisions: choices(),
             creations: Object.entries(creations)
-              .filter(([, choice]) => choice === "keep")
-              .map(([rowId]) => ({ rowId, action: "keep" })),
+              .filter(([, choice]) => choice === "keep" || choice === "delete")
+              .map(([rowId, choice]) => ({ rowId, action: choice })),
           },
           num(preview.version)
         )
@@ -132,7 +132,9 @@ export function ImportRestore({
   const actionable =
     fieldCount > 0 ||
     created.some((row) => creationStatus(row) !== "activity") ||
-    Object.values(creations).includes("keep");
+    Object.values(creations).some(
+      (choice) => choice === "keep" || choice === "delete"
+    );
   const hasPopulationMove = planned.some((row) => row.populationImpact);
   return (
     <div className="import-restore">
@@ -170,7 +172,9 @@ export function ImportRestore({
                 קליטה בלי פעילות מאז הייבוא תבוטל בהסרה מלאה: החייל, פרטי הקשר,
                 היתרה, החשבון וההזמנה, והמספר האישי יתפנה. בשורת הייבוא יישארו
                 השם, המספר האישי ותוצאת השחזור. חייל עם פעילות נשאר עד שתבחרו
-                להשאיר אותו; מחיקת משתמש תתווסף כאן עם מסלול המחיקה.
+                להשאיר אותו או למחוק את המשתמש. מחיקת משתמש מסירה פרטי קשר ומידע
+                רגיש, ומפנה שיבוצים עתידיים עם התראה לאחראים; השם, המספר האישי
+                והיסטוריית התורנויות והניקוד נשמרים.
               </Notice>
               <div className="table-scroll">
                 <table>
@@ -190,6 +194,9 @@ export function ImportRestore({
                         (row.creation as Record<string, unknown>)
                           .activity as unknown[]
                       ).map((item) => str(item));
+                      const deletion = obj(
+                        (row.creation as Record<string, unknown>).deletion
+                      );
                       return (
                         <tr key={row.id}>
                           <td>
@@ -218,20 +225,32 @@ export function ImportRestore({
                           <td>{activity.join(" · ") || "אין"}</td>
                           <td>
                             {status === "activity" ? (
-                              <select
-                                aria-label={`החלטה עבור קליטת ${str(row.name)}`}
-                                value={creations[row.id] ?? ""}
-                                disabled={busy}
-                                onChange={(event) =>
-                                  setCreations((current) => ({
-                                    ...current,
-                                    [row.id]: event.target.value,
-                                  }))
-                                }
-                              >
-                                <option value="">להכריע מאוחר יותר</option>
-                                <option value="keep">להשאיר את החייל</option>
-                              </select>
+                              <>
+                                <select
+                                  aria-label={`החלטה עבור קליטת ${str(row.name)}`}
+                                  value={creations[row.id] ?? ""}
+                                  disabled={busy}
+                                  onChange={(event) =>
+                                    setCreations((current) => ({
+                                      ...current,
+                                      [row.id]: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">להכריע מאוחר יותר</option>
+                                  <option value="keep">להשאיר את החייל</option>
+                                  {deletion.deletable === true && (
+                                    <option value="delete">מחיקת משתמש</option>
+                                  )}
+                                </select>
+                                {deletion.deletable === true && (
+                                  <small className="muted">
+                                    מחיקה מפנה {num(deletion.vacated)} מקומות
+                                    עתידיים. {num(deletion.inProgress)} שיבוצים
+                                    בתורנויות שהחלו יסומנו לטיפול דחוף.
+                                  </small>
+                                )}
+                              </>
                             ) : status === "cancel" ? (
                               "ביטול עם אישור השחזור"
                             ) : (

@@ -513,7 +513,8 @@ export async function settleAfterCancelledDuty(
 export async function closeRequestsOfTransferredSeat(
   tx: DbTransaction,
   dutyId: string,
-  soldierId: string
+  soldierId: string,
+  reason = "התורנות הועברה לחייל אחר בהסכמה"
 ) {
   for (const row of await pendingRequests(tx, dutyId)) {
     if (row.data.soldierId !== soldierId) continue;
@@ -521,7 +522,7 @@ export async function closeRequestsOfTransferredSeat(
       ...row.data,
       status: "closed",
       closedAt: new Date().toISOString(),
-      closedReason: "התורנות הועברה לחייל אחר בהסכמה",
+      closedReason: reason,
     });
   }
 }
