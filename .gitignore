@@ -12,6 +12,8 @@ test-results/
 *.tsbuildinfo
 .DS_Store
 backups/
+# Backup decryption keys never enter the repository (decision 173)
+*.key
 
 # Local agent worktrees
 .claude/worktrees/
