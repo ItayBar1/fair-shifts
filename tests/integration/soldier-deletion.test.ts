@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { db, pool, unitTransaction } from "../../src/server/db";
 import {
+  account as linkedAccount,
   emailOutbox,
   loginCode,
   recoveryCode,
@@ -494,6 +495,104 @@ describe("deleting a user", () => {
     expect(row.data.status).toBe("closed");
     expect(row.data.reason).toBeUndefined();
     expect(row.data.erasedAt).toBeDefined();
+  });
+});
+
+describe("what is deletion and what is not", () => {
+  it("unlinks the provider account together with the access", async () => {
+    await db.insert(linkedAccount).values({
+      id: randomUUID(),
+      userId: member.id,
+      accountId: "google-subject-synthetic",
+      providerId: "google",
+    });
+    await remove(manager, member);
+    expect(
+      await db
+        .select()
+        .from(linkedAccount)
+        .where(eq(linkedAccount.userId, member.id))
+    ).toHaveLength(0);
+  });
+  it("is not what locking and unlocking do", async () => {
+    const row = await soldierRow(member);
+    await db
+      .update(soldiers)
+      .set({
+        data: {
+          ...row.data,
+          exemptions: [
+            {
+              exemptionId: randomUUID(),
+              start: "2026-01-01",
+              end: "2030-12-31",
+            },
+          ],
+        },
+      })
+      .where(eq(soldiers.id, row.id));
+    await db
+      .update(user)
+      .set({ lockedAt: new Date(), failedAttempts: 5 })
+      .where(eq(user.id, member.id));
+    await command(manager, "account.unlock", { id: member.id }, 1);
+    const after = await soldierRow(member);
+    expect(after.deletedAt).toBeNull();
+    expect(after.data.exemptions).toHaveLength(1);
+    const [contact] = await db
+      .select()
+      .from(soldierContacts)
+      .where(eq(soldierContacts.soldierId, member.soldierId!));
+    expect(contact.phone).toBe("05000203");
+    const [account] = await db
+      .select()
+      .from(user)
+      .where(eq(user.id, member.id));
+    expect(account.deletedAt).toBeNull();
+  });
+  it("cannot be undone by an import that was reviewed before the deletion", async () => {
+    const reviewed = await command(manager, "import.preview", {
+      filename: "לפני המחיקה.xlsx",
+      rows: [
+        {
+          rowNumber: 2,
+          values: {
+            personalNumber: "00203",
+            name: "חייל למחיקה",
+            phone: "0509998888",
+          },
+        },
+      ],
+    });
+    await remove(manager, member);
+    await expect(
+      command(
+        manager,
+        "import.apply",
+        {
+          id: reviewed.id,
+          confirmed: true,
+          overwriteConfirmed: true,
+          reason: "ייבוא",
+        },
+        reviewed.version
+      )
+    ).rejects.toBeDefined();
+    const [contact] = await db
+      .select()
+      .from(soldierContacts)
+      .where(eq(soldierContacts.soldierId, member.soldierId!));
+    expect(contact.phone).toBeNull();
+    expect((await soldierRow(member)).deletedAt).not.toBeNull();
+    // A new file for the same number is refused too: the number stays with the history.
+    await expect(
+      command(manager, "import.preview", {
+        filename: "אחרי המחיקה.xlsx",
+        rows: [
+          { rowNumber: 2, values: { personalNumber: "00203", name: "חייל" } },
+        ],
+      })
+    ).rejects.toBeDefined();
   });
 });
 
