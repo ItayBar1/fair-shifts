@@ -1,7 +1,8 @@
 "use client";
 import { DutyChanges } from "./duty-changes";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ManualAssignment } from "./manual-assignment";
 import {
   PerformanceCorrections,
@@ -53,8 +54,6 @@ import {
   monthGrid,
   monthLabel,
   monthOf,
-  onBoard,
-  overlapsMonth,
   segmentLabel,
   shiftMonth,
   shortMonth,
@@ -70,6 +69,12 @@ import {
 } from "./ui";
 import { AuditLink } from "./audit";
 import { fairnessTable } from "@/client/fairness";
+import {
+  calendarBoard,
+  selectCalendarCard,
+  type CalendarControls,
+  type CalendarSelection,
+} from "@/client/calendar-filters";
 export const dutyStart = (d: Row) => str(d.start ?? d.startsAt);
 export const dutyEnd = (d: Row) => str(d.end ?? d.endsAt);
 export const dutyStatus = (d: Row) => d.status ?? d.publicationStatus;
@@ -87,43 +92,72 @@ export function Stat({
   detail,
   icon: Icon,
   tone = "teal",
+  onClick,
+  active,
+  accessibleLabel,
 }: {
   label: string;
   value: React.ReactNode;
   detail: string;
   icon: typeof CalendarDays;
   tone?: string;
+  onClick?: () => void;
+  active?: boolean;
+  accessibleLabel?: string;
 }) {
-  return (
-    <div className="stat">
-      <div className="stat-top">
+  const content = (
+    <>
+      <span className="stat-top">
         <span>{label}</span>
         <span className={`stat-icon ${tone}`}>
           <Icon size={20} />
         </span>
-      </div>
+      </span>
       <strong>{value}</strong>
       <small>{detail}</small>
-    </div>
+    </>
+  );
+  return onClick ? (
+    <button
+      type="button"
+      className={`stat stat-button ${active ? "active" : ""}`}
+      aria-label={accessibleLabel ?? label}
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="stat">{content}</div>
   );
 }
 export function CalendarView({ state }: { state: AppState }) {
-  const [onlyMine, setOnlyMine] = useState(false);
+  const router = useRouter();
+  const [controls, setControls] = useState<CalendarControls>({
+    mode: "month",
+    onlyMine: false,
+  });
+  const { onlyMine, mode, selection } = controls;
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<"list" | "month">("month");
   const [month, setMonth] = useState(() =>
     monthOf(str(state.serverNow, new Date().toISOString()))
   );
   const now = new Date().toISOString();
-  const ownIds = new Set(
-    state.assignments
-      .filter(
-        (a) =>
-          a.soldierId === state.actor.soldierId &&
-          !["cancelled", "transferred"].includes(str(a.status))
-      )
-      .map((a) => str(a.dutyId))
-  );
+  const select = (card: CalendarSelection) =>
+    setControls((current) => selectCalendarCard(current, card));
+  const {
+    ownIds,
+    counts,
+    displayed: monthDuties,
+  } = calendarBoard({
+    duties: state.duties,
+    assignments: state.assignments,
+    soldierId: state.actor.soldierId,
+    month,
+    query,
+    controls,
+    now,
+  });
   // A manager takes no part in duties (decision 192). "My duties" and "my score"
   // show only for a manager whose earlier duties are on record, and then show that
   // history; with none, management measures take their place.
@@ -133,27 +167,6 @@ export function CalendarView({ state }: { state: AppState }) {
       (a) =>
         a.soldierId === state.actor.soldierId && str(a.status) !== "cancelled"
     );
-  const visible = state.duties
-    .filter(onBoard)
-    .filter(
-      (d) => (!onlyMine || ownIds.has(d.id)) && str(d.name).includes(query)
-    );
-  const monthDuties = visible
-    .filter((d) => overlapsMonth(d, month))
-    .sort((a, b) => dutyStart(a).localeCompare(dutyStart(b)));
-  const activeMonth = monthDuties.filter((d) => !isCancelled(d));
-  const upcoming = visible.filter(
-    (d) => !isCancelled(d) && new Date(dutyEnd(d)) >= new Date()
-  ).length;
-  const vacantSeats = activeMonth.reduce(
-    (sum, d) =>
-      sum +
-      dutySlots(d).filter(
-        (slot) =>
-          !activeAssignments(state, d.id).some((a) => a.slotId === slot.id)
-      ).length,
-    0
-  );
   const byDay = new Map<string, { duty: Row; segment: DaySegment }[]>();
   for (const duty of monthDuties)
     for (const { date, segment } of dutyDays(duty))
@@ -164,17 +177,23 @@ export function CalendarView({ state }: { state: AppState }) {
       <div className="stats-grid">
         <Stat
           label="תורנויות החודש"
-          value={activeMonth.length}
+          value={counts.month}
           detail="מפורסמות בלוח היחידתי"
           icon={CalendarDays}
+          onClick={() => select("month")}
+          active={selection === "month"}
+          accessibleLabel="סינון לפי תורנויות החודש"
         />
         {personal ? (
           <Stat
             label="התורנויות שלי"
-            value={activeMonth.filter((d) => ownIds.has(d.id)).length}
+            value={counts.mine}
             detail="בחודש המוצג"
             icon={UsersRound}
             tone="blue"
+            onClick={() => select("mine")}
+            active={selection === "mine"}
+            accessibleLabel="סינון לפי התורנויות שלי"
           />
         ) : (
           <Stat
@@ -183,14 +202,19 @@ export function CalendarView({ state }: { state: AppState }) {
             detail="במרכז הטיפול"
             icon={AlertTriangle}
             tone="blue"
+            onClick={() => router.push("/manage")}
+            accessibleLabel="הצגת ממתינים לטיפול"
           />
         )}
         <Stat
           label="בהמשך הדרך"
-          value={upcoming}
-          detail="תורנויות שטרם הסתיימו"
+          value={counts.upcoming}
+          detail="טרם הסתיימו בחודש המוצג"
           icon={Clock3}
           tone="amber"
+          onClick={() => select("upcoming")}
+          active={selection === "upcoming"}
+          accessibleLabel="סינון לפי בהמשך הדרך"
         />
         {personal ? (
           <Stat
@@ -204,14 +228,19 @@ export function CalendarView({ state }: { state: AppState }) {
             detail="נקודות שכבר נזקפו"
             icon={Scale}
             tone="violet"
+            onClick={() => router.push("/fairness#my-score")}
+            accessibleLabel="הצגת הניקוד שלי בטבלת הצדק"
           />
         ) : (
           <Stat
             label="מקומות פנויים בחודש"
-            value={vacantSeats}
+            value={counts.vacant}
             detail="בתורנויות שפורסמו"
             icon={UserX}
             tone="violet"
+            onClick={() => select("vacant")}
+            active={selection === "vacant"}
+            accessibleLabel="סינון לפי מקומות פנויים בחודש"
           />
         )}
       </div>
@@ -255,14 +284,14 @@ export function CalendarView({ state }: { state: AppState }) {
                 <button
                   aria-pressed={!onlyMine}
                   className={!onlyMine ? "selected" : ""}
-                  onClick={() => setOnlyMine(false)}
+                  onClick={() => setControls({ mode, onlyMine: false })}
                 >
                   כל היחידה
                 </button>
                 <button
                   aria-pressed={onlyMine}
                   className={onlyMine ? "selected" : ""}
-                  onClick={() => setOnlyMine(true)}
+                  onClick={() => setControls({ mode, onlyMine: true })}
                 >
                   התורנויות שלי
                 </button>
@@ -271,14 +300,16 @@ export function CalendarView({ state }: { state: AppState }) {
             <div className="segmented">
               <button
                 className={mode === "month" ? "selected" : ""}
-                onClick={() => setMode("month")}
+                onClick={() => setControls({ mode: "month", onlyMine })}
+                aria-pressed={mode === "month"}
                 aria-label="תצוגת חודש"
               >
                 <CalendarDays size={17} />
               </button>
               <button
                 className={mode === "list" ? "selected" : ""}
-                onClick={() => setMode("list")}
+                onClick={() => setControls({ mode: "list", onlyMine })}
+                aria-pressed={mode === "list"}
                 aria-label="תצוגת רשימה"
               >
                 <Filter size={17} />
@@ -286,6 +317,15 @@ export function CalendarView({ state }: { state: AppState }) {
             </div>
           </div>
         </div>
+        {selection && (
+          <p className="calendar-selection" role="status">
+            {monthDuties.length} תורנויות
+            {selection === "vacant"
+              ? ` · ${counts.vacant} מקומות פנויים`
+              : ""}{" "}
+            · לחיצה חוזרת על המשבצת מחזירה לתצוגה הקודמת.
+          </p>
+        )}
         {mode === "month" ? (
           <div className="calendar-scroll">
             <div className="calendar-grid">
@@ -405,6 +445,13 @@ export function DutyList({
   );
 }
 export function FairnessView({ state }: { state: AppState }) {
+  const ownRow = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    if (window.location.hash === "#my-score") {
+      ownRow.current?.scrollIntoView({ block: "center" });
+      ownRow.current?.focus({ preventScroll: true });
+    }
+  }, []);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
   const { ranked, managers } = fairnessTable(state.soldiers);
@@ -465,6 +512,9 @@ export function FairnessView({ state }: { state: AppState }) {
                 {filtered.map((s) => (
                   <tr
                     key={s.id}
+                    id={s.id === state.actor.soldierId ? "my-score" : undefined}
+                    ref={s.id === state.actor.soldierId ? ownRow : undefined}
+                    tabIndex={s.id === state.actor.soldierId ? -1 : undefined}
                     className={
                       s.id === state.actor.soldierId ? "personal-row" : ""
                     }
@@ -495,6 +545,9 @@ export function FairnessView({ state }: { state: AppState }) {
                 {outside.map((s) => (
                   <tr
                     key={s.id}
+                    id={s.id === state.actor.soldierId ? "my-score" : undefined}
+                    ref={s.id === state.actor.soldierId ? ownRow : undefined}
+                    tabIndex={s.id === state.actor.soldierId ? -1 : undefined}
                     className={`manager-row ${
                       s.id === state.actor.soldierId ? "personal-row" : ""
                     }`}
