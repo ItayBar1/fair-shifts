@@ -71,6 +71,7 @@ export function SoldierPicker({
   requirements,
   scope = "duty",
   keep = [],
+  keepDeleted = [],
   emptyOption,
   required,
   compact,
@@ -88,6 +89,8 @@ export function SoldierPicker({
   scope?: keyof typeof words;
   /** Managers who may still be listed because they hold the place now. */
   keep?: unknown[];
+  /** A soldier deleted while the duty ran who is still recorded in the seat (decision 196). */
+  keepDeleted?: unknown[];
   /** A choice that is not a soldier, such as leaving the place vacant. */
   emptyOption?: PickerOption;
   /** Needs the choices on screen, so use it with the picker that is not `compact`. */
@@ -109,9 +112,15 @@ export function SoldierPicker({
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const keepKey = keep.map(String).join(",");
+  const keepDeletedKey = keepDeleted.map(String).join(",");
   const candidates = useMemo(
-    () => assignableSoldiers(state, keepKey ? keepKey.split(",") : []),
-    [state, keepKey]
+    () =>
+      assignableSoldiers(
+        state,
+        keepKey ? keepKey.split(",") : [],
+        keepDeletedKey ? keepDeletedKey.split(",") : []
+      ),
+    [state, keepKey, keepDeletedKey]
   );
   const { start, end } = range;
   const results = useMemo(
@@ -353,6 +362,7 @@ export function SoldierPicker({
                   {row.isManager === true && (
                     <Badge tone="warning">אחראי, יש להחליף</Badge>
                   )}
+                  {Boolean(row.deletedAt) && <Badge tone="danger">נמחק</Badge>}
                 </label>
               );
             })}

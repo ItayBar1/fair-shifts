@@ -12,6 +12,10 @@ import { refreshRoundNotices } from "./server/round-notices";
 import { runBackupCycle } from "./server/operations/backup";
 import { refreshDutyReminders } from "./server/duty-reminders";
 import { listenForMail, singleFlight } from "./server/operations/mail-signal";
+import {
+  DELETION_LOG_CHANNEL,
+  drainDeletionLog,
+} from "./server/operations/deletion-log";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 // The container health check reads this file's age (see compose.production.yaml).
@@ -29,6 +33,11 @@ const drainMail = singleFlight(async () => {
     const result = await deliverNextEmail();
     if (result.status === "idle" || result.status === "disabled") break;
   }
+});
+// The deletion log (decision 196) is appended once a minute and at the signal a
+// committed deletion sends, one run at a time.
+const drainLog = singleFlight(async () => {
+  await drainDeletionLog();
 });
 await boss.createQueue("unit-maintenance", { retryLimit: 5, retryDelay: 15 });
 await boss.schedule("unit-maintenance", "* * * * *");
@@ -52,6 +61,7 @@ await boss.work("unit-maintenance", async () => {
   });
   await writeFile(heartbeatFile, new Date().toISOString());
   await drainMail();
+  await drainLog();
 });
 // Backups run in their own queue so a long dump never delays the minute's maintenance.
 // The run table, not the queue, decides whether a backup is due (decision 173).
@@ -72,6 +82,14 @@ const mailSignals = listenForMail(() => {
     console.error("Mail delivery failed", error.name)
   );
 });
+const logSignals = listenForMail(
+  () => {
+    drainLog().catch((error: Error) =>
+      console.error("Deletion log drain failed", error.name)
+    );
+  },
+  { channel: DELETION_LOG_CHANNEL }
+);
 console.log("Fair Shifts worker ready");
 let stopping = false;
 async function stop() {
@@ -79,7 +97,9 @@ async function stop() {
   stopping = true;
   await boss.stop({ graceful: true, timeout: 20_000 });
   await mailSignals.stop();
+  await logSignals.stop();
   await drainMail.settled();
+  await drainLog.settled();
   await pool.end();
   console.log("Fair Shifts worker stopped");
 }

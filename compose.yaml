@@ -12,6 +12,8 @@ x-app: &app
     MAIL_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
     MAIL_TRANSPORT: disabled
     RESTORE_MODE: "false"
+    # The independent deletion log (decision 196); the production compose gives it its own volume.
+    DELETION_LOG_DIRECTORY: /tmp/fair-shifts-deletion-log
   depends_on:
     db:
       condition: service_healthy

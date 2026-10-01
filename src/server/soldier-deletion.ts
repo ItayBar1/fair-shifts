@@ -23,6 +23,8 @@ import {
 import { invariant } from "./errors";
 import { id, text } from "./validation";
 import { reassessAssignments } from "./personnel";
+import { enqueueEmail } from "./operations/email";
+import { queueDeletionLog } from "./operations/deletion-log";
 import { refreshRankReminders } from "./ranks";
 import { closeRequestsOfTransferredSeat } from "./cancellation-requests";
 import {
@@ -88,8 +90,16 @@ async function requestsOf(tx: DbTransaction, soldierId: string) {
     );
 }
 
-/** What deleting the soldier would do now, with a token that binds a save to it. */
-async function assess(tx: DbTransaction, soldierId: string) {
+/**
+ * What deleting the soldier would do now, with a token that binds a save to it.
+ * `force` applies a deletion the live system already made (decision 196): the
+ * account's role then no longer decides.
+ */
+async function assess(
+  tx: DbTransaction,
+  soldierId: string,
+  options: { force?: boolean } = {}
+) {
   const [person] = await tx
     .select()
     .from(soldiers)
@@ -103,7 +113,7 @@ async function assess(tx: DbTransaction, soldierId: string) {
     .where(eq(user.soldierId, soldierId))
     .for("update");
   invariant(
-    !login || login.role === "soldier",
+    options.force || !login || login.role === "soldier",
     "manager_account",
     "אי אפשר למחוק חשבון אחראי או טכני במסלול הזה. המנהל הטכני מסיר קודם את הרשאת האחראי",
     403
@@ -537,17 +547,29 @@ export async function eraseSoldier(
   tx: DbTransaction,
   actor: Actor,
   soldierId: string,
-  options: { reason: string; previewToken?: string; via?: string }
+  options: {
+    reason: string;
+    previewToken?: string;
+    via?: string;
+    /**
+     * A deletion the live system made before a restore (decision 196): it is
+     * applied again at its original time, by the restore and not by a manager,
+     * and it is not logged a second time.
+     */
+    restored?: { at: string };
+  }
 ) {
-  manager(actor);
-  invariant(
-    soldierId !== actor.soldierId,
-    "self_delete",
-    "אי אפשר למחוק את החשבון שלך",
-    403
-  );
+  if (!options.restored) {
+    manager(actor);
+    invariant(
+      soldierId !== actor.soldierId,
+      "self_delete",
+      "אי אפשר למחוק את החשבון שלך",
+      403
+    );
+  }
   const { impact, previewToken, person, login, vacated, requests } =
-    await assess(tx, soldierId);
+    await assess(tx, soldierId, { force: Boolean(options.restored) });
   invariant(
     options.previewToken === undefined || options.previewToken === previewToken,
     "stale_preview",
@@ -561,6 +583,7 @@ export async function eraseSoldier(
   const needles = needlesOf(soldierId, contact);
   const now = new Date();
   const at = now.toISOString();
+  const deletedAt = options.restored ? new Date(options.restored.at) : now;
 
   await vacateSeats(tx, vacated, soldierId);
   await closeOpenRequests(tx, soldierId, vacated);
@@ -570,8 +593,10 @@ export async function eraseSoldier(
   data.version = person.version + 1;
   await tx
     .update(soldiers)
-    .set({ data, version: data.version, deletedAt: now, updatedAt: now })
+    .set({ data, version: data.version, deletedAt, updatedAt: now })
     .where(eq(soldiers.id, soldierId));
+  // The independent log learns of the deletion in the same commit (decision 196).
+  if (!options.restored) await queueDeletionLog(tx, soldierId, deletedAt);
   if (contact)
     await tx
       .update(soldierContacts)
@@ -597,26 +622,42 @@ export async function eraseSoldier(
       vacated: impact.vacated.length,
       inProgress: impact.inProgress.length,
       ...(options.via && { via: options.via }),
+      ...(options.restored && { via: "restore" }),
     },
     soldierId
   );
-  if (impact.vacated.length || impact.inProgress.length)
+  if (impact.vacated.length || impact.inProgress.length) {
+    const title = "נמחק חייל: נדרש טיפול במקומות פנויים";
+    const body =
+      `${person.name} נמחק${options.restored ? " (המחיקה הוחלה מחדש אחרי שחזור)" : ""}. ${impact.vacated.length} מקומות עתידיים התפנו` +
+      (impact.inProgress.length
+        ? `, ו־${impact.inProgress.length} שיבוצים בתורנויות שכבר התחילו נשארו ומסומנים לטיפול דחוף: יש לרשום תקופות ביצוע, מחליף ואת הניקוד.`
+        : ".");
     for (const recipient of await tx
       .select()
       .from(user)
       .where(eq(user.role, "manager")))
-      if (!recipient.deletedAt)
+      if (!recipient.deletedAt) {
         await createRecord(tx, "notification", {
           accountId: recipient.id,
-          title: "נמחק חייל: נדרש טיפול במקומות פנויים",
-          body:
-            `${person.name} נמחק. ${impact.vacated.length} מקומות עתידיים התפנו` +
-            (impact.inProgress.length
-              ? `, ו־${impact.inProgress.length} שיבוצים בתורנויות שכבר התחילו נשארו ומסומנים לטיפול דחוף בתקופות הביצוע.`
-              : "."),
+          title,
+          body,
           href: "/manage",
           deletedSoldierId: soldierId,
         });
+        // Sent only if the manager's "deletion" switch is on at delivery time (decision 196).
+        await enqueueEmail(tx, {
+          recipientAccountId: recipient.id,
+          eventKey: `deletion:${soldierId}${options.restored ? ":restored" : ""}:${recipient.id}`,
+          kind: "deletion",
+          title,
+          body,
+          href: "/manage",
+          priority: 1,
+          expiresAt: new Date(now.getTime() + 86_400_000),
+        });
+      }
+  }
   return {
     id: soldierId,
     version: data.version,

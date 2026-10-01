@@ -83,14 +83,19 @@ export const personName = (state: AppState, id: unknown) =>
   );
 /**
  * Who a manager may put in a seat: not deleted and not a manager. `keep` lists
- * people already in the seat, so the current value still shows and can be replaced.
+ * managers already in the seat, so the current value still shows and can be
+ * replaced. `keepDeleted` lists a soldier deleted while the duty ran who is
+ * still recorded in the seat (decision 196): the manager records their part.
  */
 export const assignableSoldiers = (
   state: Pick<AppState, "soldiers">,
-  keep: unknown[] = []
+  keep: unknown[] = [],
+  keepDeleted: unknown[] = []
 ) =>
   state.soldiers.filter(
-    (row) => !row.deletedAt && (!row.isManager || keep.includes(row.id))
+    (row) =>
+      (!row.deletedAt || keepDeleted.includes(row.id)) &&
+      (!row.isManager || keep.includes(row.id))
   );
 export const dutyName = (state: AppState, id: unknown) =>
   str(state.duties.find((d) => d.id === id)?.name, "תורנות");

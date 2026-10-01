@@ -10,6 +10,7 @@ import { interveningActions } from "./score-decisions";
 import { readHealth } from "./operations/health";
 import { readMailStatus } from "./operations/email";
 import { backupState } from "./operations/backup";
+import { readDeletionLogStatus } from "./operations/deletion-log";
 import { projectRequests } from "./transfers";
 import { projectSwaps } from "./swaps";
 import { projectCancellationRequests } from "./cancellation-requests";
@@ -145,10 +146,17 @@ export async function readState(actor: Actor) {
         ),
         // The worker heartbeat and mail state are presented through `health` and `mail`.
         operations: operations
-          .filter((row) => row.key !== "worker" && row.key !== "mail")
+          .filter(
+            (row) =>
+              row.key !== "worker" &&
+              row.key !== "mail" &&
+              row.key !== "deletion-log"
+          )
           .map((row) => ({ id: row.key, ...row.data })),
         health: await readHealth(tx),
         mail: await readMailStatus(tx),
+        // Counts and times only: no soldier, id or content (decision 196).
+        deletionLog: await readDeletionLogStatus(tx),
       };
     }
     const state = await loadDomain(tx);

@@ -37,6 +37,10 @@ export const recordPolicies: Record<string, ErasurePolicy> = {
   },
   constraint: { action: "scrub", why: "נימוקי האילוץ וההחלטה נמחקים" },
   constraint_revision: { action: "scrub", why: "נימוקי האילוץ וההחלטה נמחקים" },
+  deletion_log_entry: {
+    action: "keep",
+    why: "תור היומן העצמאי: מזהה פנימי ומועד בלבד, בלי שם או פרטי קשר",
+  },
   departure: {
     action: "keep",
     why: "מועד שחרור והודעת עזיבה, בלי פרטים אישיים",

@@ -160,6 +160,12 @@ export interface Assignment {
   performedStart?: Instant;
   performedEnd?: Instant;
   performance?: Performance;
+  /**
+   * Set when a manager decided the seat of a soldier who was deleted while the
+   * duty ran (decision 196). Until then the seat is not credited automatically.
+   */
+  deletionDecidedAt?: Instant;
+  deletionDecidedBy?: string;
 }
 export interface SpecificApproval {
   kind:
