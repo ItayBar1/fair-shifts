@@ -1,8 +1,10 @@
 #!/bin/sh
 # Checks compose.production.yaml in Docker with synthetic secrets: refusal of
 # development secrets, startup, health and worker heartbeat, restart after a
-# crash, graceful stop, database and deletion log persistence across down/up. cloudflared is
-# not started: it needs a real Cloudflare token (docs/operations.md).
+# crash, graceful stop, database and deletion log persistence across down/up,
+# and a restore drill on an encrypted backup with the key kept off the server
+# (ticket #35). cloudflared is not started: it needs a real Cloudflare token
+# (docs/operations.md).
 set -eu
 cd "$(dirname "$0")/.."
 . scripts/docker-env.sh
@@ -139,5 +141,47 @@ production up -d --wait db app worker
   fail 'הנתונים לא נשמרו בנפח המסד'
 production exec -T worker test -f "$log_file" || fail 'יומן המחיקות לא נשמר בנפח'
 check_health
+
+step 'שחזור: תרגיל על גיבוי מוצפן בתמונת ההפעלה, בלי מפתח על השרת'
+# Synthetic accounts: a restore without a technical account does not pass its checks.
+production exec -T -e TECHNICAL_EMAIL=technical@example.invalid -e TECHNICAL_NAME="Technical admin" \
+  -e MANAGER_EMAIL=manager@example.invalid -e MANAGER_NAME="Test manager" \
+  -e MANAGER_PERSONAL_NUMBER=0000001 app node_modules/.bin/tsx scripts/bootstrap.ts >/dev/null
+# The identity lives on this computer only; the server gets the public key.
+key_dir=$(mktemp -d "${TMPDIR:-/tmp}/fair-shifts-smoke-key.XXXXXX")
+chmod 755 "$key_dir"
+"$docker_bin" run --rm "fair-shifts:$APP_VERSION" age-keygen >"$key_dir/identity.txt" 2>/dev/null
+chmod 644 "$key_dir/identity.txt"
+recipient=$("$docker_bin" run --rm -i "fair-shifts:$APP_VERSION" age-keygen -y <"$key_dir/identity.txt")
+grep -Ev '^(BACKUP_STORAGE|BACKUP_DIRECTORY|AGE_RECIPIENT)=' "$FAIR_SHIFTS_CONFIG_DIR/app.env" >"$FAIR_SHIFTS_CONFIG_DIR/app.env.new"
+printf 'BACKUP_STORAGE=directory\nBACKUP_DIRECTORY=/tmp/fair-shifts-smoke-backups\nAGE_RECIPIENT=%s\n' "$recipient" >>"$FAIR_SHIFTS_CONFIG_DIR/app.env.new"
+chmod 600 "$FAIR_SHIFTS_CONFIG_DIR/app.env.new"
+mv "$FAIR_SHIFTS_CONFIG_DIR/app.env.new" "$FAIR_SHIFTS_CONFIG_DIR/app.env"
+production up -d --wait --force-recreate app worker
+check_health
+production exec -T worker node_modules/.bin/tsx scripts/backup-before-deploy.ts smoke ||
+  fail 'לא נוצר גיבוי מאומת'
+backup_name=$(production exec -T worker node_modules/.bin/tsx scripts/restore.ts list | awk '{print $1; exit}')
+case "$backup_name" in *.dump.age) ;; *) fail "רשימת הגיבויים ריקה: $backup_name" ;; esac
+production exec -T worker node_modules/.bin/tsx scripts/restore.ts fetch --backup "$backup_name" \
+  >"$key_dir/backup.dump.age" 2>/dev/null
+[ "$(head -c 21 "$key_dir/backup.dump.age")" = 'age-encryption.org/v1' ] ||
+  fail 'הקובץ שהורד אינו מוצפן ב־age'
+"$docker_bin" run --rm -i -v "$key_dir:/key:ro" "fair-shifts:$APP_VERSION" \
+  age --decrypt -i /key/identity.txt <"$key_dir/backup.dump.age" >"$key_dir/plain.dump"
+if ! output=$(production exec -T worker node_modules/.bin/tsx scripts/restore.ts drill \
+  --dump - --point "$backup_name" <"$key_dir/plain.dump" 2>&1); then
+  echo "$output"
+  fail 'תרגיל השחזור נכשל'
+fi
+echo "$output"
+case "$output" in *'Restore drill: PASSED'*) ;; *) fail 'התרגיל לא עבר' ;; esac
+[ "$(psql "select data->>'synthetic' from operations_state where key = 'smoke-marker'")" = true ] ||
+  fail 'התרגיל פגע במסד החי'
+[ "$(psql "select count(*) from pg_database where datname like '%_drill'")" = 0 ] ||
+  fail 'מסד התרגיל לא נמחק'
+[ "$(psql "select data->>'lastOutcome' from operations_state where key = 'restore-drill'")" = passed ] ||
+  fail 'תוצאת התרגיל לא נרשמה'
+rm -rf "$key_dir"
 
 step 'כל בדיקות תצורת ההפעלה עברו'
