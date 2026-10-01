@@ -180,9 +180,25 @@ test("a manager records who covered a started seat, approves a handover, and sol
   await page.getByRole("button", { name: "עריכת תקופות ביצוע" }).click();
   const editor = page.getByRole("dialog");
   await editor.getByRole("button", { name: "הוספת תקופה" }).click();
+  await editor.getByRole("button", { name: /^מבצע בתקופה 2/ }).click();
+  // The finder and the period fields fit a phone as well.
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  expect(
+    await editor.evaluate((node) => node.scrollWidth <= node.clientWidth)
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/execution-periods-finder-mobile.png",
+  });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await editor
-    .getByLabel("מבצע בתקופה 2")
-    .selectOption({ label: people.replacement[0] });
+    .getByRole("radiogroup", { name: "מבצע בתקופה 2" })
+    .getByRole("radio", { name: people.replacement[0] })
+    .click();
   await editor.getByLabel("סיום תקופה 1").fill(israel(guard.start + 18 * HOUR));
   // The next period starts at the same Israel wall-clock time, even in a browser outside Israel.
   await expect(editor.getByLabel("תחילת תקופה 2")).toHaveValue(
@@ -299,9 +315,11 @@ test("a manager records who covered a started seat, approves a handover, and sol
   await page.getByRole("button", { name: "עריכת תקופות ביצוע" }).click();
   const fixedEditor = page.getByRole("dialog");
   await fixedEditor.getByRole("button", { name: "הוספת תקופה" }).click();
+  await fixedEditor.getByRole("button", { name: /^מבצע בתקופה 2/ }).click();
   await fixedEditor
-    .getByLabel("מבצע בתקופה 2")
-    .selectOption({ label: people.fixedReplacement[0] });
+    .getByRole("radiogroup", { name: "מבצע בתקופה 2" })
+    .getByRole("radio", { name: people.fixedReplacement[0] })
+    .click();
   await fixedEditor
     .getByLabel("סיום תקופה 1")
     .fill(israel(fixed.start + 18 * HOUR));

@@ -4,14 +4,15 @@ import {
   type AppState,
   type Action,
   type Row,
-  assignableSoldiers,
   str,
   rows,
   obj,
   num,
 } from "@/client/types";
+import { requirementsOf } from "@/client/soldier-picker";
 import { Modal, Form, Notice, type Field } from "./ui";
 import { callUpFields, callUpValue } from "./call-up";
+import { SoldierPicker } from "./soldier-picker";
 export function ManualAssignment({
   state,
   action,
@@ -27,16 +28,23 @@ export function ManualAssignment({
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [input, setInput] = useState<Record<string, unknown>>({});
   const requirements = rows(preview?.requirements);
+  const slot = rows(duty.slots).find((item) => item.id === slotId);
   const fields: Field[] = [
     {
       name: "soldierId",
       label: "בחירת חייל",
-      type: "select",
-      required: true,
-      options: assignableSoldiers(state).map((row) => ({
-        value: row.id,
-        label: str(row.name),
-      })),
+      type: "custom",
+      custom: (
+        <SoldierPicker
+          state={state}
+          name="soldierId"
+          label="בחירת חייל"
+          required
+          defaultValue={str(input.soldierId)}
+          range={{ start: str(duty.start), end: str(duty.end) }}
+          requirements={[requirementsOf(duty), requirementsOf(slot)]}
+        />
+      ),
     },
     ...callUpFields(duty),
   ];

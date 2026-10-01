@@ -6,7 +6,6 @@ import {
   type Action,
   type AppState,
   type Row,
-  assignableSoldiers,
   str,
   rows,
   obj,
@@ -14,8 +13,10 @@ import {
   personName,
   displayDate,
 } from "@/client/types";
+import { asInstant, requirementsOf } from "@/client/soldier-picker";
 import { ActionDialog, Form, Modal, Notice, Panel, type Field } from "./ui";
 import { callUpFields, callUpValue } from "./call-up";
+import { SoldierPicker } from "./soldier-picker";
 import {
   CompositionEditor,
   describeComposition,
@@ -174,6 +175,11 @@ function ChangeEditor({
     DateTime.fromISO(str(value))
       .setZone("Asia/Jerusalem")
       .toFormat("yyyy-MM-dd'T'HH:mm");
+  // What the form holds now, so a seat's soldier is found for the times being typed.
+  const [times, setTimes] = useState({
+    start: local(proposed.start),
+    end: local(proposed.end),
+  });
   const fields: Field[] = [
     {
       name: "name",
@@ -188,6 +194,7 @@ function ChangeEditor({
       type: "datetime-local",
       required: true,
       value: local(proposed.start),
+      onChange: (start) => setTimes((now) => ({ ...now, start })),
     },
     {
       name: "end",
@@ -195,6 +202,7 @@ function ChangeEditor({
       type: "datetime-local",
       required: true,
       value: local(proposed.end),
+      onChange: (end) => setTimes((now) => ({ ...now, end })),
     },
     {
       name: "instructions",
@@ -212,23 +220,33 @@ function ChangeEditor({
     },
     ...slots.flatMap((slot, index): Field[] => {
       const seat = seats.find((seat) => seat.slotId === slot.id);
+      const seatLabel = `מקום ${index + 1}: ${str(slot.role)}`;
       return [
         {
           name: `soldier${index}`,
-          label: `מקום ${index + 1}: ${str(slot.role)}`,
-          type: "select",
-          value: str(seat?.soldierId, "vacant") || "vacant",
-          options: [
-            { value: "vacant", label: "להשאיר פנוי / להסיר את השיבוץ" },
+          label: seatLabel,
+          type: "custom",
+          custom: (
             // A manager is never assigned (decision 192). One who still holds the
-            // seat shows, marked, so the proposal can give it to someone else.
-            ...assignableSoldiers(state, [seat?.soldierId]).map((person) => ({
-              value: person.id,
-              label: person.isManager
-                ? `${str(person.name)} — אחראי, יש להחליף`
-                : str(person.name),
-            })),
-          ],
+            // seat is listed, marked, so the proposal can give it to someone else.
+            <SoldierPicker
+              compact
+              state={state}
+              name={`soldier${index}`}
+              label={seatLabel}
+              defaultValue={str(seat?.soldierId, "vacant") || "vacant"}
+              range={{
+                start: asInstant(times.start),
+                end: asInstant(times.end),
+              }}
+              requirements={[requirementsOf(proposed), requirementsOf(slot)]}
+              keep={[seat?.soldierId]}
+              emptyOption={{
+                value: "vacant",
+                label: "להשאיר פנוי / להסיר את השיבוץ",
+              }}
+            />
+          ),
         },
         ...callUpFields(
           { id: str(change.id), pricing: proposed.pricing },
@@ -281,7 +299,16 @@ function ChangeEditor({
         </Notice>
       ) : (
         <>
-          <button className="btn secondary" onClick={() => setEditing(true)}>
+          <button
+            className="btn secondary"
+            onClick={() => {
+              setTimes({
+                start: local(proposed.start),
+                end: local(proposed.end),
+              });
+              setEditing(true);
+            }}
+          >
             עריכת ההצעה והשיבוצים
           </button>
           <button

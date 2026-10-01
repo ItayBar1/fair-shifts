@@ -85,7 +85,10 @@ export const personName = (state: AppState, id: unknown) =>
  * Who a manager may put in a seat: not deleted and not a manager. `keep` lists
  * people already in the seat, so the current value still shows and can be replaced.
  */
-export const assignableSoldiers = (state: AppState, keep: unknown[] = []) =>
+export const assignableSoldiers = (
+  state: Pick<AppState, "soldiers">,
+  keep: unknown[] = []
+) =>
   state.soldiers.filter(
     (row) => !row.deletedAt && (!row.isManager || keep.includes(row.id))
   );
