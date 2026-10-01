@@ -65,6 +65,10 @@ export const recordPolicies: Record<string, ErasurePolicy> = {
     action: "scrub",
     why: "הודעות שנשלחו לחשבון נמחקות; הודעות על בקשות שלו מאבדות את הנימוק",
   },
+  manager_return: {
+    action: "keep",
+    why: "פריט החלטה ביתרה של אחראי שחזר: מזהים ויתרה בלבד. פריט פתוח נסגר במחיקה",
+  },
   notification_defaults: { action: "keep", why: "ברירות מחדל ליחידה" },
   performance_correction: { action: "keep", why: "היסטוריית ביצוע וניקוד" },
   personnel_change: {

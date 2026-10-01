@@ -716,11 +716,20 @@ describe("mutual swap by consent before the start", () => {
       (await seatOf(third.id, chen)).id,
     ]);
     expect(startedOffer.id).toBeTruthy();
-    // Managers cannot offer on a soldier's behalf.
+    // A manager takes no part in duties, so never offers a swap, on anyone's behalf (decision 192).
     const seatA = await seatOf(first.id, alon);
     await expect(
       command(
         manager,
+        "swap.offer",
+        { assignmentId: seatA.id, targetAssignmentIds: [seatB.id] },
+        seatA.version
+      )
+    ).rejects.toThrow("אחראי תורנויות אינו משובץ");
+    // Another soldier cannot offer Alon's seat either.
+    await expect(
+      command(
+        chen,
         "swap.offer",
         { assignmentId: seatA.id, targetAssignmentIds: [seatB.id] },
         seatA.version

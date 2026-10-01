@@ -13,6 +13,7 @@ import {
 } from "./repository";
 import { invariant } from "./errors";
 import { scoreInput } from "./validation";
+import { closeReturnsAfterScore } from "./manager-role";
 
 export async function postScore(
   tx: DbTransaction,
@@ -264,6 +265,8 @@ export async function applyScore(
       data: { operation: input.operation, value: input.value, barrier },
     });
   }
+  // The decision about a returned manager's balance is made by any balance operation on them.
+  await closeReturnsAfterScore(tx, actor, rows, preview.id);
   await updateRecord(tx, preview, { ...preview.data, applied: true });
   await audit(tx, actor, "score.apply", preview.id, {
     count: rows.length,

@@ -372,6 +372,33 @@ async function eraseSeatApprovals(tx: DbTransaction, soldierId: string) {
   return changed;
 }
 
+/**
+ * A returned manager's open decision about the balance (decision 192) has no
+ * one left to decide for; it closes with the deletion.
+ */
+async function closeManagerReturns(
+  tx: DbTransaction,
+  actor: Actor,
+  soldierId: string,
+  at: string
+) {
+  for (const row of await tx
+    .select()
+    .from(records)
+    .where(
+      and(eq(records.kind, "manager_return"), eq(records.subjectId, soldierId))
+    ))
+    if (row.data.status === "pending")
+      await updateRecord(tx, row, {
+        ...row.data,
+        status: "closed",
+        outcome: "deleted",
+        closedAt: at,
+        closedBy: actor.id,
+        closedByName: actor.name,
+      });
+}
+
 /** Removes the sensitive data from the soldier's records and from the notices that quote it. */
 async function eraseRecords(
   tx: DbTransaction,
@@ -537,6 +564,7 @@ export async function eraseSoldier(
 
   await vacateSeats(tx, vacated, soldierId);
   await closeOpenRequests(tx, soldierId, vacated);
+  await closeManagerReturns(tx, actor, soldierId, at);
 
   const data = withoutConditions(person.data);
   data.version = person.version + 1;

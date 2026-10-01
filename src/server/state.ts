@@ -91,6 +91,8 @@ export async function readState(actor: Actor) {
       rankCatalog: [],
       performanceCorrections: [],
       scoreDecisions: [],
+      managerReturns: [],
+      names: {},
     };
     if (actor.role === "technical") {
       const accounts = await tx
@@ -156,41 +158,53 @@ export async function readState(actor: Actor) {
     const scoreRows = await tx.select().from(ledger);
     const managing = actor.role === "manager";
     const now = base.serverNow;
-    const soldiers = state.soldiers.map((person) => {
-      const rank = rankAt(person, now);
-      const summary = {
-        id: person.id,
-        name: person.name,
-        version: person.version,
-        currentScore: person.currentScore,
-        deletedAt: person.deletedAt,
-        population: populationAt(person, now),
-        rankName:
-          workflows.find(
-            (row) => row.kind === "rank_catalog" && row.id === rank?.rankId
-          )?.data.name ?? rank?.rankId,
-      };
-      if (!managing) return summary;
-      const contact = contacts.find((row) => row.soldierId === person.id);
-      const service = serviceSummary(person, now);
-      return {
-        ...person,
-        ...summary,
-        ...contact,
-        serviceStatus: service.status,
-        graceUntil: service.graceUntil,
-        preReleaseFrom: service.preReleaseFrom,
-        rankId: rank?.rankId,
-        rankTrack: rank?.trackId,
-        serviceType: person.service.type,
-        arrivalDate: person.service.arrivalDate,
-        enlistmentDate: person.service.enlistmentDate,
-        releaseDate: person.service.releaseDate,
-        officerDate: person.service.officerFrom,
-        permanentDate: person.service.permanentFrom,
-        graceEligible: person.service.graceEligible,
-      };
-    });
+    // A duty manager takes no part in duties (decision 192). A soldier's lists
+    // therefore leave managers out, and only their names stay, for the duties and
+    // requests that still mention them. Nothing about the role is sent.
+    const names = managing
+      ? {}
+      : Object.fromEntries(
+          state.soldiers
+            .filter((person) => person.isManager)
+            .map((person) => [person.id, person.name])
+        );
+    const soldiers = state.soldiers
+      .filter((person) => managing || !person.isManager)
+      .map((person) => {
+        const rank = rankAt(person, now);
+        const summary = {
+          id: person.id,
+          name: person.name,
+          version: person.version,
+          currentScore: person.currentScore,
+          deletedAt: person.deletedAt,
+          population: populationAt(person, now),
+          rankName:
+            workflows.find(
+              (row) => row.kind === "rank_catalog" && row.id === rank?.rankId
+            )?.data.name ?? rank?.rankId,
+        };
+        if (!managing) return summary;
+        const contact = contacts.find((row) => row.soldierId === person.id);
+        const service = serviceSummary(person, now);
+        return {
+          ...person,
+          ...summary,
+          ...contact,
+          serviceStatus: service.status,
+          graceUntil: service.graceUntil,
+          preReleaseFrom: service.preReleaseFrom,
+          rankId: rank?.rankId,
+          rankTrack: rank?.trackId,
+          serviceType: person.service.type,
+          arrivalDate: person.service.arrivalDate,
+          enlistmentDate: person.service.enlistmentDate,
+          releaseDate: person.service.releaseDate,
+          officerDate: person.service.officerFrom,
+          permanentDate: person.service.permanentFrom,
+          graceEligible: person.service.graceEligible,
+        };
+      });
     const visibleDuties = state.duties.filter(
       (row) =>
         managing ||
@@ -219,6 +233,7 @@ export async function readState(actor: Actor) {
     return {
       ...base,
       soldiers,
+      names,
       duties: visibleDuties.map((row) =>
         managing
           ? {
@@ -358,6 +373,7 @@ export async function readState(actor: Actor) {
       performanceCorrections: managing
         ? workflow("performance_correction")
         : [],
+      managerReturns: managing ? workflow("manager_return") : [],
       seatExecutions: managing ? workflow("seat_execution") : [],
       executionChanges: managing ? workflow("execution_change") : [],
       scoreDecisions: managing

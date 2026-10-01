@@ -89,7 +89,10 @@ export function SwapOffer({
         open(state, row, other) &&
         // Two seats of one started duty cannot be swapped.
         (future(state, other) || other.id !== duty.id) &&
-        !state.soldiers.find((item) => item.id === row.soldierId)?.deletedAt
+        // A soldier's list has no managers (decision 192), so a seat held by one is not on offer.
+        state.soldiers.some(
+          (item) => item.id === row.soldierId && !item.deletedAt
+        )
       );
     })
     .map((row) => {

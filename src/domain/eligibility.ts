@@ -24,6 +24,8 @@ import type {
   SpecificApproval,
 } from "./types";
 
+export const MANAGER_BLOCKER_MESSAGE = "אחראי תורנויות אינו משובץ לתורנויות";
+
 export function populationAt(soldier: Soldier, at: string): Population {
   const date = instant(at).toISODate()!;
   const history = [...soldier.populationHistory];
@@ -234,6 +236,8 @@ export function evaluateEligibility(
   };
 
   if (soldier.deletedAt) block("deleted", "החשבון נמחק");
+  // By the role at the moment of the check, in every mode; no exception can lift it (decision 192).
+  if (soldier.isManager) block("manager", MANAGER_BLOCKER_MESSAGE);
   if (duty.status === "cancelled") block("cancelled", "התורנות בוטלה");
   if (!duty.slots.some((candidate) => candidate.id === slot.id))
     block("unknown_slot", "המקום אינו שייך לתורנות");

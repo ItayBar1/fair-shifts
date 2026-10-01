@@ -478,6 +478,45 @@ describe("deleting a user", () => {
     expect(await titles(other)).toContain("הצעת ההעברה נסגרה");
     expect((await dutyRow(dutyA.id)).version).toBe(dutyA.version);
   });
+  it("closes the open balance decision of a manager who became a soldier again", async () => {
+    const pending = randomUUID();
+    const settled = randomUUID();
+    await db.insert(records).values([
+      {
+        id: pending,
+        kind: "manager_return",
+        subjectId: member.soldierId,
+        data: {
+          soldierId: member.soldierId,
+          status: "pending",
+          balanceAtReturn: 12,
+        },
+      },
+      {
+        id: settled,
+        kind: "manager_return",
+        subjectId: member.soldierId,
+        data: {
+          soldierId: member.soldierId,
+          status: "closed",
+          outcome: "kept",
+          reason: "היתרה נשארת",
+        },
+      },
+    ]);
+    await remove(manager, member);
+    const [open] = await db
+      .select()
+      .from(records)
+      .where(eq(records.id, pending));
+    expect(open.data).toMatchObject({ status: "closed", outcome: "deleted" });
+    // A decision already taken is history and stays as it was.
+    const [done] = await db
+      .select()
+      .from(records)
+      .where(eq(records.id, settled));
+    expect(done.data).toMatchObject({ outcome: "kept", reason: "היתרה נשארת" });
+  });
   it("closes a pending cancellation request of a vacated seat", async () => {
     await publishedDuty([member, other], 2);
     const seat = (await seatsOf(member))[0];

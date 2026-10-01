@@ -193,8 +193,8 @@ sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tool
 ### מפתח ההצפנה
 
 ```sh
-age-keygen -o fair-shifts-backup.key   # on the technical admin's computer, not the server
-age-keygen -y fair-shifts-backup.key   # prints the public key for AGE_RECIPIENT
+age-keygen -o ~/fair-shifts-backup.key   # on the technical admin's computer, outside the repository, not the server
+age-keygen -y ~/fair-shifts-backup.key   # prints the public key for AGE_RECIPIENT
 ```
 
 הקובץ הפרטי נשמר מחוץ לשרת ומחוץ ל־Drive, לפחות בשני עותקים בידי המנהל הטכני. בלעדיו אי אפשר לפענח אף גיבוי. פענוח לבדיקה: `age --decrypt -i fair-shifts-backup.key <file> > backup.dump`, ואחריו `pg_restore` למסד מבודד בלבד.
