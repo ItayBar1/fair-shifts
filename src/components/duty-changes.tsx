@@ -6,6 +6,7 @@ import {
   type Action,
   type AppState,
   type Row,
+  assignableSoldiers,
   str,
   rows,
   obj,
@@ -219,9 +220,14 @@ function ChangeEditor({
           value: str(seat?.soldierId, "vacant") || "vacant",
           options: [
             { value: "vacant", label: "להשאיר פנוי / להסיר את השיבוץ" },
-            ...state.soldiers
-              .filter((person) => !person.deletedAt)
-              .map((person) => ({ value: person.id, label: str(person.name) })),
+            // A manager is never assigned (decision 192). One who still holds the
+            // seat shows, marked, so the proposal can give it to someone else.
+            ...assignableSoldiers(state, [seat?.soldierId]).map((person) => ({
+              value: person.id,
+              label: person.isManager
+                ? `${str(person.name)} — אחראי, יש להחליף`
+                : str(person.name),
+            })),
           ],
         },
         ...callUpFields(

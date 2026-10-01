@@ -51,11 +51,12 @@ export function applyScoreOperation(
   return { before: balance, after, delta: after - balance, clamped: raw.lt(0) };
 }
 
+/** Managers do not take part in duties, so they hold no place in the ranking (decision 192). */
 export function rankFairness(
   soldiers: Soldier[]
 ): { soldierId: string; name: string; score: number; rank: number }[] {
   const sorted = soldiers
-    .filter((soldier) => !soldier.deletedAt)
+    .filter((soldier) => !soldier.deletedAt && !soldier.isManager)
     .sort(
       (a, b) =>
         a.currentScore - b.currentScore ||

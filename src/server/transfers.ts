@@ -136,6 +136,13 @@ export async function offerTransfer(
       candidateIds: z.array(id).min(1).max(20),
     })
     .parse(payload);
+  // By the role at the moment of the action (decision 192).
+  invariant(
+    actor.role !== "manager",
+    "forbidden",
+    "אחראי תורנויות אינו משובץ לתורנויות ולכן אינו מציע העברה",
+    403
+  );
   invariant(
     actor.soldierId,
     "forbidden",

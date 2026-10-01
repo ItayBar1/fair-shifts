@@ -832,6 +832,10 @@ tbody tr:last-child td {
   align-items: center;
   gap: 8px;
 }
+/* A manager outside the ranking: the marks wrap under the name on a narrow screen. */
+.manager-row .person {
+  flex-wrap: wrap;
+}
 .score-number {
   font-size: 19px;
   color: var(--teal);

@@ -298,6 +298,28 @@ describe("durable email queue", () => {
 });
 
 describe("first duty vertical slice", () => {
+  // A second soldier who takes part in duties: a manager never does (decision 192).
+  // Created on demand, so the tests that count soldiers keep their counts.
+  let peerActor: Actor | undefined;
+  beforeEach(() => {
+    peerActor = undefined;
+  });
+  async function peerSoldier() {
+    if (peerActor) return peerActor;
+    const row = await invite(
+      "חייל נוסף",
+      "soldier",
+      "peer@example.invalid",
+      "00009"
+    );
+    return (peerActor = {
+      id: row.id,
+      name: row.name,
+      role: "soldier",
+      soldierId: row.soldierId!,
+      securityEpoch: 1,
+    });
+  }
   async function command(
     type: string,
     payload: Record<string, unknown>,
@@ -432,6 +454,7 @@ describe("first duty vertical slice", () => {
   });
   it("lets only one of two managers occupy the last place", async () => {
     const { row, actor } = await fixtureDuty();
+    const peer = await peerSoldier();
     const other = await invite(
       "אחראי שני",
       "manager",
@@ -460,7 +483,7 @@ describe("first duty vertical slice", () => {
         {
           dutyId: row.id,
           slotId: row.data.slots[0].id,
-          soldierId: manager.soldierId,
+          soldierId: peer.soldierId,
         },
         1,
         secondManager
@@ -1922,6 +1945,7 @@ describe("first duty vertical slice", () => {
   }
   it("persists a justified rank exception through another seat assignment and publication", async () => {
     const { actor, upper } = await rankFixture();
+    const peer = await peerSoldier();
     const type = await command("dutyType.save", {
       name: "חריג דרגה",
       pricing: { mode: "fixed", base: 4 },
@@ -1970,7 +1994,7 @@ describe("first duty vertical slice", () => {
     const second = {
       ...input,
       slotId: duty.data.slots[1].id,
-      soldierId: manager.soldierId,
+      soldierId: peer.soldierId,
     };
     const another = await assignmentPreview(second, 2);
     await command(
@@ -2110,10 +2134,11 @@ describe("first duty vertical slice", () => {
   });
   async function pendingLottery() {
     const { row, actor } = await fixtureDuty();
+    const peer = await peerSoldier();
     await db
       .update(balances)
       .set({ current: 100 })
-      .where(eq(balances.soldierId, manager.soldierId!));
+      .where(eq(balances.soldierId, peer.soldierId!));
     const [person] = await db
       .select()
       .from(soldiers)
@@ -2145,10 +2170,10 @@ describe("first duty vertical slice", () => {
       requirements: { key: string }[];
       candidateId: string;
     };
-    return { row, actor, payload, result };
+    return { row, actor, peer, payload, result };
   }
   it("retains a pending draw without reserving points and recomputes the band after rejection", async () => {
-    const { row, actor, payload, result } = await pendingLottery();
+    const { row, actor, peer, payload, result } = await pendingLottery();
     expect(result.status).toBe("approval_required");
     expect(result.candidateId).toBe(actor.soldierId);
     expect(await db.select().from(assignments)).toHaveLength(0);
@@ -2172,7 +2197,7 @@ describe("first duty vertical slice", () => {
     expect(replacement).toMatchObject({
       status: "assigned",
       minimum: 100,
-      candidateId: manager.soldierId,
+      candidateId: peer.soldierId,
     });
     expect((await db.select().from(assignments))[0].dutyId).toBe(row.id);
     const visible = await readState(actor);
@@ -2232,6 +2257,7 @@ describe("first duty vertical slice", () => {
     expect(await db.select().from(assignments)).toHaveLength(0);
   });
   it("plans one seat per transaction, resumes, and leaves missing seats without moving assignments", async () => {
+    await peerSoldier();
     const type = await command("dutyType.save", {
       name: "תכנון שלושה מקומות",
       pricing: { mode: "fixed", base: 4 },
@@ -2316,6 +2342,7 @@ describe("first duty vertical slice", () => {
   });
   it("plans scarce duties before earlier common duties and the rare role first within a duty", async () => {
     const { actor } = await fixtureDuty();
+    await peerSoldier();
     const qualification = await command("eligibility.catalog.save", {
       kind: "qualification",
       name: "כשירות נדירה לבדיקה",
@@ -2397,10 +2424,11 @@ describe("first duty vertical slice", () => {
   });
   it("keeps the global pending-review confirmation separate from each collision approval", async () => {
     const { row, actor } = await fixtureDuty();
+    const peer = await peerSoldier();
     await db
       .update(balances)
       .set({ current: 100 })
-      .where(eq(balances.soldierId, manager.soldierId!));
+      .where(eq(balances.soldierId, peer.soldierId!));
     const startDate = row.data.start.slice(0, 10);
     const endDate = row.data.end.slice(0, 10);
     const round = await command("round.create", {
@@ -3277,6 +3305,7 @@ describe("first duty vertical slice", () => {
   });
   it("keeps a published duty binding until an atomic versioned update replaces its reservations", async () => {
     const { row, actor } = await publishedFixture();
+    const peer = await peerSoldier();
     const change = await command(
       "duty.change.create",
       { dutyId: row.id, reason: "שינוי מפורש לבדיקה" },
@@ -3291,7 +3320,7 @@ describe("first duty vertical slice", () => {
         seats: [
           {
             slotId: row.data.slots[0].id,
-            soldierId: manager.soldierId,
+            soldierId: peer.soldierId,
             extraPoints: 2,
           },
         ],
@@ -3328,7 +3357,7 @@ describe("first duty vertical slice", () => {
     );
     expect(active).toHaveLength(1);
     expect(active[0]).toMatchObject({
-      soldierId: manager.soldierId,
+      soldierId: peer.soldierId,
       points: 6,
     });
     expect(
@@ -5433,9 +5462,10 @@ describe("first duty vertical slice", () => {
       await expect(
         command("transfer.offer", offerInput, 1, first)
       ).rejects.toThrow("בעל השיבוץ");
+      // A manager takes no part in duties, so never offers one (decision 192).
       await expect(
         command("transfer.offer", offerInput, 1, manager)
-      ).rejects.toThrow("בעל השיבוץ");
+      ).rejects.toThrow("אחראי תורנויות אינו משובץ");
       const offer = await command("transfer.offer", offerInput, 1, actor);
       await expect(
         command("transfer.offer", offerInput, 1, actor)
@@ -7624,16 +7654,22 @@ describe("gender, capability and personal hours conditions", () => {
       { code: "allowed_hours", referenceId: limitId },
     ]);
     // The lottery picks the only candidate without a blocking limit.
+    const peer = await invite(
+      "חייל נוסף",
+      "soldier",
+      "peer@example.invalid",
+      "00009"
+    );
     await db
       .update(balances)
       .set({ current: 100 })
-      .where(eq(balances.soldierId, manager.soldierId!));
+      .where(eq(balances.soldierId, peer.soldierId!));
     const drawn = (await command(
       "duty.lottery",
       { dutyId: evening.id, slotId: evening.data.slots[0].id },
       evening.version
     )) as unknown as { candidateId: string };
-    expect(drawn.candidateId).toBe(manager.soldierId);
+    expect(drawn.candidateId).toBe(peer.soldierId);
     const other = await localDuty(
       type.id,
       `${day(5)}T20:00`,

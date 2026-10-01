@@ -74,6 +74,7 @@ const labels: Record<string, string> = {
   "performance.correct": "תיקון ביצוע עבר",
   "score.apply": "שינוי יתרה",
   "score.decision": "הכרעה בתיקון שממתין",
+  "manager.return.keep": "השארת היתרה של אחראי שחזר",
   "soldier.create": "קליטת חייל",
   "soldier.update": "עדכון פרטי חייל",
   "soldier.timeline": "הוספת תקופה בפרופיל",
@@ -386,6 +387,11 @@ export function projectAudit(
           reason = text(input.reason);
           break;
         }
+        case "manager.return.keep":
+          add("הכרעה", "ללא שינוי ביתרה");
+          add("יתרה", record.balanceAtReturn);
+          reason = text(record.reason);
+          break;
         case "score.decision": {
           const resolution = data(target.resolution);
           add("הכרעה", choices[String(envelope.choice)] ?? envelope.choice);

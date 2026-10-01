@@ -6,6 +6,7 @@ import {
   type AppState,
   type Action,
   type Row,
+  assignableSoldiers,
   str,
   num,
   rows,
@@ -210,7 +211,12 @@ function SeatEditor({
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const soldiers = state.soldiers.filter((row) => !row.deletedAt);
+  // A manager is never a performer (decision 192); one already recorded in the seat
+  // still shows, so the period can be given to someone else.
+  const soldiers = assignableSoldiers(
+    state,
+    recorded.map((segment) => segment.soldierId)
+  );
   const seatRows = state.assignments.filter(
     (row) =>
       row.dutyId === duty.id &&

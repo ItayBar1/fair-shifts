@@ -6,12 +6,12 @@ import { commandResults } from "./schema";
 import { commandSchema, id } from "./validation";
 import {
   assertActorCurrent,
-  setRole,
   setResponsibility,
   unlockAccount,
   type Actor,
 } from "./auth/accounts";
-import { currentVersion, technical } from "./repository";
+import { changeRole, keepReturnedBalance } from "./manager-role";
+import { currentVersion } from "./repository";
 import { invariant, AppError } from "./errors";
 import { previewSoldierUpdate, saveSoldier } from "./people";
 import {
@@ -414,23 +414,12 @@ export async function executeAction(actor: Actor, value: unknown) {
       case "score.decision.apply":
         result = await applyScoreDecision(tx, actor, payload, expectedVersion);
         break;
-      case "account.role": {
-        const input = z
-          .object({ id: z.string(), role: z.enum(["soldier", "manager"]) })
-          .parse(payload);
-        // Permission first, so a refused caller learns nothing about the account.
-        technical(actor);
-        const [target] = await tx
-          .select()
-          .from(user)
-          .where(eq(user.id, input.id))
-          .for("update");
-        invariant(target, "not_found", "חשבון לא נמצא", 404);
-        currentVersion(target.securityEpoch, expectedVersion);
-        await setRole(actor, input.id, input.role, tx);
-        result = { success: true };
+      case "account.role":
+        result = await changeRole(tx, actor, payload, expectedVersion);
         break;
-      }
+      case "manager.return.keep":
+        result = await keepReturnedBalance(tx, actor, payload, expectedVersion);
+        break;
       case "account.responsibility": {
         const input = z
           .object({

@@ -80,7 +80,10 @@ function seatDraw(
         .map((row) => row.subjectId!)
     ),
   ].sort();
-  const people = state.soldiers.filter((row) => !excluded.includes(row.id));
+  // A manager is not a candidate at all, so never appears in the draw's picture (decision 192).
+  const people = state.soldiers.filter(
+    (row) => !excluded.includes(row.id) && !row.isManager
+  );
   const price = calculatePrice(
     duty.pricing,
     duty.start,

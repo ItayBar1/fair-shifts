@@ -9,6 +9,7 @@ import {
 } from "./performance-corrections";
 import { LotteryButton, LotteryHistory } from "./planning";
 import { ScoreDecisions } from "./score-decisions";
+import { ManagerReturns } from "./manager-returns";
 import { ExecutionPeriods, referredRequests } from "./execution-periods";
 import { TransferOffer } from "./transfers";
 import { SwapOffer } from "./swaps";
@@ -68,6 +69,7 @@ import {
   Notice,
 } from "./ui";
 import { AuditLink } from "./audit";
+import { fairnessTable } from "@/client/fairness";
 export const dutyStart = (d: Row) => str(d.start ?? d.startsAt);
 export const dutyEnd = (d: Row) => str(d.end ?? d.endsAt);
 export const dutyStatus = (d: Row) => d.status ?? d.publicationStatus;
@@ -122,6 +124,15 @@ export function CalendarView({ state }: { state: AppState }) {
       )
       .map((a) => str(a.dutyId))
   );
+  // A manager takes no part in duties (decision 192). "My duties" and "my score"
+  // show only for a manager whose earlier duties are on record, and then show that
+  // history; with none, management measures take their place.
+  const personal =
+    state.actor.role !== "manager" ||
+    state.assignments.some(
+      (a) =>
+        a.soldierId === state.actor.soldierId && str(a.status) !== "cancelled"
+    );
   const visible = state.duties
     .filter(onBoard)
     .filter(
@@ -134,6 +145,15 @@ export function CalendarView({ state }: { state: AppState }) {
   const upcoming = visible.filter(
     (d) => !isCancelled(d) && new Date(dutyEnd(d)) >= new Date()
   ).length;
+  const vacantSeats = activeMonth.reduce(
+    (sum, d) =>
+      sum +
+      dutySlots(d).filter(
+        (slot) =>
+          !activeAssignments(state, d.id).some((a) => a.slotId === slot.id)
+      ).length,
+    0
+  );
   const byDay = new Map<string, { duty: Row; segment: DaySegment }[]>();
   for (const duty of monthDuties)
     for (const { date, segment } of dutyDays(duty))
@@ -148,13 +168,23 @@ export function CalendarView({ state }: { state: AppState }) {
           detail="מפורסמות בלוח היחידתי"
           icon={CalendarDays}
         />
-        <Stat
-          label="התורנויות שלי"
-          value={activeMonth.filter((d) => ownIds.has(d.id)).length}
-          detail="בחודש המוצג"
-          icon={UsersRound}
-          tone="blue"
-        />
+        {personal ? (
+          <Stat
+            label="התורנויות שלי"
+            value={activeMonth.filter((d) => ownIds.has(d.id)).length}
+            detail="בחודש המוצג"
+            icon={UsersRound}
+            tone="blue"
+          />
+        ) : (
+          <Stat
+            label="ממתינים לטיפול"
+            value={handlingCount(state)}
+            detail="במרכז הטיפול"
+            icon={AlertTriangle}
+            tone="blue"
+          />
+        )}
         <Stat
           label="בהמשך הדרך"
           value={upcoming}
@@ -162,17 +192,28 @@ export function CalendarView({ state }: { state: AppState }) {
           icon={Clock3}
           tone="amber"
         />
-        <Stat
-          label="הניקוד שלי"
-          value={num(
-            state.soldiers.find((s) => s.id === state.actor.soldierId)
-              ?.currentScore ??
-              state.soldiers.find((s) => s.id === state.actor.soldierId)?.score
-          )}
-          detail="נקודות שכבר נזקפו"
-          icon={Scale}
-          tone="violet"
-        />
+        {personal ? (
+          <Stat
+            label="הניקוד שלי"
+            value={num(
+              state.soldiers.find((s) => s.id === state.actor.soldierId)
+                ?.currentScore ??
+                state.soldiers.find((s) => s.id === state.actor.soldierId)
+                  ?.score
+            )}
+            detail="נקודות שכבר נזקפו"
+            icon={Scale}
+            tone="violet"
+          />
+        ) : (
+          <Stat
+            label="מקומות פנויים בחודש"
+            value={vacantSeats}
+            detail="בתורנויות שפורסמו"
+            icon={UserX}
+            tone="violet"
+          />
+        )}
       </div>
       <Panel className="calendar-panel">
         <div className="calendar-toolbar">
@@ -209,22 +250,24 @@ export function CalendarView({ state }: { state: AppState }) {
                 onChange={(e) => setQuery(e.target.value)}
               />
             </label>
-            <div className="segmented">
-              <button
-                aria-pressed={!onlyMine}
-                className={!onlyMine ? "selected" : ""}
-                onClick={() => setOnlyMine(false)}
-              >
-                כל היחידה
-              </button>
-              <button
-                aria-pressed={onlyMine}
-                className={onlyMine ? "selected" : ""}
-                onClick={() => setOnlyMine(true)}
-              >
-                התורנויות שלי
-              </button>
-            </div>
+            {personal && (
+              <div className="segmented">
+                <button
+                  aria-pressed={!onlyMine}
+                  className={!onlyMine ? "selected" : ""}
+                  onClick={() => setOnlyMine(false)}
+                >
+                  כל היחידה
+                </button>
+                <button
+                  aria-pressed={onlyMine}
+                  className={onlyMine ? "selected" : ""}
+                  onClick={() => setOnlyMine(true)}
+                >
+                  התורנויות שלי
+                </button>
+              </div>
+            )}
             <div className="segmented">
               <button
                 className={mode === "month" ? "selected" : ""}
@@ -364,34 +407,24 @@ export function DutyList({
 export function FairnessView({ state }: { state: AppState }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
-  const sorted = [...state.soldiers]
-    .filter((s) => !s.deletedAt)
-    .sort(
-      (a, b) =>
-        num(a.currentScore ?? a.score) - num(b.currentScore ?? b.score) ||
-        str(a.name).localeCompare(str(b.name), "he")
-    );
-  const ranked: (Row & { rank: number })[] = sorted.map((s) => ({
-    ...s,
-    rank:
-      sorted.findIndex(
-        (other) =>
-          num(other.currentScore ?? other.score) ===
-          num(s.currentScore ?? s.score)
-      ) + 1,
-  }));
-  const filtered = ranked.filter(
-    (s) => str(s.name).includes(search) && (!filter || s.population === filter)
-  );
+  const { ranked, managers } = fairnessTable(state.soldiers);
+  const matches = (s: Row) =>
+    str(s.name).includes(search) && (!filter || s.population === filter);
+  const filtered = ranked.filter(matches);
+  const outside = managers.filter(matches);
   return (
     <>
       <Notice>
         הטבלה מציגה נקודות מביצועים שכבר הסתיימו. שיבוצים עתידיים נשמרים בנפרד
         ונכללים בבחירת המועמדים.
+        {managers.length > 0 &&
+          " אחראי תורנויות אינו משובץ לתורנויות, ולכן אינו מדורג והיתרה שלו מוקפאת."}
       </Notice>
       <Panel
         title="טבלת הצדק היחידתית"
-        subtitle={`${sorted.length} חיילים · יתרה זהה מקבלת דירוג משותף`}
+        subtitle={`${ranked.length} חיילים · יתרה זהה מקבלת דירוג משותף${
+          managers.length ? ` · ${managers.length} אחראים מחוץ לדירוג` : ""
+        }`}
         actions={
           <div className="toolbar-controls">
             <label className="search">
@@ -416,7 +449,7 @@ export function FairnessView({ state }: { state: AppState }) {
           </div>
         }
       >
-        {filtered.length ? (
+        {filtered.length || outside.length ? (
           <div className="table-scroll">
             <table>
               <thead>
@@ -459,6 +492,40 @@ export function FairnessView({ state }: { state: AppState }) {
                     </td>
                   </tr>
                 ))}
+                {outside.map((s) => (
+                  <tr
+                    key={s.id}
+                    className={`manager-row ${
+                      s.id === state.actor.soldierId ? "personal-row" : ""
+                    }`}
+                  >
+                    <td>
+                      <span className="rank-number" aria-label="ללא דירוג">
+                        —
+                      </span>
+                    </td>
+                    <td>
+                      <span className="person">
+                        <span className="avatar small">
+                          {str(s.name).slice(0, 1)}
+                        </span>
+                        <strong>{str(s.name)}</strong>
+                        {s.id === state.actor.soldierId && (
+                          <Badge tone="info">אני</Badge>
+                        )}
+                        <Badge>אחראי, לא משתתף</Badge>
+                      </span>
+                    </td>
+                    <td>{population(s.population)}</td>
+                    <td>{str(s.rankName ?? s.rank, "—")}</td>
+                    <td>
+                      <strong className="score-number">
+                        {num(s.currentScore ?? s.score)}
+                      </strong>{" "}
+                      <small className="muted">מוקפאת</small>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -472,13 +539,8 @@ export function FairnessView({ state }: { state: AppState }) {
     </>
   );
 }
-export function Dashboard({
-  state,
-  action,
-}: {
-  state: AppState;
-  action: Action;
-}) {
+/** Everything the handling center lists, so the calendar's count always matches it. */
+function handlingSummary(state: AppState) {
   const drafts = state.duties.filter((d) => dutyStatus(d) === "draft");
   const pending = state.constraints.filter((c) => c.status === "pending");
   // A transfer or swap counts only once it waits for a manager; before that it waits for a soldier's consent.
@@ -495,12 +557,14 @@ export function Dashboard({
           "closed",
         ].includes(str(r.status))
   );
-  const transfers = requests.filter((r) => r.type === "transfer");
-  const swaps = requests.filter((r) => r.type === "swap");
   const decisions = rows(state.scoreDecisions).filter(
     (row) => row.status === "pending"
   );
   const referred = referredRequests(state);
+  // A manager who is a soldier again waits for a decision about the balance (decision 192).
+  const returns = rows(state.managerReturns).filter(
+    (row) => row.status === "pending"
+  );
   // Derived from the dates, so a departure shows even before the worker's notice.
   const departed = state.soldiers.filter(
     (s) => !s.deletedAt && s.serviceStatus === "service_ended"
@@ -511,6 +575,57 @@ export function Dashboard({
       (a.needsReview ||
         (Array.isArray(a.needsAttention) && a.needsAttention.length > 0))
   );
+  return {
+    drafts,
+    pending,
+    requests,
+    decisions,
+    referred,
+    returns,
+    departed,
+    concerns,
+  };
+}
+export function handlingCount(state: AppState) {
+  const item = handlingSummary(state);
+  return (
+    item.pending.length +
+    item.requests.length +
+    item.decisions.length +
+    item.referred.length +
+    item.returns.length +
+    item.departed.length +
+    item.concerns.length
+  );
+}
+/** Why a reserved assignment needs a manager's attention, from the codes the server stored. */
+function concernReason(assignment: Row) {
+  const codes = Array.isArray(assignment.needsAttention)
+    ? assignment.needsAttention
+    : [];
+  return codes.includes("manager")
+    ? "החייל מונה לאחראי תורנויות ואינו משובץ עוד. השיבוץ בתוקף עד שיוחלף"
+    : str(assignment.reviewReason, "הנתונים השתנו לאחר השיבוץ");
+}
+export function Dashboard({
+  state,
+  action,
+}: {
+  state: AppState;
+  action: Action;
+}) {
+  const {
+    drafts,
+    pending,
+    requests,
+    decisions,
+    referred,
+    returns,
+    departed,
+    concerns,
+  } = handlingSummary(state);
+  const transfers = requests.filter((r) => r.type === "transfer");
+  const swaps = requests.filter((r) => r.type === "swap");
   return (
     <>
       <div className="stats-grid">
@@ -533,7 +648,8 @@ export function Dashboard({
             pending.length +
             requests.length +
             decisions.length +
-            referred.length
+            referred.length +
+            returns.length
           }
           detail="אילוצים, החלפות, בקשות ותיקוני יתרה"
           icon={Clock3}
@@ -675,9 +791,7 @@ export function Dashboard({
                 <strong>
                   {personName(state, a.soldierId)} — שיבוץ דורש טיפול
                 </strong>
-                <small>
-                  {str(a.reviewReason, "הנתונים השתנו לאחר השיבוץ")}
-                </small>
+                <small>{concernReason(a)}</small>
               </span>
               <ChevronLeft size={18} />
             </Link>
@@ -709,6 +823,7 @@ export function Dashboard({
         </Panel>
       </div>
       {decisions.length > 0 && <ScoreDecisions state={state} action={action} />}
+      {returns.length > 0 && <ManagerReturns state={state} action={action} />}
       <Panel
         title="טיוטות משותפות"
         actions={
@@ -933,9 +1048,18 @@ export function DutyDetail({
                 {assignment ? (
                   <>
                     <Status value={assignment.status} />
-                    {assignment.needsReview === true && (
+                    {(assignment.needsReview === true ||
+                      (Array.isArray(assignment.needsAttention) &&
+                        assignment.needsAttention.length > 0)) && (
                       <Badge tone="warning">דורש טיפול</Badge>
                     )}
+                    {manager &&
+                      Array.isArray(assignment.needsAttention) &&
+                      assignment.needsAttention.includes("manager") && (
+                        <small className="muted">
+                          {concernReason(assignment)}
+                        </small>
+                      )}
                     {manager && <AuditLink id={assignment.id} />}
                   </>
                 ) : (

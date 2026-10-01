@@ -89,11 +89,12 @@ test("constraint round: direct declaration, shared decision, stale approval, clo
     first.getByText(/^תזכורת סגירה למי שטרם הגיש ב־.*20:00$/)
   ).toBeVisible();
 
-  // The worker's maintenance run sends the opening notice once.
+  // The worker's maintenance run sends the opening notice once, to the soldier
+  // alone: a manager takes no part in duties (decision 192).
   await unitTransaction((tx) => refreshRoundNotices(tx));
   await unitTransaction((tx) => refreshRoundNotices(tx));
   await first.reload();
-  await expect(first.getByText("הודעת פתיחה נשלחה ל־3")).toBeVisible();
+  await expect(first.getByText("הודעת פתיחה נשלחה ל־1")).toBeVisible();
 
   // "No constraints" completes the submission without manager review.
   await member.goto("/notifications");

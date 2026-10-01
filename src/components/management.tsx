@@ -293,6 +293,7 @@ export function SoldiersView({
                           {str(s.name).slice(0, 1)}
                         </span>
                         <strong>{str(s.name)}</strong>
+                        {s.isManager === true && <Badge>אחראי תורנויות</Badge>}
                       </span>
                     </td>
                     <td dir="ltr">{str(s.personalNumber)}</td>
