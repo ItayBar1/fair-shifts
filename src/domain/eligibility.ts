@@ -17,6 +17,7 @@ import type {
   EligibilityContext,
   EligibilityReason,
   EligibilityResult,
+  Gender,
   InstantRange,
   Population,
   RankClause,
@@ -24,6 +25,25 @@ import type {
   Soldier,
   SpecificApproval,
 } from "./types";
+
+/** Every gender value the unit records. */
+export const allGenders: readonly Gender[] = ["male", "female", "other"];
+
+/**
+ * The genders a duty or role really limits to, or undefined when there is no
+ * gender condition (decision 198). An empty list and a list with every gender
+ * are the same: gender decides nothing, so a soldier without a gender is not
+ * blocked. Saved lists are normalized to empty, so a gender value added later
+ * does not turn an older "all genders" choice into a real condition.
+ */
+export function genderCondition<T extends string>(
+  genders?: readonly T[]
+): T[] | undefined {
+  if (!genders?.length) return undefined;
+  if (allGenders.every((gender) => genders.includes(gender as unknown as T)))
+    return undefined;
+  return [...new Set(genders)];
+}
 
 export const MANAGER_BLOCKER_MESSAGE = "אחראי תורנויות אינו משובץ לתורנויות";
 
@@ -288,10 +308,11 @@ export function evaluateEligibility(
         "אוכלוסיית השירות אינה מתאימה לכל התורנות",
         reference
       );
-    if (requirements.genders?.length) {
+    const genders = genderCondition(requirements.genders);
+    if (genders) {
       if (!soldier.gender)
         block("gender", "מידע חסר: מגדר נדרש לתורנות", reference);
-      else if (!requirements.genders.includes(soldier.gender))
+      else if (!genders.includes(soldier.gender))
         block("gender", "תנאי המגדר אינו מתקיים", reference);
     }
     for (const capability of requirements.capabilityIds ?? []) {

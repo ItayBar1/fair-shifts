@@ -68,6 +68,7 @@ const labels: Record<string, string> = {
   "duty.update.publish": "עדכון ופרסום תורנות",
   "duty.update.draft": "החלת שינוי בטיוטה",
   "duty.cancel": "ביטול תורנות",
+  "assignment.gender_flag.clear": "ניקוי סימון מגדר שנבע מתנאי עם כל המגדרים",
   "lottery.draw": "הגרלה",
   "planning.create": "התחלת תכנון תקופה",
   "planning.complete": "סיום תכנון תקופה",

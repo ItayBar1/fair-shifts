@@ -18,6 +18,7 @@ import {
   ConditionToggles,
   capabilityOptions,
   describeWindow,
+  genderHint,
   genders,
 } from "./eligibility-conditions";
 
@@ -283,6 +284,7 @@ export function CompositionEditor({
             <div className="subsection">
               <ConditionToggles
                 legend={`מגדר מותר לתפקיד ${role.name || index + 1}`}
+                hint={genderHint}
                 options={genders}
                 value={role.requirements.genders ?? []}
                 onChange={(value) =>
