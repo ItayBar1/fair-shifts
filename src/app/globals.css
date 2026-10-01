@@ -698,11 +698,15 @@ select {
 }
 .execution-segment {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr auto;
   gap: 12px;
-  align-items: end;
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
+}
+.segment-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  align-items: end;
 }
 .check-field {
   display: flex;
@@ -785,6 +789,110 @@ select {
 .filter-note {
   font-size: 12px;
   margin: 0 0 12px;
+}
+.soldier-picker {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.picker-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.picker-label {
+  font-size: 13px;
+}
+.picker-current {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  border-color: #d9e2e5;
+  border-radius: 7px;
+  padding: 9px 11px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: start;
+}
+.picker-current span {
+  overflow-wrap: anywhere;
+}
+.picker-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+.picker-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.picker-tools .search {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.picker-tools .search input {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+.picker-filters {
+  display: grid;
+  gap: 12px;
+  border-radius: 8px;
+  background: var(--paper);
+  padding: 12px;
+  min-width: 0;
+}
+.picker-summary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.picker-list {
+  display: grid;
+  align-content: start;
+  max-height: min(16rem, 45vh);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.picker-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.picker-option:last-child {
+  border-bottom: 0;
+}
+.picker-option:has(input:checked) {
+  background: #eef7f6;
+}
+.picker-option:has(input:focus-visible) {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+.picker-option input {
+  accent-color: var(--teal);
+  flex: none;
+}
+.picker-number {
+  font-size: 12px;
 }
 .search {
   display: flex;
@@ -1446,7 +1554,7 @@ tbody tr:last-child td {
     flex-direction: column;
   }
   .form-grid,
-  .execution-segment {
+  .segment-times {
     grid-template-columns: 1fr;
   }
   .hide-mobile {

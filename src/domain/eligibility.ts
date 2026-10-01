@@ -17,6 +17,7 @@ import type {
   EligibilityContext,
   EligibilityReason,
   EligibilityResult,
+  InstantRange,
   Population,
   RankClause,
   Requirements,
@@ -26,7 +27,10 @@ import type {
 
 export const MANAGER_BLOCKER_MESSAGE = "אחראי תורנויות אינו משובץ לתורנויות";
 
-export function populationAt(soldier: Soldier, at: string): Population {
+export function populationAt(
+  soldier: Pick<Soldier, "service" | "populationHistory">,
+  at: string
+): Population {
   const date = instant(at).toISODate()!;
   const history = [...soldier.populationHistory];
   if (soldier.service.permanentFrom)
@@ -79,7 +83,7 @@ export function populationMoves(before: Soldier, after: Soldier): boolean {
 }
 
 export function rankAt(
-  soldier: Soldier,
+  soldier: Pick<Soldier, "rankHistory">,
   at: string
 ): EffectiveRank | undefined {
   const date = instant(at).toISODate()!;
@@ -163,9 +167,13 @@ export function serviceSummary(
   };
 }
 
-function populationFits(
-  soldier: Soldier,
-  duty: Duty,
+/**
+ * Whether the soldier's population is one of `populations` over the whole range:
+ * at its start and at every dated change inside it. Shared with the soldier picker.
+ */
+export function populationFits(
+  soldier: Pick<Soldier, "service" | "populationHistory">,
+  duty: InstantRange,
   populations: Population[]
 ): boolean {
   const target = interval(duty);

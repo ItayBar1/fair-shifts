@@ -133,7 +133,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page.getByRole("button", { name: "יצירת טיוטה" }).click();
   await page.getByRole("link").filter({ hasText: "שמירת בדיקה" }).click();
   await page.getByRole("button", { name: "שיבוץ ידני", exact: true }).click();
-  await page.getByLabel("בחירת חייל").selectOption({ label: "חייל סינתטי" });
+  await page.getByRole("radio", { name: /חייל סינתטי/ }).check();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "שמירה", exact: true })
@@ -515,7 +515,16 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page.getByRole("button", { name: "יצירת טיוטה" }).click();
   await page.getByRole("link").filter({ hasText: "בדיקת חריג ידני" }).click();
   await page.getByRole("button", { name: "שיבוץ ידני", exact: true }).click();
-  await page.getByLabel("בחירת חייל").selectOption({ label: "חייל סינתטי" });
+  // The duty asks for rank A, so the picker opens filtered to it. The soldier is
+  // already rank B on that date: found only once the manager clears the filter,
+  // and the server still asks for the rank exception (decision 193).
+  const picker = page.getByRole("dialog");
+  await expect(picker.getByRole("radio", { name: /חייל סינתטי/ })).toHaveCount(
+    0
+  );
+  await picker.getByRole("button", { name: /^סינון/ }).click();
+  await picker.getByRole("button", { name: "ניקוי הסינונים" }).click();
+  await picker.getByRole("radio", { name: /חייל סינתטי/ }).check();
   // The saved amount is only suggested: no call-up until the manager marks one.
   await expect(page.getByLabel("הזנקה", { exact: true })).toHaveValue("no");
   await expect(page.getByLabel("הזנקה: סכום")).toHaveValue("3");
