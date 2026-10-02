@@ -406,6 +406,7 @@ export function ActionDialog({
   transform,
   description,
   danger = false,
+  submitLabel,
 }: {
   title: string;
   buttonLabel?: string;
@@ -417,6 +418,7 @@ export function ActionDialog({
   transform?: (v: Record<string, unknown>) => Record<string, unknown>;
   description?: string;
   danger?: boolean;
+  submitLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -437,6 +439,7 @@ export function ActionDialog({
           {description && <p className="form-description">{description}</p>}
           <Form
             fields={fields}
+            submitLabel={submitLabel}
             onSubmit={async (values) => {
               await action(
                 type,

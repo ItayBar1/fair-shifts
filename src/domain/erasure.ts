@@ -96,6 +96,10 @@ export const recordPolicies: Record<string, ErasurePolicy> = {
   score_preview: { action: "keep", why: "תצוגה מקדימה זמנית" },
   seat_execution: { action: "keep", why: "היסטוריית ביצוע" },
   settings: { action: "delete", why: "העדפות אישיות של חשבון שנמחק" },
+  technical_email_change: {
+    action: "keep",
+    why: "בקשה להחלפת כתובת של החשבון הטכני, שאינו חייל ואינו נמחק; אחרי הטיפול נשארים סטטוס וסיבה בלבד",
+  },
 };
 
 const object = (value: unknown): Json | undefined =>
