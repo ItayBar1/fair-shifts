@@ -200,6 +200,25 @@ test("several publications reach the soldier as one notice that counts them and 
     expect(sent[0].text).toContain(`• ${name} — `);
   expect(sent[0].text).toContain(`/duties/${first}`);
   expect(sent[0].text).toContain(`/my-assignments?mail=${window.id}`);
+  // Follow the real notice, consume visit markers, then follow the actual
+  // delivered mail. Its highlights persist independently of the visit cursor.
+  await member
+    .locator("article")
+    .getByRole("link", { name: "פתיחת הפרטים" })
+    .click();
+  await expect(
+    member.getByRole("heading", { name: "השיבוצים הקרובים שלי" })
+  ).toBeVisible();
+  await expect(member.getByText("חדש", { exact: true })).toHaveCount(4);
+  await member.reload();
+  await expect(member.locator(".my-assignment")).toHaveCount(4);
+  await expect(member.getByText("חדש", { exact: true })).toHaveCount(0);
+  const mailPath = new URL(
+    sent[0].text.match(/https?:\/\/\S+\/my-assignments\?mail=[\w-]+/)![0]
+  );
+  await member.goto(`${mailPath.pathname}${mailPath.search}`);
+  await expect(member.getByText("במייל הזה", { exact: true })).toHaveCount(4);
+  await expect(member.getByText("חדש", { exact: true })).toHaveCount(0);
 });
 
 test("a duty starting within two hours keeps its own notice, apart from the window's", async ({

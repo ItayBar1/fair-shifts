@@ -234,6 +234,9 @@ describe("one mail and one site notice for several assignments", () => {
       expect(sent[0].text).not.toContain(hidden);
     // The mail counts once, and the window is shut.
     expect(await digests()).toMatchObject([{ status: "sent" }]);
+    expect((await digests())[0].dutyIds.sort()).toEqual(
+      [first.id, second.id, third.id].sort()
+    );
     const [quota] = await db
       .select()
       .from(emailQuota)
@@ -375,6 +378,9 @@ describe("one mail and one site notice for several assignments", () => {
     expect(sent[0].text).toContain("תורנות נשמרת");
     expect(sent[0].text).toContain(`/duties/${kept.id}`);
     expect(sent[0].text).not.toContain("תורנות שבוטלה");
+    expect(
+      (await digests()).find((mail) => mail.status === "sent")?.dutyIds
+    ).toEqual([kept.id]);
 
     // A window with only the cancelled duty has nothing to say, and the mail is not sent.
     const lone = await publishedDuty("תורנות יחידה שבוטלה", 6 * DAY);

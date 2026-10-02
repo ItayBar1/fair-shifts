@@ -45,6 +45,10 @@ export const user = pgTable(
     // Set once, when the first session is created. An imported soldier who
     // ever signed in has activity, so import restore keeps the record.
     firstSignInAt: timestamp("first_sign_in_at", { withTimezone: true }),
+    // The personal assignment feed advances only through events included in a read.
+    assignmentFeedCursor: bigint("assignment_feed_cursor", { mode: "number" })
+      .notNull()
+      .default(0),
     ...dates(),
   },
   (t) => [
@@ -154,6 +158,8 @@ export const emailOutbox = pgTable(
     title: text("title").notNull(),
     body: text("body").notNull(),
     href: text("href"),
+    // Used by the personal page to highlight only this account's mail items.
+    dutyIds: jsonb("duty_ids").$type<string[]>().notNull().default([]),
     encryptedSecret: text("encrypted_secret"),
     destination: text("destination"),
     status: text("status").notNull().default("pending"),

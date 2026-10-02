@@ -114,17 +114,24 @@ export async function buildWindowMail(
   const facts = await dutyFacts(tx, account.soldierId, [
     ...new Set(events.map((event) => event.dutyId)),
   ]);
-  return digestMail(
-    netGroups(
-      events.map((event) => ({
-        dutyId: event.dutyId,
-        change: event.change as "new" | "updated" | "cancelled",
-      })),
-      facts,
-      now,
-      false
-    ),
-    siteBase(),
-    windowId
+  const groups = netGroups(
+    events.map((event) => ({
+      dutyId: event.dutyId,
+      change: event.change as "new" | "updated" | "cancelled",
+    })),
+    facts,
+    now,
+    false
   );
+  const mail = digestMail(groups, siteBase(), windowId);
+  // Freeze the same duties as the actual mail, including cancellations and
+  // excluding publications cancelled within this window (decision 202).
+  return mail
+    ? {
+        ...mail,
+        dutyIds: Object.values(groups)
+          .flat()
+          .map((line) => line.dutyId),
+      }
+    : null;
 }

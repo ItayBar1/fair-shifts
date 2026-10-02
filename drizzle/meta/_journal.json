@@ -78,6 +78,13 @@
       "when": 1790890380877,
       "tag": "0010_assignment_mail_windows",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790936175385,
+      "tag": "0011_personal_assignment_feed",
+      "breakpoints": true
     }
   ]
 }

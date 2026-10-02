@@ -49,6 +49,7 @@ const people: Record<
 const screens: Record<Key, { path: string; title: string }[]> = {
   soldier: [
     { path: "/calendar", title: "לוח התורנויות" },
+    { path: "/my-assignments", title: "השיבוצים שלי" },
     { path: "/fairness", title: "טבלת הצדק" },
     { path: "/constraints", title: "האילוצים שלי" },
     { path: "/requests", title: "החלפות ובקשות" },
@@ -327,6 +328,7 @@ test.describe("what a role may not open", () => {
     ["manager", "/constraints"],
     ["otherManager", "/technical/permissions"],
     ["technical", "/calendar"],
+    ["technical", "/my-assignments"],
     ["technical", "/fairness"],
     ["technical", "/manage"],
     ["technical", "/constraints"],

@@ -133,11 +133,17 @@ export function Stat({
     <div className="stat">{content}</div>
   );
 }
-export function CalendarView({ state }: { state: AppState }) {
+export function CalendarView({
+  state,
+  initialOnlyMine = false,
+}: {
+  state: AppState;
+  initialOnlyMine?: boolean;
+}) {
   const router = useRouter();
   const [controls, setControls] = useState<CalendarControls>({
     mode: "month",
-    onlyMine: false,
+    onlyMine: initialOnlyMine,
   });
   const { onlyMine, mode, selection } = controls;
   const [query, setQuery] = useState("");

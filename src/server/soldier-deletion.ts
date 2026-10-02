@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { DbTransaction } from "./db";
 import {
   assignments,
+  assignmentFeed,
   commandResults,
   duties,
   records,
@@ -586,6 +587,10 @@ export async function eraseSoldier(
   const deletedAt = options.restored ? new Date(options.restored.at) : now;
 
   await vacateSeats(tx, vacated, soldierId);
+  // The private feed is no longer useful after account erasure.
+  await tx
+    .delete(assignmentFeed)
+    .where(eq(assignmentFeed.soldierId, soldierId));
   await closeOpenRequests(tx, soldierId, vacated);
   await closeManagerReturns(tx, actor, soldierId, at);
 

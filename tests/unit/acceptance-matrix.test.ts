@@ -38,6 +38,12 @@ const cells: { name: string; evidence: Evidence[] }[] = [
 ];
 
 describe("the numbers", () => {
+  it("reads the same stories and scenarios from Windows and Unix line endings", () => {
+    const unix = prd.replace(/\r\n/g, "\n");
+    const parsed = parsePrd(unix);
+    expect(parsed.stories.size).toBeGreaterThanOrEqual(64);
+    expect(parsePrd(unix.replace(/\n/g, "\r\n"))).toEqual(parsed);
+  });
   it("lists the stories and the scenarios of the PRD, and no others", () => {
     const ids = (record: object) =>
       Object.keys(record)
@@ -167,6 +173,8 @@ describe("the rendered document", () => {
       ...config,
       parser: "markdown",
     });
-    expect(readFileSync(file, "utf8")).toBe(expected);
+    // Git can materialize the commit snapshot with CRLF on Windows. Compare
+    // every character of the generated content after normalizing that EOL.
+    expect(readFileSync(file, "utf8").replace(/\r\n/g, "\n")).toBe(expected);
   });
 });

@@ -8,7 +8,7 @@ export function parsePrd(prd: string) {
     const start = prd.indexOf(from);
     const end = prd.indexOf(to, start);
     if (start < 0 || end < 0) throw new Error(`Missing section ${from}`);
-    return prd.slice(start, end).split("\n");
+    return prd.slice(start, end).split(/\r?\n/);
   };
   const stories = new Map<number, string>();
   for (const line of between("## 4. סיפורי משתמש", "## 5.")) {

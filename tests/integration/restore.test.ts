@@ -21,6 +21,7 @@ import {
   vi,
 } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client } from "pg";
 import { db, pool, unitTransaction } from "../../src/server/db";
 import {
@@ -70,6 +71,7 @@ import {
   RestoreFailure,
   dropDatabase,
   locateBackup,
+  migrationsFolder,
   promoteRestore,
   readDrillStatus,
   recordDrill,
@@ -528,6 +530,20 @@ describe("a restore drill", () => {
 
   it("brings a backup of an older schema up to this version's", async () => {
     await seed();
+    const mailId = randomUUID();
+    const mailDuties = [randomUUID(), randomUUID()];
+    await db.insert(emailOutbox).values({
+      id: mailId,
+      recipientAccountId: people[0].id,
+      eventKey: `digest:${mailId}`,
+      kind: "publication-digest",
+      title: "שני שיבוצים סינתטיים",
+      body: mailDuties
+        .map((id) => `https://example.invalid/duties/${id}`)
+        .join("\n"),
+      status: "sent",
+      expiresAt: new Date(Date.now() + 86400_000),
+    });
     await drainDeletionLog(logConfig());
     // The database as it was before migration 0008 (which added the index below) and everything after it.
     const journal = JSON.parse(
@@ -543,37 +559,50 @@ describe("a restore drill", () => {
       )
     ).rows;
     expect(removed.length).toBeGreaterThanOrEqual(1);
-    // Migration 0010 created tables, which are dropped here and rebuilt below.
-    const windowTables = await readFile(
-      "./drizzle/0010_assignment_mail_windows.sql",
-      "utf8"
-    );
-    await pool.query("drop index auth_account_user_provider");
-    await pool.query(
-      "drop table assignment_mail_event, assignment_mail_window"
-    );
-    await pool.query(
-      "delete from drizzle.__drizzle_migrations where created_at >= $1",
-      [since]
-    );
+    // A backup from before 0008 must omit later schema objects as well as
+    // migration records. Otherwise replaying 0010/0011 would create the mail windows and feed twice.
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("drop trigger duty_feed_change on duties");
+      await client.query("drop trigger assignment_feed_change on assignments");
+      await client.query("drop function fs_duty_feed_change()");
+      await client.query("drop function fs_assignment_feed_change()");
+      await client.query("drop function fs_assignment_snapshot(jsonb, jsonb)");
+      await client.query("drop table assignment_feed");
+      await client.query(
+        "drop table assignment_mail_event, assignment_mail_window"
+      );
+      await client.query("alter table email_outbox drop column duty_ids");
+      await client.query(
+        "alter table auth_user drop column assignment_feed_cursor"
+      );
+      await client.query("drop index auth_account_user_provider");
+      await client.query(
+        "delete from drizzle.__drizzle_migrations where created_at >= $1",
+        [since]
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
     try {
       await takeBackup();
     } finally {
-      for (const row of removed)
-        await pool.query(
-          "insert into drizzle.__drizzle_migrations (id, hash, created_at) values ($1, $2, $3)",
-          [row.id, row.hash, row.created_at]
-        );
-      await pool.query(
-        "create unique index auth_account_user_provider on auth_account (user_id, provider_id)"
-      );
-      for (const statement of windowTables.split("--> statement-breakpoint"))
-        await pool.query(statement);
+      await migrate(db, { migrationsFolder: migrationsFolder() });
     }
     const { report, database } = await drill({ keep: true });
     expect(report.outcome).toBe("passed");
     expect(report.schema.inBackup).toBe(report.schema.inApp - removed.length);
     const { rows } = await dumpOf(database!);
+    expect(
+      (
+        await rows(`select duty_ids from email_outbox where id = '${mailId}'`)
+      )[0].duty_ids.sort()
+    ).toEqual(mailDuties.sort());
     expect(
       await rows(
         "select 1 from pg_indexes where indexname = 'auth_account_user_provider'"
