@@ -11,6 +11,7 @@ import {
   personName,
   displayDate,
 } from "@/client/types";
+import { runDrafts } from "@/client/publish-drafts";
 import { ActionDialog, Form, Notice, Panel, Empty } from "./ui";
 import { callUpFields, callUpValue } from "./call-up";
 export function LotteryButton({
@@ -82,6 +83,24 @@ function missingReason(state: AppState, run: Row, slotId: string) {
     .join(" · ");
   const label = labels[str(attempt.status)] ?? str(attempt.status);
   return reasons ? `${label}: ${reasons}` : label;
+}
+/** From a finished run to the publish screen with the run's drafts marked (decision 197). */
+function RunPublishLink({ state, run }: { state: AppState; run: Row }) {
+  const [now] = useState(() => Date.now());
+  if (run.status !== "completed") return null;
+  const open = runDrafts(run, state.duties, now);
+  return open.length ? (
+    <p>
+      <Link className="btn primary" href={`/manage/publish/run/${run.id}`}>
+        פרסום הטיוטות של הריצה
+      </Link>{" "}
+      {open.length === 1
+        ? "טיוטה אחת מהריצה עדיין לא פורסמה"
+        : `${open.length} טיוטות מהריצה עדיין לא פורסמו`}
+    </p>
+  ) : (
+    <p>אין בריצה טיוטות שממתינות לפרסום.</p>
+  );
 }
 function MissingSeats({ state, run }: { state: AppState; run: Row }) {
   const missing = rows(run.missing);
@@ -364,6 +383,7 @@ export function PeriodPlanning({
                 </p>
               ) : null}
               <MissingSeats state={state} run={run} />
+              <RunPublishLink state={state} run={run} />
               {running === run.id ? (
                 <button
                   className="btn secondary"

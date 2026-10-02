@@ -22,6 +22,7 @@ import {
   assignDuty,
   publishDuty,
 } from "./duty-service";
+import { previewPublishDrafts, publishDrafts } from "./duty-publishing";
 import { previewScore, applyScore } from "./scoring";
 import {
   previewPerformanceCorrection,
@@ -287,6 +288,12 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "duty.publish":
         result = await publishDuty(tx, actor, payload, expectedVersion);
+        break;
+      case "duty.publish.preview":
+        result = await previewPublishDrafts(tx, actor, payload);
+        break;
+      case "duty.publish.batch":
+        result = await publishDrafts(tx, actor, payload);
         break;
       case "duty.change.create":
         result = await createDutyChange(tx, actor, payload, expectedVersion);

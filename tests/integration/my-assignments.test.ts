@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { db, pool } from "../../src/server/db";
+import { db, pool, unitTransaction } from "../../src/server/db";
 import {
   assignments,
   balances,
@@ -16,6 +16,10 @@ import {
   type Actor,
 } from "../../src/server/auth/accounts";
 import { readMyAssignments } from "../../src/server/my-assignments";
+import {
+  previewPublishDrafts,
+  publishDrafts,
+} from "../../src/server/duty-publishing";
 import { assignment, duty, soldier } from "../fixtures";
 
 if (
@@ -41,13 +45,13 @@ async function person(role: Actor["role"] = "soldier"): Promise<Actor> {
   const row = await createInvitedAccount({ name, role, email, soldierId });
   return { id: row.id, name, role, soldierId, securityEpoch: 1 };
 }
-async function makeDuty(actor: Actor, published = false) {
+async function makeDuty(actor: Actor, published = false, daysAhead = 2) {
   const typeId = randomUUID(),
     dutyId = randomUUID(),
     slotId = randomUUID(),
     assignmentId = randomUUID();
-  const start = new Date(Date.now() + 2 * 86400_000).toISOString();
-  const end = new Date(Date.now() + 3 * 86400_000).toISOString();
+  const start = new Date(Date.now() + daysAhead * 86400_000).toISOString();
+  const end = new Date(Date.now() + (daysAhead + 1) * 86400_000).toISOString();
   const data = {
     ...duty({
       id: dutyId,
@@ -99,6 +103,44 @@ beforeEach(async () => {
 afterAll(async () => pool.end());
 
 describe("private assignment feed", () => {
+  it("records batch publication and highlights every duty in the recipient's mail", async () => {
+    const actor = await person();
+    const manager = await person("manager");
+    const first = await makeDuty(actor);
+    const second = await makeDuty(actor, false, 4);
+    const dutyIds = [first.dutyId, second.dutyId];
+    expect((await readMyAssignments(actor)).current).toEqual([]);
+    const preview = await unitTransaction((tx) =>
+      previewPublishDrafts(tx, manager, { dutyIds })
+    );
+    expect(preview.ready).toBe(2);
+    await unitTransaction((tx) =>
+      publishDrafts(tx, manager, {
+        dutyIds,
+        token: preview.token,
+        confirmed: true,
+      })
+    );
+    expect((await readMyAssignments(actor)).current).toMatchObject([
+      { dutyId: first.dutyId, badge: "new" },
+      { dutyId: second.dutyId, badge: "new" },
+    ]);
+    const mailId = randomUUID();
+    await db.insert(emailOutbox).values({
+      id: mailId,
+      recipientAccountId: actor.id,
+      eventKey: randomUUID(),
+      kind: "publication",
+      title: "שני שיבוצים",
+      body: "שני שיבוצים",
+      dutyIds,
+      expiresAt: new Date(Date.now() + 86400_000),
+    });
+    expect((await readMyAssignments(actor, mailId)).current).toMatchObject([
+      { dutyId: first.dutyId, highlighted: true, badge: undefined },
+      { dutyId: second.dutyId, highlighted: true, badge: undefined },
+    ]);
+  });
   it("records publication, advances the cursor once, and keeps later events for another window", async () => {
     const actor = await person();
     const firstDuty = await makeDuty(actor);

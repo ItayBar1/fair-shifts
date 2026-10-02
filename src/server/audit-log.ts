@@ -61,6 +61,7 @@ const labels: Record<string, string> = {
   "duty.create": "יצירת תורנות",
   "duty.assign": "שיבוץ ידני",
   "duty.publish": "פרסום תורנות",
+  "duty.publish.batch": "פרסום כמה תורנויות",
   "duty.change.create": "פתיחת הצעת שינוי",
   "duty.change.save": "שמירת הצעת שינוי",
   "duty.change.rules": "עריכת הרכב ותמחור בהצעת שינוי",
@@ -329,6 +330,15 @@ export function projectAudit(
         case "duty.assign":
           add("נקודות", envelope.points);
           break;
+        case "duty.publish.batch": {
+          const ids = (key: string) =>
+            Array.isArray(envelope[key]) ? envelope[key].map(String) : [];
+          add("תורנויות שפורסמו", ids("dutyIds").length);
+          add("נשארו טיוטה", ids("blockedIds").length);
+          for (const dutyRef of [...ids("dutyIds"), ...ids("blockedIds")])
+            refs.add(dutyRef);
+          break;
+        }
         case "duty.change.save":
         case "duty.change.rules":
         case "duty.change.create":
