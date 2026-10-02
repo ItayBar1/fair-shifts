@@ -77,6 +77,7 @@ const screens: Record<Key, { path: string; title: string }[]> = {
   technical: [
     { path: "/technical", title: "תמונת מצב" },
     { path: "/technical/permissions", title: "חשבונות והרשאות" },
+    { path: "/technical/account", title: "החשבון שלי" },
     { path: "/technical/locked", title: "חשבונות נעולים" },
     { path: "/technical/recovery", title: "שחזור גישה" },
     { path: "/technical/mail", title: "משלוחי מייל" },
@@ -322,6 +323,7 @@ test.describe("what a role may not open", () => {
     ["soldier", "/technical"],
     ["manager", "/technical"],
     ["manager", "/technical/backups"],
+    ["manager", "/technical/account"],
     ["manager", "/constraints"],
     ["otherManager", "/technical/permissions"],
     ["technical", "/calendar"],

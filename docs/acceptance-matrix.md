@@ -4,7 +4,7 @@
 
 **איך קוראים.** ״מכוסה״: לכל סעיף בסיפור או בתרחיש יש בדיקה אוטומטית. ״חלקי״ ו״פתוח״: השורה ״חוסר״ אומרת מה אין לו בדיקה, ובפתוח גם איזה כרטיס יסגור זאת. בדיקה נקראת לפי הקובץ וחלק משמה, כך שבדיקה שנמחקה או ששמה שונה שוברת את הבדיקה של המפה. תוצאות מול ספק, שרת ופיילוט מופיעות בנפרד בשורה ״ספקים, שרת ופיילוט״: ״נבדק״ מתועד ב[מצב הפרויקט](../config/memory/project-state.md), ״טרם נבדק״ עדיין לא נעשה. מעבר בדיקה אוטומטית אינו הוכחה שקיימת הפעלה בשרת או בפיילוט.
 
-סיפורים: 64 במפה: 64 מכוסים, 0 חלקיים, 0 פתוחים. תרחישי קבלה: 63 במפה: 61 מכוסים, 1 חלקיים, 1 פתוחים.
+סיפורים: 65 במפה: 65 מכוסים, 0 חלקיים, 0 פתוחים. תרחישי קבלה: 64 במפה: 62 מכוסים, 1 חלקיים, 1 פתוחים.
 
 ## מה עדיין פתוח
 
@@ -369,6 +369,13 @@
 - ספקים, שרת ופיילוט:
   - נבדק: Drive אמיתי: גיבוי יומי וידני, הרשאה שבוטלה, כשל רשת, שמירת 30 (#37)
   - טרם נבדק: Drive אמיתי: שחזור מגיבוי שהורד ומחיקות אחרי שחזור, ותרגיל בשרת (#37)
+
+### 65. כמנהל טכני, אני רוצה להחליף את כתובת המייל של החשבון שלי באימות משתי התיבות, וכשאין גישה לכתובת הנוכחית להחליף אותה דרך… — מכוסה
+
+- [technical-email.test.ts](../tests/integration/technical-email.test.ts): `needs both: one right code and one wrong code changes nothing and says nothing about which was wrong`; `moves the account: new address verified, connections and the Google link gone, recovery codes kept, and recorded with the reason`; `moves the account with the code from the new address, ends access and replaces the recovery codes`
+- [technical-email-change.spec.ts](../tests/e2e/technical-email-change.spec.ts): `the technical account moves itself to a new address with a code from each mailbox`
+- ספקים, שרת ופיילוט:
+  - טרם נבדק: החלפת כתובת החשבון הטכני ב־staging לחשבון הייעודי, ומשלוח קוד אמיתי לשתי הכתובות (#90)
 
 ## תרחישי קבלה
 
@@ -747,6 +754,14 @@
 - [backups.spec.ts](../tests/e2e/backups.spec.ts): `the restore drill row shows how long ago a backup was restored and checked end to end`
 - ספקים, שרת ופיילוט:
   - טרם נבדק: Drive אמיתי: שחזור מגיבוי שהורד ומחיקות אחרי שחזור, ותרגיל בשרת (#37)
+
+### 64. החלפת כתובת המנהל הטכני — כניסה; הרשאות; מקביליות; עברית ונייד — מכוסה
+
+- [technical-email.test.ts](../tests/integration/technical-email.test.ts): `sends one code to each mailbox, stores only digests and changes nothing yet`; `refuses the current address and an address of another account`; `allows one request a minute and lets a new one cancel the earlier one and its mail`; `serializes two requests made together: one succeeds, the other waits a minute`; `needs both: one right code and one wrong code changes nothing and says nothing about which was wrong`; `cancels the request after five mistakes, even for the right codes, and the unsent codes with it`; `does not accept an expired request`; `does not accept a request opened before the account's access changed`; `moves the account: new address verified, connections and the Google link gone, recovery codes kept, and recorded with the reason`; `signs in with a code at the new address only`; `lets only one of two confirmations made together succeed`; `stops when the address was given to someone else after the request`; `is refused to a manager and a soldier, also when called directly`; `sends a code to the new address only and needs a reason`; `works only on the technical account, and its errors are in English`; `moves the account with the code from the new address, ends access and replaces the recovery codes`; `counts wrong codes and cancels after five`; `keeps the two routes apart: a request of one is not confirmed by the other`
+- [google-sign-in.test.ts](../tests/integration/google-sign-in.test.ts): `drops the Google link, refuses the old Google account and links the new address afresh`
+- [technical-email-change.spec.ts](../tests/e2e/technical-email-change.spec.ts): `the technical account moves itself to a new address with a code from each mailbox`; `a manager has no such screen and the server refuses the route`
+- ספקים, שרת ופיילוט:
+  - טרם נבדק: החלפת כתובת החשבון הטכני ב־staging לחשבון הייעודי, ומשלוח קוד אמיתי לשתי הכתובות (#90)
 
 ## תפקידים ומצבים
 

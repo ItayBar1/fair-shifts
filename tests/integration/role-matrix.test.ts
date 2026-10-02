@@ -103,6 +103,9 @@ const access: Record<string, Access> = {
   // Only the technical account grants a role or asks for a backup (scenario 45).
   "account.role": "technical",
   "backup.request": "technical",
+  // The technical account moves its own address with a code from each mailbox (decision 204).
+  "technical.email.request": "technical",
+  "technical.email.confirm": "technical",
   // A manager releases a soldier and the technical account a manager.
   "account.unlock": "staff",
   "account.responsibility": "staff",

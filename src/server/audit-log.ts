@@ -121,6 +121,8 @@ const labels: Record<string, string> = {
   "restore.deletions.acknowledge": "פתיחת שחזור בלי יומן מחיקות מאומת",
   "account.email.request": "בקשה לשינוי מייל",
   "account.email.confirm": "אישור שינוי מייל",
+  "technical.email.request": "בקשה להחלפת כתובת החשבון הטכני",
+  "technical.email.confirm": "החלפת כתובת החשבון הטכני",
   "role:manager": "הענקת הרשאת אחראי",
   "role:soldier": "הסרת הרשאת אחראי",
   unlock: "שחרור חשבון נעול",
@@ -226,7 +228,8 @@ function accountCategory(action: string) {
     action.startsWith("account.") ||
     action === "unlock" ||
     action === "recovery-code" ||
-    action === "technical.server-recovery"
+    action === "technical.server-recovery" ||
+    action.startsWith("technical.email.")
   );
 }
 const soldierTargets = new Set([
@@ -679,6 +682,12 @@ export function projectAudit(
           break;
         case "technical.server-recovery":
           reason = text(envelope.reason);
+          break;
+        case "technical.email.request":
+        case "technical.email.confirm":
+          // The technical account's own reason, not a soldier's text, so it stays in the envelope (decision 204).
+          reason = text(envelope.reason);
+          if (envelope.via === "server") add("דרך", "פקודת שרת");
           break;
         case "soldier.delete":
           // The one reason kept past an erasure, by the user's decision (192).

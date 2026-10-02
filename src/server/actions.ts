@@ -31,6 +31,10 @@ import {
 import { previewScoreDecision, applyScoreDecision } from "./score-decisions";
 import { applyExecution, previewExecution } from "./execution";
 import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
+import {
+  confirmTechnicalEmailChange,
+  requestTechnicalEmailChange,
+} from "./auth/technical-email";
 import { user } from "./auth-schema";
 import {
   saveEligibilityCatalog,
@@ -497,6 +501,12 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "account.email.confirm":
         result = await confirmEmailChange(tx, actor, payload, expectedVersion);
+        break;
+      case "technical.email.request":
+        result = await requestTechnicalEmailChange(tx, actor, payload);
+        break;
+      case "technical.email.confirm":
+        result = await confirmTechnicalEmailChange(tx, actor, payload);
         break;
       case "notification.read":
         result = await markNotification(tx, actor, payload, "readAt");

@@ -84,6 +84,7 @@ const I = {
   soldierDel: "tests/integration/soldier-deletion.test.ts",
   staging: "tests/integration/staging-soldiers.test.ts",
   swaps: "tests/integration/swaps.test.ts",
+  techEmail: "tests/integration/technical-email.test.ts",
 } as const;
 const E = {
   access: "tests/e2e/access-lifecycle.spec.ts",
@@ -111,6 +112,7 @@ const E = {
   picker: "tests/e2e/soldier-picker.spec.ts",
   swaps: "tests/e2e/swaps.spec.ts",
   transfer: "tests/e2e/transfer-approval.spec.ts",
+  techEmail: "tests/e2e/technical-email-change.spec.ts",
   sweep: "tests/e2e/screens-sweep.spec.ts",
 } as const;
 
@@ -159,6 +161,11 @@ const driveRestore: External = {
   what: "Drive אמיתי: שחזור מגיבוי שהורד ומחיקות אחרי שחזור, ותרגיל בשרת",
   state: "pending",
   ref: "#37",
+};
+const stagingTechnicalAddress: External = {
+  what: "החלפת כתובת החשבון הטכני ב־staging לחשבון הייעודי, ומשלוח קוד אמיתי לשתי הכתובות",
+  state: "pending",
+  ref: "#90",
 };
 const pilot: External = {
   what: "פיילוט עם שני האחראים ונתוני אמת",
@@ -954,6 +961,21 @@ export const stories: Record<number, Entry> = {
       ),
     ],
     [driveDaily, driveRestore]
+  ),
+  65: covered(
+    [
+      ...t(
+        I.techEmail,
+        "needs both: one right code and one wrong code changes nothing and says nothing about which was wrong",
+        "moves the account: new address verified, connections and the Google link gone, recovery codes kept, and recorded with the reason",
+        "moves the account with the code from the new address, ends access and replaces the recovery codes"
+      ),
+      ...t(
+        E.techEmail,
+        "the technical account moves itself to a new address with a code from each mailbox"
+      ),
+    ],
+    [stagingTechnicalAddress]
   ),
 };
 
@@ -1891,6 +1913,41 @@ export const scenarios: Record<number, Entry> = {
       ),
     ],
     [driveRestore]
+  ),
+  64: covered(
+    [
+      ...t(
+        I.techEmail,
+        "sends one code to each mailbox, stores only digests and changes nothing yet",
+        "refuses the current address and an address of another account",
+        "allows one request a minute and lets a new one cancel the earlier one and its mail",
+        "serializes two requests made together: one succeeds, the other waits a minute",
+        "needs both: one right code and one wrong code changes nothing and says nothing about which was wrong",
+        "cancels the request after five mistakes, even for the right codes, and the unsent codes with it",
+        "does not accept an expired request",
+        "does not accept a request opened before the account's access changed",
+        "moves the account: new address verified, connections and the Google link gone, recovery codes kept, and recorded with the reason",
+        "signs in with a code at the new address only",
+        "lets only one of two confirmations made together succeed",
+        "stops when the address was given to someone else after the request",
+        "is refused to a manager and a soldier, also when called directly",
+        "sends a code to the new address only and needs a reason",
+        "works only on the technical account, and its errors are in English",
+        "moves the account with the code from the new address, ends access and replaces the recovery codes",
+        "counts wrong codes and cancels after five",
+        "keeps the two routes apart: a request of one is not confirmed by the other"
+      ),
+      ...t(
+        I.google,
+        "drops the Google link, refuses the old Google account and links the new address afresh"
+      ),
+      ...t(
+        E.techEmail,
+        "the technical account moves itself to a new address with a code from each mailbox",
+        "a manager has no such screen and the server refuses the route"
+      ),
+    ],
+    [stagingTechnicalAddress]
   ),
 };
 

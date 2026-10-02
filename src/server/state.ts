@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { projectAudit, technicalScope, type AuditAccount } from "./audit-log";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
+import { MAX_FAILURES } from "./auth/policy";
 import { loadDomain } from "./repository";
 import { soldierContacts, dutyTypes, records, ledger } from "./schema";
 import { operationsState, user } from "./auth-schema";
@@ -83,6 +84,13 @@ export async function readState(actor: Actor) {
       settings: {},
       notificationDefaults: undefined as
         ReturnType<typeof unitDefaults> | undefined,
+      // The technical account's own address and open request to change it (decision 204).
+      ownAccount: undefined as
+        | {
+            email: string;
+            pendingEmailChange: { email: unknown; expiresAt: unknown } | null;
+          }
+        | undefined,
       accounts: [],
       audit: [],
       imports: [],
@@ -121,8 +129,36 @@ export async function readState(actor: Actor) {
             sql`${records.data}->>'accountId' = ${actor.id}`
           )
         );
+      // The request this account made to move itself to another address, if one is still open.
+      const [pendingChange] = (
+        await tx
+          .select()
+          .from(records)
+          .where(
+            and(
+              eq(records.kind, "technical_email_change"),
+              sql`${records.data}->>'accountId' = ${actor.id}`,
+              sql`${records.data}->>'mode' = 'web'`,
+              sql`${records.data}->>'status' = 'pending'`
+            )
+          )
+      ).filter(
+        (row) =>
+          row.data.securityEpoch === current.securityEpoch &&
+          new Date(String(row.data.expiresAt)) > new Date() &&
+          Number(row.data.attempts) < MAX_FAILURES
+      );
       return {
         ...base,
+        ownAccount: {
+          email: current.email,
+          pendingEmailChange: pendingChange
+            ? {
+                email: pendingChange.data.email,
+                expiresAt: pendingChange.data.expiresAt,
+              }
+            : null,
+        },
         notifications: notices
           .filter((row) => !row.data.hiddenAt)
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
