@@ -813,6 +813,8 @@ export async function reviewTransfer(
   payload: unknown,
   expectedVersion?: number
 ) {
+  // Permission first: a caller who may not decide learns nothing from the input check.
+  manager(actor);
   const input = z
     .object({
       id,
@@ -878,6 +880,8 @@ export async function decideTransfer(
   payload: unknown,
   expectedVersion?: number
 ) {
+  // Permission first: a caller who may not decide learns nothing from the input check.
+  manager(actor);
   const input = z
     .discriminatedUnion("decision", [
       z.object({

@@ -11,7 +11,7 @@ import {
   type Actor,
 } from "./auth/accounts";
 import { changeRole, keepReturnedBalance } from "./manager-role";
-import { currentVersion } from "./repository";
+import { currentVersion, manager } from "./repository";
 import { invariant, AppError } from "./errors";
 import { previewSoldierUpdate, saveSoldier } from "./people";
 import { deleteSoldier, previewSoldierDeletion } from "./soldier-deletion";
@@ -154,6 +154,7 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await applyImport(tx, actor, payload, expectedVersion);
         break;
       case "soldier.create":
+        manager(actor);
         invariant(
           !payload.id,
           "invalid_input",
@@ -162,6 +163,7 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await saveSoldier(tx, actor, payload);
         break;
       case "soldier.update.preview":
+        manager(actor);
         id.parse(payload.id);
         result = await previewSoldierUpdate(
           tx,
@@ -171,6 +173,7 @@ export async function executeAction(actor: Actor, value: unknown) {
         );
         break;
       case "soldier.update":
+        manager(actor);
         id.parse(payload.id);
         result = await saveSoldier(tx, actor, payload, expectedVersion);
         break;
@@ -440,6 +443,12 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await keepReturnedBalance(tx, actor, payload, expectedVersion);
         break;
       case "account.responsibility": {
+        invariant(
+          actor.role !== "soldier",
+          "FORBIDDEN",
+          "תחום אחריות קובעים המנהל הטכני או האחראי עצמו",
+          403
+        );
         const input = z
           .object({
             id: z.string(),
@@ -457,13 +466,13 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       }
       case "account.unlock": {
-        const targetId = z.string().parse(payload.id);
         invariant(
           actor.role !== "soldier",
           "FORBIDDEN",
           "אין הרשאה לשחרר חשבון זה",
           403
         );
+        const targetId = z.string().parse(payload.id);
         const [target] = await tx
           .select()
           .from(user)
