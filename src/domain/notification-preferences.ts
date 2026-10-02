@@ -90,6 +90,7 @@ const preferenceByKind = {
   "round-closing": "roundClosing",
   publication: "publication",
   "publication-change": "publication",
+  "publication-digest": "publication",
   transfer: "transfer",
   departure: "departure",
   deletion: "deletion",

@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import { db, pool } from "../../src/server/db";
 import { emailOutbox } from "../../src/server/auth-schema";
 import {
+  assignmentMailEvent,
   assignments,
   balances,
   duties,
@@ -131,9 +132,11 @@ async function inactive(person: Actor, on: string) {
     row.version
   );
 }
+// What goes out about a publication: the mail of a window (decision 197) or, for a duty
+// starting within two hours, a mail of its own.
 const mails = async () =>
-  (await db.select().from(emailOutbox)).filter(
-    (row) => row.kind === "publication"
+  (await db.select().from(emailOutbox)).filter((row) =>
+    ["publication", "publication-digest"].includes(row.kind)
   );
 const notices = async () =>
   (await db.select().from(records)).filter(
@@ -255,20 +258,30 @@ describe("publishing several drafts at once", () => {
     expect(after[0].data.publishedAt).toBeTruthy();
     expect(after[1].data.publishedAt).toBeUndefined();
 
-    // Until the single mail per soldier exists (#97), each duty tells its soldiers as today.
+    // The soldier hears of both duties once, in the window of the batch (decision 197): one
+    // notice that counts them, and one mail queued for when the window closes.
     const notified = await notices();
-    expect(notified).toHaveLength(2);
-    expect(new Set(notified.map((row) => row.data.accountId))).toEqual(
-      new Set([avi.id])
-    );
-    expect(notified.map((row) => row.data.body).sort()).toEqual([
-      "שובצת לתורנות תורנות ראשונה",
-      "שובצת לתורנות תורנות שלישית",
-    ]);
-    expect((await mails()).map((row) => row.eventKey).sort()).toEqual(
+    expect(notified).toHaveLength(1);
+    expect(notified[0].data).toMatchObject({
+      accountId: avi.id,
+      title: "שובצת ל־2 תורנויות",
+      href: "/my-assignments",
+    });
+    const queued = await mails();
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      kind: "publication-digest",
+      recipientAccountId: avi.id,
+      status: "pending",
+    });
+    const announced = await db
+      .select()
+      .from(assignmentMailEvent)
+      .orderBy(assignmentMailEvent.seq);
+    expect(announced.map((row) => [row.dutyId, row.change]).sort()).toEqual(
       [
-        `publish:${d1}:${before[0].version + 1}:${avi.id}`,
-        `publish:${d3}:${before[2].version + 1}:${avi.id}`,
+        [d1, "new"],
+        [d3, "new"],
       ].sort()
     );
 

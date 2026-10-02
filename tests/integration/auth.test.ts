@@ -17,6 +17,8 @@ import {
   balances,
   duties,
   assignments,
+  assignmentMailEvent,
+  assignmentMailWindow,
   ledger,
   records,
 } from "../../src/server/schema";
@@ -2647,6 +2649,11 @@ describe("first duty vertical slice", () => {
   });
   it("cancels a future published duty atomically, closes proposals and sends one cancellation per affected soldier", async () => {
     const { row, actor } = await publishedFixture();
+    // The soldier has read of the publication: its window is over, so the cancellation opens a new one.
+    await deliverNextEmail(
+      async () => "synthetic",
+      new Date(Date.now() + 11 * 60_000)
+    );
     const change = await command(
       "duty.change.create",
       { dutyId: row.id, reason: "הצעה פתוחה" },
@@ -2697,13 +2704,23 @@ describe("first duty vertical slice", () => {
       (await db.select().from(records).where(eq(records.id, change.id)))[0].data
         .status
     ).toBe("cancelled");
+    // Announcements travel in windows (decision 197): the publication went out in the first,
+    // and the cancellation waits in the second, to be sent when that closes.
     const messages = await db.select().from(emailOutbox);
     expect(
-      messages.filter((item) => item.kind === "publication")[0].status
-    ).toBe("cancelled");
+      messages
+        .filter((item) => item.kind === "publication-digest")
+        .map((item) => item.status)
+        .sort()
+    ).toEqual(["pending", "sent"]);
     expect(
-      messages.filter((item) => item.kind === "publication-change")
-    ).toHaveLength(1);
+      messages.filter((item) =>
+        ["publication", "publication-change"].includes(item.kind)
+      )
+    ).toHaveLength(0);
+    expect(
+      (await db.select().from(assignmentMailEvent)).map((item) => item.change)
+    ).toEqual(["new", "cancelled"]);
     await unitTransaction((tx) =>
       settleDue(tx, new Date(Date.now() + 15 * 86400_000))
     );
@@ -3363,16 +3380,35 @@ describe("first duty vertical slice", () => {
     expect(
       (await db.select().from(balances)).every((item) => item.current === 0)
     ).toBe(true);
-    expect(
-      (await db.select().from(emailOutbox))
-        .filter((item) => item.kind === "publication")
-        .every((item) => item.status === "cancelled")
-    ).toBe(true);
-    expect(
-      (await db.select().from(emailOutbox)).filter(
-        (item) => item.kind === "publication-change"
+    // The soldier taken out reads a removal and the one put in reads a placement, each in the
+    // window of their own announcements (decision 197); no mail goes out apart from the windows.
+    const announced = await db
+      .select({
+        soldierId: user.soldierId,
+        change: assignmentMailEvent.change,
+      })
+      .from(assignmentMailEvent)
+      .innerJoin(
+        assignmentMailWindow,
+        eq(assignmentMailEvent.windowId, assignmentMailWindow.id)
       )
-    ).toHaveLength(2);
+      .innerJoin(user, eq(user.id, assignmentMailWindow.recipientAccountId))
+      .orderBy(assignmentMailEvent.seq);
+    expect(
+      announced
+        .filter((item) => item.soldierId === actor.soldierId)
+        .map((item) => item.change)
+    ).toEqual(["new", "cancelled"]);
+    expect(
+      announced
+        .filter((item) => item.soldierId === peer.soldierId)
+        .map((item) => item.change)
+    ).toEqual(["new"]);
+    expect(
+      (await db.select().from(emailOutbox)).filter((item) =>
+        ["publication", "publication-change"].includes(item.kind)
+      )
+    ).toHaveLength(0);
     expect(
       await db.select().from(records).where(eq(records.kind, "duty_revision"))
     ).toHaveLength(1);

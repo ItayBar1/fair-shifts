@@ -5,6 +5,8 @@ import { DateTime } from "luxon";
 import { db, pool } from "../../src/server/db";
 import { emailOutbox } from "../../src/server/auth-schema";
 import {
+  assignmentMailEvent,
+  assignmentMailWindow,
   assignments,
   balances,
   duties,
@@ -17,14 +19,14 @@ import {
   type Actor,
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
-import { enqueueEmail } from "../../src/server/operations/email";
+import { announceAssignment } from "../../src/server/assignment-mail";
 import { soldier } from "../fixtures";
 
-// The second mail of a publish fails, as a database fault in the middle of a batch would.
-vi.mock("../../src/server/operations/email", async (original) => {
+// The second announcement of a publish fails, as a database fault in the middle of a batch would.
+vi.mock("../../src/server/assignment-mail", async (original) => {
   const actual =
-    await original<typeof import("../../src/server/operations/email")>();
-  return { ...actual, enqueueEmail: vi.fn(actual.enqueueEmail) };
+    await original<typeof import("../../src/server/assignment-mail")>();
+  return { ...actual, announceAssignment: vi.fn(actual.announceAssignment) };
 });
 
 if (
@@ -74,7 +76,7 @@ beforeEach(async () => {
   await db.execute(
     sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
-  vi.mocked(enqueueEmail).mockClear();
+  vi.mocked(announceAssignment).mockClear();
   manager = await invite("אחראי", "manager", 10);
 });
 afterAll(async () => pool.end());
@@ -121,8 +123,8 @@ describe("publishing several drafts at once is all or nothing", () => {
     expect(preview.ready).toBe(2);
 
     let calls = 0;
-    const real = vi.mocked(enqueueEmail).getMockImplementation()!;
-    vi.mocked(enqueueEmail).mockImplementation(async (...args) => {
+    const real = vi.mocked(announceAssignment).getMockImplementation()!;
+    vi.mocked(announceAssignment).mockImplementation(async (...args) => {
       if (++calls === 2) throw new Error("synthetic fault");
       return real(...args);
     });
@@ -138,6 +140,9 @@ describe("publishing several drafts at once is all or nothing", () => {
     const after = await db.select().from(duties);
     expect(after.map((row) => row.data.status)).toEqual(["draft", "draft"]);
     expect(await db.select().from(emailOutbox)).toEqual([]);
+    // No window, no event: the announcement of the first duty went with the rest.
+    expect(await db.select().from(assignmentMailWindow)).toEqual([]);
+    expect(await db.select().from(assignmentMailEvent)).toEqual([]);
     expect(
       (await db.select().from(records)).filter(
         (row) =>
@@ -153,13 +158,15 @@ describe("publishing several drafts at once is all or nothing", () => {
     ).toBe(true);
 
     // The same approval works once the fault is gone: nothing was spent by the failed try.
-    vi.mocked(enqueueEmail).mockImplementation(real);
+    vi.mocked(announceAssignment).mockImplementation(real);
     const result = await command("duty.publish.batch", {
       dutyIds: ids,
       token: preview.token,
       confirmed: true,
     });
     expect(result.published).toHaveLength(2);
+    // One window and one mail for each of the two soldiers.
     expect(await db.select().from(emailOutbox)).toHaveLength(2);
+    expect(await db.select().from(assignmentMailEvent)).toHaveLength(2);
   });
 });

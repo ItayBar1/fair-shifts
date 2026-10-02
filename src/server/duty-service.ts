@@ -3,7 +3,6 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
 import { assignments, duties, dutySlots, dutyTypes, records } from "./schema";
-import { user } from "./auth-schema";
 import {
   audit,
   currentVersion,
@@ -29,7 +28,7 @@ import type {
   SpecificApproval,
   EligibilityReason,
 } from "../domain/types";
-import { enqueueEmail } from "./operations/email";
+import { announceAssignment } from "./assignment-mail";
 
 const priceValue = z
   .union([z.number().finite().nonnegative(), z.string().regex(/^\d+(\.\d+)?$/)])
@@ -540,7 +539,7 @@ export async function assignDuty(
   return { id: assignmentId };
 }
 /**
- * Publishes one loaded draft: the duty row, a site notice and a mail for every
+ * Publishes one loaded draft: the duty row, an announcement (decision 197) to every
  * soldier holding a seat in it, and the audit record. Shared by the single and
  * the batch publish, which only differ in how they decide the draft is ready.
  */
@@ -570,34 +569,18 @@ export async function publishRow(
     .where(
       and(eq(assignments.dutyId, row.id), eq(assignments.status, "reserved"))
     );
-  for (const item of assigned) {
-    const [account] = await tx
-      .select()
-      .from(user)
-      .where(eq(user.soldierId, item.soldierId));
-    if (!account) continue;
-    const title = "פורסם שיבוץ לתורנות";
-    const body = `שובצת לתורנות ${row.name}`;
-    const href = `/duties/${row.id}`;
-    await tx.insert(records).values({
-      id: randomUUID(),
-      kind: "notification",
-      subjectId: item.soldierId,
-      data: { accountId: account.id, title, body, href },
+  for (const item of assigned)
+    await announceAssignment(tx, {
+      soldierId: item.soldierId,
+      duty: {
+        id: row.id,
+        name: row.name,
+        start: row.data.start,
+        end: row.data.end,
+      },
+      dutyVersion: version,
+      change: "new",
     });
-    await enqueueEmail(tx, {
-      recipientAccountId: account.id,
-      eventKey: `publish:${row.id}:${version}:${account.id}`,
-      kind: "publication",
-      title,
-      body,
-      href,
-      priority: 1,
-      expiresAt: new Date(
-        Math.min(Date.now() + 86_400_000, instant(row.data.end).toMillis())
-      ),
-    });
-  }
   await audit(tx, actor, "duty.publish", row.id, auditData);
   return { id: row.id, version };
 }

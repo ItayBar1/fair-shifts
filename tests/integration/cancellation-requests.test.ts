@@ -4,6 +4,7 @@ import { and, eq, like, sql } from "drizzle-orm";
 import { db, pool } from "../../src/server/db";
 import { emailOutbox } from "../../src/server/auth-schema";
 import {
+  assignmentMailEvent,
   assignments,
   balances,
   duties,
@@ -420,11 +421,12 @@ describe("cancellation and postponement requests", () => {
     expect(await requestEmails(request.id)).toHaveLength(0);
     const notices = (await readState(member)).notifications;
     expect(notices.some(aboutRequest(request.id))).toBe(true);
+    // The change is announced through the member's window (decision 197).
     expect(
-      (await db.select().from(emailOutbox)).filter(
-        (row) => row.kind === "publication-change"
-      ).length
-    ).toBeGreaterThan(0);
+      (await db.select().from(assignmentMailEvent)).filter(
+        (row) => row.change === "cancelled"
+      )
+    ).toHaveLength(1);
     expect(await auditOf("cancellation.completed")).toHaveLength(1);
   });
 
