@@ -71,6 +71,13 @@
       "when": 1790871127766,
       "tag": "0009_normalize_all_genders",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790890380877,
+      "tag": "0010_assignment_mail_windows",
+      "breakpoints": true
     }
   ]
 }

@@ -543,7 +543,15 @@ describe("a restore drill", () => {
       )
     ).rows;
     expect(removed.length).toBeGreaterThanOrEqual(1);
+    // Migration 0010 created tables, which are dropped here and rebuilt below.
+    const windowTables = await readFile(
+      "./drizzle/0010_assignment_mail_windows.sql",
+      "utf8"
+    );
     await pool.query("drop index auth_account_user_provider");
+    await pool.query(
+      "drop table assignment_mail_event, assignment_mail_window"
+    );
     await pool.query(
       "delete from drizzle.__drizzle_migrations where created_at >= $1",
       [since]
@@ -559,6 +567,8 @@ describe("a restore drill", () => {
       await pool.query(
         "create unique index auth_account_user_provider on auth_account (user_id, provider_id)"
       );
+      for (const statement of windowTables.split("--> statement-breakpoint"))
+        await pool.query(statement);
     }
     const { report, database } = await drill({ keep: true });
     expect(report.outcome).toBe("passed");

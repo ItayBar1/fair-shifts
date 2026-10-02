@@ -13,6 +13,7 @@ import {
 } from "../auth-schema";
 import { soldiers, records, soldierContacts } from "../schema";
 import { invariant } from "../errors";
+import { closeWindowsOf } from "../assignment-mail-delivery";
 import { canAccessAfterService } from "../../domain/eligibility";
 import {
   digestCode,
@@ -301,6 +302,7 @@ export async function deleteAccountAuth(targetId: string, tx?: DbTransaction) {
         encryptedSecret: null,
       })
       .where(eq(emailOutbox.recipientAccountId, targetId));
+    await closeWindowsOf(cx, targetId);
   };
   return tx ? work(tx) : db.transaction(work);
 }

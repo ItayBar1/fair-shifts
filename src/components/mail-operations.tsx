@@ -24,6 +24,7 @@ const kindLabels: Record<string, string> = {
   "round-closing": "סגירת סבב אילוצים",
   publication: "פרסום שיבוץ",
   "publication-change": "שינוי או ביטול שפורסם",
+  "publication-digest": "שיבוצים ושינויים (מרוכז)",
   transfer: "החלפות ובקשות",
   departure: "סיום שירות",
   deletion: "מחיקת חייל שדורשת טיפול",

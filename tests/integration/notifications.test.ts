@@ -107,7 +107,7 @@ async function queue(
   );
 }
 /** Deliver everything due and return the event keys the provider received. */
-async function deliverAll() {
+async function deliverAll(after = 1000) {
   const sent: string[] = [];
   for (let index = 0; index < 20; index++) {
     const result = await deliverNextEmail(
@@ -115,7 +115,7 @@ async function deliverAll() {
         sent.push(message.eventKey);
         return `synthetic-${message.eventKey}`;
       },
-      new Date(Date.now() + 1000)
+      new Date(Date.now() + after)
     );
     if (result.status === "idle") break;
   }
@@ -409,9 +409,14 @@ describe("site notifications, reading and hiding", () => {
       email: { ...allEmail, publication: false },
     });
     await publishedDuty();
-    const sent = await deliverAll();
+    // The publication mail waits for the ten minute window to close (decision 197).
+    expect(await deliverAll()).toEqual([]);
+    const sent = await deliverAll(11 * 60_000);
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toContain(other.id);
+    expect(await outbox(sent[0])).toMatchObject({
+      kind: "publication-digest",
+      recipientAccountId: other.id,
+    });
     for (const actor of [member, other]) {
       const state = await readState(actor);
       expect(state.notifications).toHaveLength(1);
