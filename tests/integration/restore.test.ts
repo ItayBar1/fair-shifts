@@ -530,6 +530,20 @@ describe("a restore drill", () => {
 
   it("brings a backup of an older schema up to this version's", async () => {
     await seed();
+    const mailId = randomUUID();
+    const mailDuties = [randomUUID(), randomUUID()];
+    await db.insert(emailOutbox).values({
+      id: mailId,
+      recipientAccountId: people[0].id,
+      eventKey: `digest:${mailId}`,
+      kind: "publication-digest",
+      title: "שני שיבוצים סינתטיים",
+      body: mailDuties
+        .map((id) => `https://example.invalid/duties/${id}`)
+        .join("\n"),
+      status: "sent",
+      expiresAt: new Date(Date.now() + 86400_000),
+    });
     await drainDeletionLog(logConfig());
     // The database as it was before migration 0008 (which added the index below) and everything after it.
     const journal = JSON.parse(
@@ -546,7 +560,7 @@ describe("a restore drill", () => {
     ).rows;
     expect(removed.length).toBeGreaterThanOrEqual(1);
     // A backup from before 0008 must omit later schema objects as well as
-    // migration records. Otherwise replaying 0010 would create the feed twice.
+    // migration records. Otherwise replaying 0010/0011 would create the mail windows and feed twice.
     const client = await pool.connect();
     try {
       await client.query("begin");
@@ -556,6 +570,9 @@ describe("a restore drill", () => {
       await client.query("drop function fs_assignment_feed_change()");
       await client.query("drop function fs_assignment_snapshot(jsonb, jsonb)");
       await client.query("drop table assignment_feed");
+      await client.query(
+        "drop table assignment_mail_event, assignment_mail_window"
+      );
       await client.query("alter table email_outbox drop column duty_ids");
       await client.query(
         "alter table auth_user drop column assignment_feed_cursor"
@@ -581,6 +598,11 @@ describe("a restore drill", () => {
     expect(report.outcome).toBe("passed");
     expect(report.schema.inBackup).toBe(report.schema.inApp - removed.length);
     const { rows } = await dumpOf(database!);
+    expect(
+      (
+        await rows(`select duty_ids from email_outbox where id = '${mailId}'`)
+      )[0].duty_ids.sort()
+    ).toEqual(mailDuties.sort());
     expect(
       await rows(
         "select 1 from pg_indexes where indexname = 'auth_account_user_provider'"

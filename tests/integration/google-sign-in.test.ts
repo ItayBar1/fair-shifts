@@ -16,6 +16,7 @@ import {
 import { requestCode, verifyCode } from "../../src/server/auth/otp";
 import { getActor, getAuth } from "../../src/server/auth";
 import { openSecret } from "../../src/server/operations/email";
+import { executeAction } from "../../src/server/actions";
 import { soldier } from "../fixtures";
 
 if (
@@ -339,5 +340,86 @@ describe("Google sign-in for invited accounts, bound to Google's sub", () => {
       memberId
     );
     expect(await googleLinks(memberId)).toEqual([{ accountId: "sub-new" }]);
+  });
+});
+
+describe("Google sign-in after the technical account changes its address (decision 204)", () => {
+  it("drops the Google link, refuses the old Google account and links the new address afresh", async () => {
+    const technical = await createInvitedAccount({
+      name: "טכני Google",
+      role: "technical",
+      email: emails.member.replace("member", "technical"),
+    });
+    const next = "google-technical-next@example.invalid";
+    const old = {
+      sub: "sub-technical-old",
+      email: technical.email,
+      email_verified: true,
+    };
+    const first = await googleSignIn(old);
+    expect((await getActor(new Headers({ cookie: first.cookie })))?.id).toBe(
+      technical.id
+    );
+
+    const act = async (type: string, payload: Record<string, unknown>) => {
+      const [row] = await db
+        .select()
+        .from(user)
+        .where(eq(user.id, technical.id));
+      return executeAction(
+        {
+          id: row.id,
+          name: row.name,
+          role: "technical",
+          securityEpoch: row.securityEpoch,
+        },
+        { type, payload, idempotencyKey: randomUUID() }
+      );
+    };
+    await act("technical.email.request", {
+      email: next,
+      reason: "מעבר לחשבון הייעודי",
+    });
+    const codes = Object.fromEntries(
+      (
+        await db
+          .select()
+          .from(emailOutbox)
+          .where(eq(emailOutbox.kind, "email-change"))
+      ).map((row) => [row.destination, openSecret(row.encryptedSecret!)])
+    );
+    await act("technical.email.confirm", {
+      currentCode: codes[technical.email],
+      newCode: codes[next],
+    });
+
+    // The connection opened with the old address ended, and so did the link.
+    expect(await getActor(new Headers({ cookie: first.cookie }))).toBeNull();
+    expect(await googleLinks(technical.id)).toHaveLength(0);
+    expect(await googleSignIn(old)).toMatchObject({
+      signedIn: false,
+      cookie: "",
+    });
+
+    // The account is now the invitation of the new address (decision 185).
+    const fresh = await googleSignIn({
+      sub: "sub-technical-new",
+      email: next,
+      email_verified: true,
+    });
+    expect(fresh.signedIn).toBe(true);
+    expect((await getActor(new Headers({ cookie: fresh.cookie })))?.id).toBe(
+      technical.id
+    );
+    expect(await googleLinks(technical.id)).toEqual([
+      { accountId: "sub-technical-new" },
+    ]);
+    // A second Google account for the same address is refused, as for any account.
+    const intruder = await googleSignIn({
+      sub: "sub-technical-third",
+      email: next,
+      email_verified: true,
+    });
+    expect(intruder).toMatchObject({ signedIn: false, cookie: "" });
   });
 });

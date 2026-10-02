@@ -1,22 +1,34 @@
 {
-  "id": "2cdd3d71-cc86-4a80-836a-d6b63a605ef0",
+  "id": "09ca146d-8f9c-403e-a6de-680b285b3f04",
   "prevId": "f0d224ad-7598-4860-a058-3207dab6c57d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.assignment_feed": {
-      "name": "assignment_feed",
+    "public.assignment_mail_event": {
+      "name": "assignment_mail_event",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
-          "type": "bigserial",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
-        "soldier_id": {
-          "name": "soldier_id",
+        "seq": {
+          "name": "seq",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_id": {
+          "name": "window_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_key": {
+          "name": "event_key",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -26,44 +38,37 @@
           "primaryKey": false,
           "notNull": true
         },
-        "assignment_id": {
-          "name": "assignment_id",
-          "type": "uuid",
+        "duty_version": {
+          "name": "duty_version",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "kind": {
-          "name": "kind",
+        "change": {
+          "name": "change",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "snapshot": {
-          "name": "snapshot",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "happened_at": {
-          "name": "happened_at",
+        "occurred_at": {
+          "name": "occurred_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         }
       },
       "indexes": {
-        "assignment_feed_soldier_id": {
-          "name": "assignment_feed_soldier_id",
+        "assignment_event_window": {
+          "name": "assignment_event_window",
           "columns": [
             {
-              "expression": "soldier_id",
+              "expression": "window_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "id",
+              "expression": "seq",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -76,12 +81,12 @@
         }
       },
       "foreignKeys": {
-        "assignment_feed_soldier_id_soldiers_id_fk": {
-          "name": "assignment_feed_soldier_id_soldiers_id_fk",
-          "tableFrom": "assignment_feed",
-          "tableTo": "soldiers",
+        "assignment_mail_event_window_id_assignment_mail_window_id_fk": {
+          "name": "assignment_mail_event_window_id_assignment_mail_window_id_fk",
+          "tableFrom": "assignment_mail_event",
+          "tableTo": "assignment_mail_window",
           "columnsFrom": [
-            "soldier_id"
+            "window_id"
           ],
           "columnsTo": [
             "id"
@@ -89,9 +94,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "assignment_feed_duty_id_duties_id_fk": {
-          "name": "assignment_feed_duty_id_duties_id_fk",
-          "tableFrom": "assignment_feed",
+        "assignment_mail_event_duty_id_duties_id_fk": {
+          "name": "assignment_mail_event_duty_id_duties_id_fk",
+          "tableFrom": "assignment_mail_event",
           "tableTo": "duties",
           "columnsFrom": [
             "duty_id"
@@ -104,12 +109,120 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assignment_mail_event_event_key_unique": {
+          "name": "assignment_mail_event_event_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "event_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "assignment_event_change": {
+          "name": "assignment_event_change",
+          "value": "\"assignment_mail_event\".\"change\" in ('new', 'updated', 'cancelled')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.assignment_mail_window": {
+      "name": "assignment_mail_window",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "recipient_account_id": {
+          "name": "recipient_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "opens_at": {
+          "name": "opens_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closes_at": {
+          "name": "closes_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notification_id": {
+          "name": "notification_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "assignment_window_one_open": {
+          "name": "assignment_window_one_open",
+          "columns": [
+            {
+              "expression": "recipient_account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"assignment_mail_window\".\"status\" = 'open'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assignment_mail_window_recipient_account_id_auth_user_id_fk": {
+          "name": "assignment_mail_window_recipient_account_id_auth_user_id_fk",
+          "tableFrom": "assignment_mail_window",
+          "tableTo": "auth_user",
+          "columnsFrom": [
+            "recipient_account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "assignment_feed_kind": {
-          "name": "assignment_feed_kind",
-          "value": "\"assignment_feed\".\"kind\" in ('new','updated','cancelled')"
+        "assignment_window_status": {
+          "name": "assignment_window_status",
+          "value": "\"assignment_mail_window\".\"status\" in ('open', 'closed')"
         }
       },
       "isRLSEnabled": false
@@ -1442,13 +1555,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "duty_ids": {
-          "name": "duty_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
         "encrypted_secret": {
           "name": "encrypted_secret",
           "type": "text",
@@ -2008,13 +2114,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "assignment_feed_cursor": {
-          "name": "assignment_feed_cursor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "created_at": {
           "name": "created_at",

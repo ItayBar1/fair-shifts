@@ -17,6 +17,7 @@
 | `scripts/production-smoke.sh`       | בדיקת התצורה ב־Docker עם נתונים וסודות סינתטיים (פירוט בהמשך). רצה גם ב־CI.                                            |
 | `scripts/auto-deploy.sh`            | פריסה אוטומטית של main אחרי שהבדיקות עברו, מטיימר systemd (`scripts/systemd`). פירוט בהמשך.                            |
 | `scripts/restore.ts`                | שחזור מבודד מגיבוי, תרגיל רבעוני והחלפת המסד החי (`pnpm restore`). פירוט בסעיף ״שחזור מבודד ותרגיל רבעוני״.            |
+| `scripts/technical-email.ts`        | החלפת כתובת המנהל הטכני דרך השרת כשאין גישה לכתובת הנוכחית (`pnpm technical-email`). פירוט בסעיף ״סביבת ה־staging״.    |
 | `/api/health`                       | בריאות האתר, המסד ופעימת העובד, בלי מידע אישי. הפירוט מוצג גם למנהל הטכני ב״תמונת מצב״.                                |
 
 ## מבנה ההפעלה
@@ -145,6 +146,19 @@ sh scripts/production.sh exec -T -e TECHNICAL_EMAIL=<address> -e TECHNICAL_NAME=
 ```
 
 - **קודי שחזור חדשים לטכני:** `production.sh exec -T -e RECOVERY_EMAIL=<address> -e RECOVERY_REASON="<reason>" app node_modules/.bin/tsx scripts/recover.ts`.
+- **החלפת כתובת המנהל הטכני (#90, הכרעה 204):** בדרך כלל באתר, במסך ״החשבון שלי״ של הטכני: נשלחים שני קודים, אחד לכל כתובת. כשאין גישה לכתובת הנוכחית (למשל הטכני עזב), מי שיש לו גישה לשרת מריץ שתי פקודות. הראשונה שולחת קוד לכתובת החדשה בלבד, והמייל יוצא מהעובד, ולכן הוא חייב לרוץ:
+
+```sh
+cd /opt/fair-shifts/app
+sh scripts/production.sh exec -T -e TECHNICAL_CURRENT_EMAIL=<current address> -e TECHNICAL_NEW_EMAIL=<new address> \
+  -e TECHNICAL_CHANGE_REASON="<reason, at least 5 characters>" app node_modules/.bin/tsx scripts/technical-email.ts request
+# the code arrives at the new address and is valid for 10 minutes; then:
+sh scripts/production.sh exec -T -e TECHNICAL_CURRENT_EMAIL=<current address> -e TECHNICAL_CHANGE_CODE=<code> \
+  app node_modules/.bin/tsx scripts/technical-email.ts confirm
+```
+
+אחרי האישור: ההחלפה מבטלת את כל החיבורים של החשבון ואת קישור Google, מבטלת את קודי השחזור הישנים ומדפיסה קודים חדשים פעם אחת, שנשמרים מחוץ למאגר. היא אינה משחררת חשבון נעול (`recover`), וכתובת לבדיקות שמורה (הכרעה 190) אינה מקבלת מייל. אחרי ההחלפה נכנסים עם הכתובת החדשה, בקוד או ב־Google. אותה פקודה מעבירה את החשבון הטכני של ה־staging לחשבון הייעודי של הפרויקט.
+
 - **שינוי ערך ב־`app.env`:** משהים את הטיימר (`touch /opt/fair-shifts/deploy-state/paused`), עורכים, מריצים `production.sh deploy`, ומחדשים את הטיימר.
 - **ספירה במסד בלי לחשוף תוכן:** `production.sh exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select role, count(*) from auth_user group by role"'`.
 

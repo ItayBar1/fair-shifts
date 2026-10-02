@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   CircleHelp,
   Send,
+  UserRound,
 } from "lucide-react";
 import { type AppState, type Action, str, obj } from "@/client/types";
 import { unreadCount } from "@/client/notifications";
@@ -32,6 +33,7 @@ import { Notice, Empty } from "./ui";
 import { CalendarView, DutyDetail, FairnessView, Dashboard } from "./views";
 import { MyAssignmentsView } from "./my-assignments";
 import { PublishDrafts } from "./publish-drafts";
+import { TechnicalAccount } from "./technical-account";
 import {
   SoldiersView,
   EligibilityView,
@@ -77,6 +79,7 @@ const technicalLinks = [
     title: "חשבונות והרשאות",
     icon: UsersRound,
   },
+  { path: "/technical/account", title: "החשבון שלי", icon: UserRound },
   { path: "/technical/locked", title: "חשבונות נעולים", icon: ShieldCheck },
   { path: "/technical/recovery", title: "שחזור גישה", icon: History },
   { path: "/technical/mail", title: "משלוחי מייל", icon: Bell },
@@ -332,6 +335,8 @@ export function Workspace({
       return <AuditView state={state} refId={effectivePath.split("/")[3]} />;
     if (effectivePath === "/technical/audit")
       return <AuditView state={state} title="יומן תפעול והרשאות" />;
+    if (effectivePath === "/technical/account")
+      return <TechnicalAccount state={state} action={action} />;
     if (effectivePath.startsWith("/technical"))
       return (
         <TechnicalView state={state} action={action} path={effectivePath} />

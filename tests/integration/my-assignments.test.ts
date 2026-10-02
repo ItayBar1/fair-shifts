@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { db, pool, unitTransaction } from "../../src/server/db";
 import {
   assignments,
+  assignmentMailWindow,
   balances,
   duties,
   dutySlots,
@@ -16,6 +17,7 @@ import {
   type Actor,
 } from "../../src/server/auth/accounts";
 import { readMyAssignments } from "../../src/server/my-assignments";
+import { deliverNextEmail } from "../../src/server/operations/email";
 import {
   previewPublishDrafts,
   publishDrafts,
@@ -125,17 +127,18 @@ describe("private assignment feed", () => {
       { dutyId: first.dutyId, badge: "new" },
       { dutyId: second.dutyId, badge: "new" },
     ]);
-    const mailId = randomUUID();
-    await db.insert(emailOutbox).values({
-      id: mailId,
-      recipientAccountId: actor.id,
-      eventKey: randomUUID(),
-      kind: "publication",
-      title: "שני שיבוצים",
-      body: "שני שיבוצים",
-      dutyIds,
-      expiresAt: new Date(Date.now() + 86400_000),
-    });
+    const [window] = await db.select().from(assignmentMailWindow);
+    const result = await deliverNextEmail(
+      async () => "synthetic-delivery",
+      new Date(window.closesAt.getTime() + 60_000)
+    );
+    expect(result.status).toBe("sent");
+    const mailId = window.id;
+    const [mail] = await db
+      .select()
+      .from(emailOutbox)
+      .where(eq(emailOutbox.id, mailId));
+    expect(mail.dutyIds.sort()).toEqual(dutyIds.sort());
     expect((await readMyAssignments(actor, mailId)).current).toMatchObject([
       { dutyId: first.dutyId, highlighted: true, badge: undefined },
       { dutyId: second.dutyId, highlighted: true, badge: undefined },

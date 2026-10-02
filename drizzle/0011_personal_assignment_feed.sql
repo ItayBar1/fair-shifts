@@ -12,6 +12,12 @@ CREATE TABLE "assignment_feed" (
 ALTER TABLE "email_outbox" ADD COLUMN "duty_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
 UPDATE "email_outbox" SET "duty_ids" = jsonb_build_array(substring("href" from '^/duties/([0-9a-f-]{36})$'))
 WHERE "href" ~ '^/duties/[0-9a-f-]{36}$' AND "kind" IN ('publication','publication-change');--> statement-breakpoint
+-- Already rendered digests contain one duty link per included duty. Use the
+-- sent content, not all events in the window: some events were omitted.
+UPDATE "email_outbox" AS mail SET "duty_ids" = COALESCE((
+  SELECT jsonb_agg(DISTINCT captures[1])
+  FROM regexp_matches(mail.body || E'\n' || COALESCE(mail.href, ''), '/duties/([0-9a-f-]{36})', 'g') AS captures
+), '[]'::jsonb) WHERE "kind" = 'publication-digest';--> statement-breakpoint
 ALTER TABLE "auth_user" ADD COLUMN "assignment_feed_cursor" bigint DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "assignment_feed" ADD CONSTRAINT "assignment_feed_soldier_id_soldiers_id_fk" FOREIGN KEY ("soldier_id") REFERENCES "public"."soldiers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "assignment_feed" ADD CONSTRAINT "assignment_feed_duty_id_duties_id_fk" FOREIGN KEY ("duty_id") REFERENCES "public"."duties"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
