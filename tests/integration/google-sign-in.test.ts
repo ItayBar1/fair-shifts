@@ -343,7 +343,7 @@ describe("Google sign-in for invited accounts, bound to Google's sub", () => {
   });
 });
 
-describe("Google sign-in after the technical account changes its address (decision 203)", () => {
+describe("Google sign-in after the technical account changes its address (decision 204)", () => {
   it("drops the Google link, refuses the old Google account and links the new address afresh", async () => {
     const technical = await createInvitedAccount({
       name: "טכני Google",

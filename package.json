@@ -28,6 +28,7 @@
     "deletion-log": "tsx scripts/deletion-log.ts",
     "restore": "tsx scripts/restore.ts",
     "docs:render": "tsx scripts/render-docs.ts",
+    "docs:matrix": "tsx scripts/render-acceptance-matrix.ts",
     "docker:up": "sh scripts/docker.sh up --build -d app worker",
     "docker:test": "sh scripts/docker.sh --profile test run --build --rm tests",
     "docker:e2e": "sh scripts/docker.sh --profile test run --build --rm e2e",

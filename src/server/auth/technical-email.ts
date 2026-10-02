@@ -23,7 +23,7 @@ import {
 } from "./accounts";
 
 /**
- * Changing the address of the technical account (decision 203). The account is
+ * Changing the address of the technical account (decision 204). The account is
  * not a soldier, so none of the soldier-contact path applies. Two routes share
  * the rules below:
  *

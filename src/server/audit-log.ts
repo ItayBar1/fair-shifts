@@ -685,7 +685,7 @@ export function projectAudit(
           break;
         case "technical.email.request":
         case "technical.email.confirm":
-          // The technical account's own reason, not a soldier's text, so it stays in the envelope (decision 203).
+          // The technical account's own reason, not a soldier's text, so it stays in the envelope (decision 204).
           reason = text(envelope.reason);
           if (envelope.via === "server") add("דרך", "פקודת שרת");
           break;

@@ -1,5 +1,18 @@
 import { ZodError } from "zod";
 import { AppError } from "./errors";
+/** Drizzle wraps the driver's error, so the SQLSTATE can sit one or two causes down. */
+function uniqueViolation(error: unknown): boolean {
+  let current = error;
+  for (
+    let depth = 0;
+    depth < 3 && current && typeof current === "object";
+    depth++
+  ) {
+    if ("code" in current && current.code === "23505") return true;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
+}
 export function errorResponse(error: unknown): Response {
   if (error instanceof AppError)
     return Response.json(
@@ -23,12 +36,7 @@ export function errorResponse(error: unknown): Response {
       },
       { status: 422 }
     );
-  if (
-    error &&
-    typeof error === "object" &&
-    "code" in error &&
-    error.code === "23505"
-  )
+  if (uniqueViolation(error))
     return Response.json(
       {
         error: {

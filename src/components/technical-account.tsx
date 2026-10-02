@@ -9,7 +9,7 @@ import {
 import { ActionDialog, Notice, Panel } from "./ui";
 
 /**
- * The technical account's own screen (decision 203): who it is and the change
+ * The technical account's own screen (decision 204): who it is and the change
  * of its address. The change takes a code from each mailbox, so it is never a
  * single click on an open connection.
  */

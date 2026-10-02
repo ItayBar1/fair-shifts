@@ -84,7 +84,7 @@ export async function readState(actor: Actor) {
       settings: {},
       notificationDefaults: undefined as
         ReturnType<typeof unitDefaults> | undefined,
-      // The technical account's own address and open request to change it (decision 203).
+      // The technical account's own address and open request to change it (decision 204).
       ownAccount: undefined as
         | {
             email: string;
