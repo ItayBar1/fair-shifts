@@ -94,7 +94,12 @@ sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tool
 
 # סנכרון האפיון ל־HTML דרך Docker
 sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tools pnpm docs:render
+
+# מפת הקבלה מול הבדיקות, מתוך tests/acceptance/acceptance-map.ts
+sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tools pnpm docs:matrix
 ```
+
+[מפת הקבלה](docs/acceptance-matrix.md) ממפה כל סיפור וכל תרחיש לבדיקות או לחוסר מוצהר. מוסיפים סיפור או תרחיש לאפיון, או משנים שם של בדיקה שהמפה מזכירה? מעדכנים את `tests/acceptance/acceptance-map.ts` ומריצים את הפקודה; בדיקת היחידה נכשלת עד אז.
 
 מיגרציות מוחלות אוטומטית בהפעלת האתר/עובד תחת נעילה משותפת. אין לחשוף את Compose לפיתוח לאינטרנט. את סודות הספקים ותנאי האירוח ב־Linux ו־Cloudflare Tunnel משלימים בשלב ההפעלה; `.env.example` מתעד שמות בלבד. מפתח הצפנת תור המייל הוא 32 בייט בהקסדצימלי. אזור איפוס מכסת הספק טעון אימות בחשבון Brevo לפני שימוש אמיתי.
 

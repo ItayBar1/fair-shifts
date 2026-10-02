@@ -14,6 +14,7 @@ import { user } from "./auth-schema";
 import type { DbTransaction } from "./db";
 import { invariant } from "./errors";
 import { createInvitedAccount } from "./auth/accounts";
+import { normalizeEmail } from "./auth/policy";
 import { enqueueEmail } from "./operations/email";
 import type { Soldier } from "../domain/types";
 import { postScore } from "./scoring";
@@ -69,6 +70,31 @@ export async function saveSoldier(
       "שינוי יתרה נעשה דרך מסך הניקוד עם תצוגה מקדימה"
     );
   } else invariant(input.email, "email_required", "נדרשת כתובת מייל להזמנה");
+  // Say which value is taken instead of failing on the database's own constraint.
+  if (!existing || existing.personalNumber !== input.personalNumber)
+    invariant(
+      !(
+        await tx
+          .select({ id: soldiers.id })
+          .from(soldiers)
+          .where(eq(soldiers.personalNumber, input.personalNumber))
+      ).length,
+      "personal_number_exists",
+      "המספר האישי כבר רשום ביחידה",
+      409
+    );
+  if (!existing)
+    invariant(
+      !(
+        await tx
+          .select({ id: user.id })
+          .from(user)
+          .where(eq(user.email, normalizeEmail(input.email!)))
+      ).length,
+      "email_exists",
+      "הכתובת משויכת לחשבון אחר",
+      409
+    );
   const id = existing?.id ?? randomUUID();
   const data = profileData(id, input, existing?.data, existing?.version);
   if (existing && populationMoves(existing.data, data)) {

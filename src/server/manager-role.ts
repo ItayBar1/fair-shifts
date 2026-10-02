@@ -29,11 +29,11 @@ export async function changeRole(
   payload: unknown,
   expectedVersion?: number
 ) {
+  // Permission first, so a refused caller learns nothing about the account.
+  technical(actor);
   const input = z
     .object({ id: z.string(), role: z.enum(["soldier", "manager"]) })
     .parse(payload);
-  // Permission first, so a refused caller learns nothing about the account.
-  technical(actor);
   const [target] = await tx
     .select()
     .from(user)
