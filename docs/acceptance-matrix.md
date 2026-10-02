@@ -9,7 +9,7 @@
 ## מה עדיין פתוח
 
 - תרחיש 59 (פתוח): תורנויות ביומן Google טרם נבנו: אין קוד, בדיקות או הרשאת יומן; ההכרעה (195) והאפיון (1.48) כתובים בלבד ([#92](https://github.com/ItayBar1/fair-shifts/issues/92))
-- תרחיש 61 (חלקי): רק פרסום מרובה (#95, PR #105) מומש. חלון האיחוד של 10 דקות, המייל המרוכז עם קישור לכל תורנות, הודעת האתר האחת, תורנות שמתחילה בתוך שעתיים בנפרד, המתג, המכסה ועמוד ״השיבוצים שלי״ (#96, #97) טרם נמזגו, והאפיון (1.50, הכרעה 197) כתוב בלבד ([#97](https://github.com/ItayBar1/fair-shifts/issues/97))
+- תרחיש 61 (חלקי): עמוד ״השיבוצים שלי״ (#96, PR #106) טרם נמזג, ולכן הכפתור במייל, המעבר אליו מהודעת האתר והסימון ״חדש״ עד הביקור הבא אינם נבדקים מול העמוד עצמו. הפרסום המרובה (#95) והמייל וההודעה המרוכזים (#97) מומשו ונבדקו ([#96](https://github.com/ItayBar1/fair-shifts/issues/96))
 
 ## סיפורי משתמש
 
@@ -730,7 +730,10 @@
 
 - [publish-drafts.test.ts](../tests/integration/publish-drafts.test.ts): `publishes the ready drafts together and leaves a blocked draft a draft`; `rejects the whole action when a selected draft changed since the preview, by either manager`; `does not publish or send twice when the same request is sent again`; `lets only one of two managers publish the same drafts, and tells nobody twice`
 - [publish-drafts.spec.ts](../tests/e2e/publish-drafts.spec.ts): `a manager picks a range, previews it, and publishes the ready drafts while a blocked one stays a draft`
-- חוסר: רק פרסום מרובה (#95, PR #105) מומש. חלון האיחוד של 10 דקות, המייל המרוכז עם קישור לכל תורנות, הודעת האתר האחת, תורנות שמתחילה בתוך שעתיים בנפרד, המתג, המכסה ועמוד ״השיבוצים שלי״ (#96, #97) טרם נמזגו, והאפיון (1.50, הכרעה 197) כתוב בלבד ([#97](https://github.com/ItayBar1/fair-shifts/issues/97))
+- [assignment-digest.test.ts](../tests/integration/assignment-digest.test.ts): `gathers publications of a window into one notice and one mail, sent when the window closes`; `does not extend the window: an event after ten minutes opens a new window and a second mail`; `sends a duty starting within two hours at once and apart, and keeps the rest in the window`; `leaves out a duty published and cancelled in the same window, and sends nothing when none is left`; `shows a read or hidden notice again, unread, when an event joins its window`; `does not mail a switched-off type, and still writes the notice`; `does not send a window twice when two workers claim at once`
+- [assignment-digest.test.ts](../tests/unit/assignment-digest.test.ts): `sends a duty starting within two hours at once, the boundary included`; `follows the clock change: a night that loses an hour still reads 22:00 to 06:00`
+- [assignment-digest.spec.ts](../tests/e2e/assignment-digest.spec.ts): `several publications reach the soldier as one notice that counts them and leads to all assignments`
+- חוסר: עמוד ״השיבוצים שלי״ (#96, PR #106) טרם נמזג, ולכן הכפתור במייל, המעבר אליו מהודעת האתר והסימון ״חדש״ עד הביקור הבא אינם נבדקים מול העמוד עצמו. הפרסום המרובה (#95) והמייל וההודעה המרוכזים (#97) מומשו ונבדקו ([#96](https://github.com/ItayBar1/fair-shifts/issues/96))
 
 ### 62. תנאי עם כל המגדרים — כשירות; שיבוץ — מכוסה
 

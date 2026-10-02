@@ -31,6 +31,8 @@ import { invariant } from "../errors";
 import { effectivePreferences } from "../notifications";
 import { roundEmailRelevant } from "../round-recipients";
 import { dutyReminderRelevant } from "../duty-reminder-checks";
+import { buildWindowMail, closeWindow } from "../assignment-mail-delivery";
+import { DIGEST_KIND } from "../../domain/assignment-digest";
 import {
   emailAllowed,
   type EmailKind,
@@ -318,6 +320,8 @@ export async function deliverNextEmail(
         .limit(1)
         .for("update", { skipLocked: true });
       if (!message) return null;
+      // From here the window takes no more events, whatever becomes of its mail.
+      if (message.kind === DIGEST_KIND) await closeWindow(tx, message.id, now);
       const [recipient] = await tx
         .select()
         .from(user)
@@ -369,6 +373,17 @@ export async function deliverNextEmail(
         ))
       )
         skip = "not_relevant";
+      // The mail of a window is written now, from the state of its duties (decision 197).
+      let digest: Awaited<ReturnType<typeof buildWindowMail>> = null;
+      if (!skip && message.kind === DIGEST_KIND) {
+        digest = await buildWindowMail(
+          tx,
+          message.id,
+          message.recipientAccountId,
+          now
+        );
+        if (!digest) skip = "not_relevant";
+      }
       if (!skip && (await superseded(tx, message))) skip = "superseded";
       // Preferences are read again at delivery time, never frozen when the message was queued.
       if (
@@ -399,11 +414,13 @@ export async function deliverNextEmail(
           status: "sending",
           attempts: message.attempts + 1,
           leaseUntil,
+          ...digest,
           updatedAt: now,
         })
         .where(eq(emailOutbox.id, message.id));
       return {
         ...message,
+        ...digest,
         attempts: message.attempts + 1,
         leaseUntil,
         to: message.destination ?? recipient.email,

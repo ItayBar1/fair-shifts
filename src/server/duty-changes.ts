@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
 import { assignments, duties, dutySlots, dutyTypes, records } from "./schema";
-import { emailOutbox, user } from "./auth-schema";
+import { emailOutbox } from "./auth-schema";
 import {
   audit,
   createRecord,
@@ -32,7 +32,8 @@ import type {
   Requirements,
   SpecificApproval,
 } from "../domain/types";
-import { enqueueEmail } from "./operations/email";
+import { announceAssignment } from "./assignment-mail";
+import { DIGEST_KIND } from "../domain/assignment-digest";
 import { closeTransfersForDuty } from "./transfers";
 import {
   linkedRequest,
@@ -668,45 +669,25 @@ async function applyDutyChange(
     await cancelStaleDutyReminders(tx, live.id);
     await closeTransfersForDuty(tx, live.id, "התורנות עודכנה אחרי ההצעה");
   }
-  for (const item of mode === "published" ? affected : []) {
-    const [account] = await tx
-      .select()
-      .from(user)
-      .where(eq(user.soldierId, item.soldierId));
-    if (!account || account.deletedAt) continue;
-    const title = "עודכנה תורנות שפורסמה";
-    const body = item.after.length
-      ? `עודכן השיבוץ לתורנות ${change.proposed.name}. יש לבדוק את הפרטים החדשים.`
-      : `השיבוץ שלך לתורנות ${live.name} הוסר במסגרת עדכון שפורסם.`;
-    await createRecord(
-      tx,
-      "notification",
-      {
-        accountId: account.id,
-        title,
-        body,
-        href,
-        dutyId: live.id,
-        dutyVersion: live.version + 1,
+  for (const item of mode === "published" ? affected : [])
+    await announceAssignment(tx, {
+      soldierId: item.soldierId,
+      duty: {
+        id: live.id,
+        name: change.proposed.name,
+        start: change.proposed.start,
+        end: change.proposed.end,
       },
-      item.soldierId
-    );
-    await enqueueEmail(tx, {
-      recipientAccountId: account.id,
-      eventKey: `update:${live.id}:${live.version + 1}:${account.id}`,
-      kind: "publication-change",
-      title,
-      body,
-      href,
-      priority: 1,
-      expiresAt: new Date(
-        Math.min(
-          Date.now() + 86400_000,
-          instant(change.proposed.end).toMillis()
-        )
-      ),
+      dutyVersion: live.version + 1,
+      // Taken out, put in, or still in a duty that changed (decision 197).
+      change: !item.after.length
+        ? "cancelled"
+        : !item.before.length
+          ? "new"
+          : "updated",
+      // A soldier taken out cares about the start they had expected.
+      startsAt: item.after.length ? undefined : live.data.start,
     });
-  }
   if (mode === "published")
     await settleAfterPublishedChange(tx, actor, {
       dutyId: live.id,
@@ -768,7 +749,10 @@ async function releaseReservations(tx: DbTransaction, original: Assignment[]) {
       })
       .where(eq(assignments.id, item.id));
 }
-/** Reminders are cancelled separately, only when their start or recipient changed. */
+/**
+ * Reminders are cancelled separately, only when their start or recipient changed.
+ * The mail of a window is built from the state at delivery, so it is never cancelled here.
+ */
 async function cancelDutyEmails(tx: DbTransaction, href: string) {
   await tx
     .update(emailOutbox)
@@ -776,7 +760,7 @@ async function cancelDutyEmails(tx: DbTransaction, href: string) {
     .where(
       and(
         eq(emailOutbox.href, href),
-        ne(emailOutbox.kind, "duty-reminder"),
+        notInArray(emailOutbox.kind, ["duty-reminder", DIGEST_KIND]),
         inArray(emailOutbox.status, ["pending", "sending"])
       )
     );
@@ -866,40 +850,20 @@ export async function cancelDuty(
   await cancelDutyEmails(tx, href);
   await cancelStaleDutyReminders(tx, live.id);
   await closeTransfersForDuty(tx, live.id, "התורנות בוטלה");
-  if (live.data.status === "published") {
-    for (const soldierId of new Set(original.map((item) => item.soldierId))) {
-      const [account] = await tx
-        .select()
-        .from(user)
-        .where(eq(user.soldierId, soldierId));
-      if (!account || account.deletedAt) continue;
-      const title = "התורנות בוטלה";
-      const body = `התורנות ${live.name} בוטלה. השיבוץ שלך לתורנות זו אינו בתוקף.`;
-      await createRecord(
-        tx,
-        "notification",
-        {
-          accountId: account.id,
-          title,
-          body,
-          href,
-          dutyId: live.id,
-          dutyVersion: version,
+  if (live.data.status === "published")
+    for (const soldierId of new Set(original.map((item) => item.soldierId)))
+      await announceAssignment(tx, {
+        soldierId,
+        duty: {
+          id: live.id,
+          name: live.name,
+          start: live.data.start,
+          end: live.data.end,
         },
-        soldierId
-      );
-      await enqueueEmail(tx, {
-        recipientAccountId: account.id,
-        eventKey: `cancel:${live.id}:${version}:${account.id}`,
-        kind: "publication-change",
-        title,
-        body,
-        href,
-        priority: 1,
-        expiresAt: new Date(Date.now() + 86400_000),
+        dutyVersion: version,
+        change: "cancelled",
+        dutyCancelled: true,
       });
-    }
-  }
   await audit(tx, actor, "duty.cancel", live.id, {
     version,
     previousVersion: live.version,

@@ -9,8 +9,10 @@ import {
   uniqueIndex,
   index,
   check,
+  serial,
 } from "drizzle-orm/pg-core";
 import type { Soldier, Duty, Assignment } from "../domain/types";
+import { user } from "./auth-schema";
 export * from "./auth-schema";
 
 const dates = () => ({
@@ -183,4 +185,57 @@ export const commandResults = pgTable(
       .defaultNow(),
   },
   (t) => [uniqueIndex("command_once").on(t.actorId, t.requestKey)]
+);
+
+/**
+ * The ten-minute window of one recipient in which announcements of published
+ * assignments gather into a single mail and a single site notice (decision 197).
+ * Its mail waits in the outbox under the same id. At most one window per
+ * recipient is open; a closed window only waits for its mail to go out.
+ */
+export const assignmentMailWindow = pgTable(
+  "assignment_mail_window",
+  {
+    id: uuid("id").primaryKey(),
+    recipientAccountId: text("recipient_account_id")
+      .notNull()
+      .references(() => user.id),
+    status: text("status").notNull().default("open"),
+    opensAt: timestamp("opens_at", { withTimezone: true }).notNull(),
+    closesAt: timestamp("closes_at", { withTimezone: true }).notNull(),
+    // The one site notice of the window, a `records` row of kind notification.
+    notificationId: uuid("notification_id"),
+    ...dates(),
+  },
+  (t) => [
+    uniqueIndex("assignment_window_one_open")
+      .on(t.recipientAccountId)
+      .where(sql`${t.status} = 'open'`),
+    check("assignment_window_status", sql`${t.status} in ('open', 'closed')`),
+  ]
+);
+/** One announcement in a window; the key makes a repeated action join it only once. */
+export const assignmentMailEvent = pgTable(
+  "assignment_mail_event",
+  {
+    id: uuid("id").primaryKey(),
+    seq: serial("seq").notNull(),
+    windowId: uuid("window_id")
+      .notNull()
+      .references(() => assignmentMailWindow.id),
+    eventKey: text("event_key").notNull().unique(),
+    dutyId: uuid("duty_id")
+      .notNull()
+      .references(() => duties.id),
+    dutyVersion: integer("duty_version").notNull(),
+    change: text("change").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("assignment_event_window").on(t.windowId, t.seq),
+    check(
+      "assignment_event_change",
+      sql`${t.change} in ('new', 'updated', 'cancelled')`
+    ),
+  ]
 );

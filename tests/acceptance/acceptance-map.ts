@@ -34,6 +34,7 @@ const U = {
   calendar: "tests/unit/calendar.test.ts",
   calFilters: "tests/unit/calendar-filters.test.ts",
   composition: "tests/unit/composition.test.ts",
+  digest: "tests/unit/assignment-digest.test.ts",
   deletionLog: "tests/unit/deletion-log.test.ts",
   domain: "tests/unit/domain.test.ts",
   eligibility: "tests/unit/eligibility-conditions.test.ts",
@@ -57,6 +58,7 @@ const U = {
 const I = {
   access: "tests/integration/access.test.ts",
   genders: "tests/integration/all-genders.test.ts",
+  digest: "tests/integration/assignment-digest.test.ts",
   inactive: "tests/integration/inactivity-normalization.test.ts",
   publish: "tests/integration/publish-drafts.test.ts",
   audit: "tests/integration/audit-log.test.ts",
@@ -91,6 +93,7 @@ const E = {
   cancel: "tests/e2e/cancellation-requests.spec.ts",
   rounds: "tests/e2e/constraint-rounds.spec.ts",
   delExec: "tests/e2e/deletion-in-execution.spec.ts",
+  digest: "tests/e2e/assignment-digest.spec.ts",
   reminders: "tests/e2e/duty-reminders.spec.ts",
   conditions: "tests/e2e/eligibility-conditions.spec.ts",
   exec: "tests/e2e/execution-periods.spec.ts",
@@ -1830,9 +1833,28 @@ export const scenarios: Record<number, Entry> = {
         E.publish,
         "a manager picks a range, previews it, and publishes the ready drafts while a blocked one stays a draft"
       ),
+      ...t(
+        I.digest,
+        "gathers publications of a window into one notice and one mail, sent when the window closes",
+        "does not extend the window: an event after ten minutes opens a new window and a second mail",
+        "sends a duty starting within two hours at once and apart, and keeps the rest in the window",
+        "leaves out a duty published and cancelled in the same window, and sends nothing when none is left",
+        "shows a read or hidden notice again, unread, when an event joins its window",
+        "does not mail a switched-off type, and still writes the notice",
+        "does not send a window twice when two workers claim at once"
+      ),
+      ...t(
+        U.digest,
+        "sends a duty starting within two hours at once, the boundary included",
+        "follows the clock change: a night that loses an hour still reads 22:00 to 06:00"
+      ),
+      ...t(
+        E.digest,
+        "several publications reach the soldier as one notice that counts them and leads to all assignments"
+      ),
     ],
-    "רק פרסום מרובה (#95, PR #105) מומש. חלון האיחוד של 10 דקות, המייל המרוכז עם קישור לכל תורנות, הודעת האתר האחת, תורנות שמתחילה בתוך שעתיים בנפרד, המתג, המכסה ועמוד ״השיבוצים שלי״ (#96, #97) טרם נמזגו, והאפיון (1.50, הכרעה 197) כתוב בלבד",
-    97
+    "עמוד ״השיבוצים שלי״ (#96, PR #106) טרם נמזג, ולכן הכפתור במייל, המעבר אליו מהודעת האתר והסימון ״חדש״ עד הביקור הבא אינם נבדקים מול העמוד עצמו. הפרסום המרובה (#95) והמייל וההודעה המרוכזים (#97) מומשו ונבדקו",
+    96
   ),
   62: covered([
     ...t(
