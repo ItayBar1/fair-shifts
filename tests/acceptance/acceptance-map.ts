@@ -127,11 +127,6 @@ const covered = (evidence: Evidence[], external?: External[]): Entry => ({
   evidence,
   external,
 });
-const partial = (
-  evidence: Evidence[],
-  gap: string,
-  ticket?: number
-): Entry => ({ status: "partial", evidence, gap, ticket });
 const open = (
   gap: string,
   ticket: number,
