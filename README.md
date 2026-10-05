@@ -2,16 +2,16 @@
 
 מערכת לניהול וחלוקת תורנויות ביחידה של כ־120 חיילים, בעברית וב־RTL.
 
-המימוש החל לפי [תוכנית 20 השלבים המאושרת](plans/fair-shifts-implementation.md). קיים מסלול ראשוני עובד וקוד ליבה, אך הגרסה המלאה עדיין לא הושלמה. משתמשים בנתונים סינתטיים בלבד. [מצב ובדיקות בפועל](config/memory/project-state.md).
+רוב [תוכנית 20 השלבים המאושרת](plans/fair-shifts-implementation.md) ממומשת. [ביקורת 05.10.2026](docs/audits/2026-10-05/README.md) מפרטת תקלות שנמצאו, יכולת Calendar חסרה ושערי פרטיות, נגישות וקבלה תפעולית שעדיין פתוחים. משתמשים בנתונים סינתטיים בלבד. [מצב ובדיקות בפועל](config/memory/project-state.md).
 
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.54](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.57](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
-- [מצב השלבים, חלוקת עבודה בצוות ושער השחרור](docs/team-roadmap.md).
-- [כרטיס המעקב ב־GitHub](https://github.com/ItayBar1/fair-shifts/issues/2) ו[אינדקס 37 ה־Stories והתלויות](docs/github-backlog.md).
+- [מפת הדרך וחלוקת העבודה המקורית מ־28.09](docs/team-roadmap.md); מצב השלבים העדכני ב[ביקורת](docs/audits/2026-10-05/implementation.md).
+- [כרטיס המעקב ב־GitHub](https://github.com/ItayBar1/fair-shifts/issues/2), [אינדקס 37 ה־Stories המקוריים והתלויות](docs/github-backlog.md) ו[מצב הכרטיסים וההרחבות ב־05.10.2026](docs/audits/2026-10-05/backlog-operations.md).
 - [זיכרון בין סשנים](config/memory/README.md) ו[יומן סשנים](config/memory/session-log.md). הזיכרון מתועד ב־Git, אינו נטען אוטומטית ואינו מחליף את האפיון.
 
 ## הרצה ובדיקות — Docker בלבד

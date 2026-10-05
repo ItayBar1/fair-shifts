@@ -1,0 +1,60 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { db, pool } from "../../src/server/db";
+import { balances, duties, dutySlots, dutyTypes, assignments, records, soldiers } from "../../src/server/schema";
+import { createInvitedAccount, type Actor } from "../../src/server/auth/accounts";
+import { executeAction } from "../../src/server/actions";
+import { errorResponse } from "../../src/server/http";
+import { assignment, duty, soldier } from "../fixtures";
+
+// Mount at /app/tests/integration/audit-transfer.test.ts, using the Docker test service.
+if (!process.env.TEST_DATABASE_URL || process.env.TEST_DATABASE_URL !== process.env.DATABASE_URL || !new URL(process.env.DATABASE_URL).pathname.endsWith("_test"))
+  throw new Error("Audit reproduction requires the dedicated test database");
+
+async function invite(number: string): Promise<Actor> {
+  const soldierId = randomUUID();
+  const name = `Synthetic ${number}`;
+  await db.insert(soldiers).values({ id: soldierId, name, personalNumber: number, data: soldier({ id: soldierId, name, personalNumber: number }) });
+  await db.insert(balances).values({ soldierId, current: 0 });
+  const account = await createInvitedAccount({ name, email: `${number}@example.invalid`, soldierId });
+  return { id: account.id, name, role: "soldier", soldierId, securityEpoch: account.securityEpoch };
+}
+
+beforeEach(async () => {
+  await db.execute(sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`);
+});
+afterEach(() => vi.restoreAllMocks());
+afterAll(async () => pool.end());
+
+describe("audit: accepting a transfer after its execution ended with the worker stopped", () => {
+  it("expires the stale offer with a business error, rather than returning HTTP 500", async () => {
+    const from = await invite("990001");
+    const to = await invite("990002");
+    const now = Date.now();
+    const typeId = randomUUID();
+    const dutyId = randomUUID();
+    const slotId = randomUUID();
+    const seatId = randomUUID();
+    const data = duty({ id: dutyId, typeId, status: "published", rulesVersion: 1, start: new Date(now + 60_000).toISOString(), end: new Date(now + 120_000).toISOString(), slots: [{ id: slotId, role: "Synthetic" }] });
+    await db.insert(dutyTypes).values({ id: typeId, name: "Synthetic", data: {} });
+    await db.insert(duties).values({ id: dutyId, typeId, name: "Synthetic", data });
+    await db.insert(dutySlots).values({ id: slotId, dutyId, data: { role: "Synthetic" } });
+    const seat = assignment({ id: seatId, dutyId, slotId, soldierId: from.soldierId! });
+    await db.insert(assignments).values({ ...seat, data: seat });
+    const offered = await executeAction(from, { type: "transfer.offer", payload: { assignmentId: seatId, candidateIds: [to.soldierId] }, expectedVersion: 1, idempotencyKey: randomUUID() }) as { id: string; version: number };
+    // No settleDue/worker call: the reserved assignment has reached its end.
+    vi.spyOn(Date, "now").mockReturnValue(now + 121_000);
+    let status = 200;
+    let message = "";
+    try {
+      await executeAction(to, { type: "transfer.respond", payload: { id: offered.id, decision: "accept", confirmed: true }, expectedVersion: offered.version, idempotencyKey: randomUUID() });
+    } catch (error) {
+      const response = errorResponse(error);
+      status = response.status;
+      message = (await response.json()).error.message;
+    }
+    const [request] = await db.select().from(records).where(eq(records.id, offered.id));
+    expect({ status, requestStatus: request.data.status, message }).toMatchObject({ status: 409, requestStatus: "expired" });
+  });
+});

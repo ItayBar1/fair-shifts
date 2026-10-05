@@ -1,0 +1,64 @@
+import { describe, expect, it } from "vitest";
+import { evaluateEligibility } from "../../src/domain/eligibility";
+import { assignment, duty, soldier } from "../fixtures";
+
+// Temporary audit reproduction. Mount this file at /app/tests/unit/audit-domain.test.ts.
+// It models the exact persisted state of performance.correction.apply: the historical
+// assignment.soldierId remains A, while performance.performerId becomes B.
+const previousDuty = duty({
+  id: "previous-duty",
+  status: "published",
+  start: "2026-10-05T08:00:00+03:00",
+  end: "2026-10-05T10:00:00+03:00",
+  restAfterMinutes: 24 * 60,
+});
+const nextDuty = duty({
+  id: "next-duty",
+  start: "2026-10-05T12:00:00+03:00",
+  end: "2026-10-05T14:00:00+03:00",
+  slots: [{ id: "next-slot", role: "Duty" }],
+});
+const corrected = assignment({
+  id: "historical-seat",
+  dutyId: previousDuty.id,
+  soldierId: "A",
+  status: "credited",
+  creditedAt: "2026-10-05T10:00:01+03:00",
+  performance: {
+    performerId: "B",
+    start: previousDuty.start,
+    end: previousDuty.end,
+    points: 4,
+    reflected: { B: 4 },
+    corrections: 1,
+  },
+});
+
+describe("audit: rest belongs to the corrected actual performer", () => {
+  it.each(["automatic", "manual", "volunteer"] as const)(
+    "releases the original assignee A in %s mode after correction to B",
+    (mode) => {
+      const result = evaluateEligibility(
+        soldier({ id: "A" }),
+        nextDuty,
+        nextDuty.slots[0],
+        { duties: [previousDuty, nextDuty], assignments: [corrected], mode }
+      );
+      expect(result.blockers).toEqual([]);
+      expect(result.status).toBe("eligible");
+    }
+  );
+  it.each(["automatic", "manual", "volunteer"] as const)(
+    "blocks actual performer B during the 24 hour rest in %s mode",
+    (mode) => {
+      const result = evaluateEligibility(
+        soldier({ id: "B" }),
+        nextDuty,
+        nextDuty.slots[0],
+        { duties: [previousDuty, nextDuty], assignments: [corrected], mode }
+      );
+      expect(result.blockers.some((item) => item.code === "overlap_or_rest")).toBe(true);
+      expect(result.status).toBe("blocked");
+    }
+  );
+});
