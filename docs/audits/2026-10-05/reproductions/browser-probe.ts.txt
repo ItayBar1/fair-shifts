@@ -1,0 +1,32 @@
+import { readFileSync, writeFileSync } from "node:fs";
+
+test.describe("external audit", () => {
+  const open = sharedSessions(true);
+  for (const key of ["soldier", "manager", "technical"] as const) {
+    test(`external audit accessibility and cookie inventory ${key}`, async () => {
+      test.setTimeout(300_000);
+      const page = await open(key);
+      const observations: unknown[] = [];
+      for (const screen of screens[key]) {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(screen.path);
+        await expect(page.getByRole("heading", {name: screen.title, exact: true, level: 1})).toBeVisible();
+        await page.addScriptTag({ content: readFileSync("/tmp/axe-audit/node_modules/axe-core/axe.min.js", "utf8") });
+        const result = await page.evaluate("axe.run(document, { runOnly: {type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']} })") as {violations: {id: string; impact: string; help: string; helpUrl: string; nodes: {target: string[]; failureSummary: string}[]}[]; incomplete: {id: string}[]};
+        observations.push({ path: screen.path, title: await page.title(), violations: result.violations.map((v: {id: string; impact: string; help: string; helpUrl: string; nodes: {target: string[]; failureSummary: string}[]}) => ({id: v.id, impact: v.impact, help: v.help, helpUrl: v.helpUrl, nodes: v.nodes.map(n => ({target: n.target, failureSummary: n.failureSummary}))})), incompleteRules: result.incomplete.map((v: {id: string}) => v.id) });
+      }
+      const cookies = (await page.context().cookies()).map(c => ({name: c.name, httpOnly: c.httpOnly, secure: c.secure, sameSite: c.sameSite, path: c.path, lifetimeSeconds: c.expires > 0 ? Math.round(c.expires-Date.now()/1000) : "session"}));
+      writeFileSync(`/audit-output/${key}.json`, JSON.stringify({key, cookies, observations}, null, 2));
+      if (key === "manager") {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto("/calendar");
+        await expect(page.locator("main h1")).toBeVisible();
+        await page.getByRole("button", {name: "פתיחת תפריט"}).click();
+        const menu = await page.evaluate(() => ({ active: document.activeElement?.outerHTML.slice(0,300), focusedInMenu: !!document.activeElement?.closest("aside"), dialogRoles: document.querySelectorAll('[role=dialog], dialog[open]').length }));
+        writeFileSync("/audit-output/mobile-menu.json", JSON.stringify(menu, null, 2));
+        await page.keyboard.press("Escape");
+        writeFileSync("/audit-output/mobile-escape.json", JSON.stringify({asideClass: await page.locator("aside").getAttribute("class")}, null, 2));
+      }
+    });
+  }
+});
