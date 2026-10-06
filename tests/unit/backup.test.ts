@@ -500,9 +500,9 @@ describe("backup screen helpers", () => {
     ]);
     // A soldier's form keeps the hidden switch as it was.
     const payload = preferencesPayload(
-      { reminderHours: "24", "email.transfer": true },
+      { "reminder.0.hours": 24, "email.transfer": true },
       hiddenPreferenceTypes("soldier"),
-      { operations: false }
+      { email: { operations: false } }
     );
     expect(payload.email).toMatchObject({ transfer: true, operations: false });
   });

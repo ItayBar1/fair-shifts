@@ -11,6 +11,7 @@ import {
   index,
   check,
   serial,
+  boolean,
 } from "drizzle-orm/pg-core";
 import type { Soldier, Duty, Assignment } from "../domain/types";
 import { user } from "./auth-schema";
@@ -272,6 +273,82 @@ export const assignmentMailEvent = pgTable(
     check(
       "assignment_event_change",
       sql`${t.change} in ('new', 'updated', 'cancelled')`
+    ),
+  ]
+);
+
+/**
+ * The Google calendar permission and switch of one soldier's account (decision 195).
+ * The row exists once a Google sign-in granted the permission. Only the refresh token
+ * is kept, sealed like a mail secret, and it is deleted with the account. `state`
+ * says whether the permission can be used; `enabled` is the soldier's own switch.
+ */
+export const calendarLink = pgTable(
+  "calendar_link",
+  {
+    accountId: text("account_id")
+      .primaryKey()
+      .references(() => user.id),
+    refreshToken: text("refresh_token"),
+    state: text("state").notNull().default("active"),
+    enabled: boolean("enabled").notNull().default(true),
+    version: integer("version").notNull().default(1),
+    // The secondary calendar "תורנויות", created once.
+    calendarId: text("calendar_id"),
+    // Backoff after a failed run; a run takes the lease so two workers never work one account.
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseUntil: timestamp("lease_until", { withTimezone: true }),
+    leaseToken: text("lease_token"),
+    // A failure category only; Google's answers are never stored.
+    errorCode: text("error_code"),
+    // The button "remove the future duties from the calendar", until a run did it.
+    removeRequestedAt: timestamp("remove_requested_at", {
+      withTimezone: true,
+    }),
+    // The single site notice of a lost permission, so it is not repeated.
+    permissionNoticeAt: timestamp("permission_notice_at", {
+      withTimezone: true,
+    }),
+    syncedAt: timestamp("synced_at", { withTimezone: true }),
+    ...dates(),
+  },
+  (t) => [
+    check(
+      "calendar_link_state",
+      sql`${t.state} in ('active', 'needs_permission')`
+    ),
+    index("calendar_link_due").on(t.nextAttemptAt),
+  ]
+);
+/**
+ * One event the sync put in a soldier's calendar, for one duty. `removed_by_user`
+ * remembers an event the soldier deleted in Google, so an update does not bring it back,
+ * and `removed` one the sync deleted itself. Both keep the id: Google never reuses it.
+ */
+export const calendarEvent = pgTable(
+  "calendar_event",
+  {
+    id: uuid("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id),
+    dutyId: uuid("duty_id").notNull(),
+    generation: integer("generation").notNull().default(0),
+    googleEventId: text("google_event_id").notNull(),
+    status: text("status").notNull().default("synced"),
+    fingerprint: text("fingerprint").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    ...dates(),
+  },
+  (t) => [
+    uniqueIndex("calendar_event_duty").on(t.accountId, t.dutyId),
+    check(
+      "calendar_event_status",
+      sql`${t.status} in ('pending', 'synced', 'removed_by_user', 'removed')`
     ),
   ]
 );

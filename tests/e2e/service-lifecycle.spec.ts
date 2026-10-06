@@ -9,6 +9,7 @@ import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { announceDepartures } from "../../src/server/departures";
 import { soldier } from "../fixtures";
+import { submitAuth } from "./auth-submit";
 
 const israelDate = (days = 0) =>
   DateTime.now().setZone("Asia/Jerusalem").plus({ days }).toISODate()!;
@@ -66,13 +67,21 @@ async function loginCodes(email: string) {
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(email);
-  await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
+  await submitAuth(
+    page,
+    "/api/auth/request-code",
+    page.getByRole("button", { name: "שליחת קוד למייל" })
+  );
   await expect(page.getByLabel("קוד כניסה", { exact: true })).toBeVisible();
   const [message] = await loginCodes(email);
   await page
     .getByLabel("קוד כניסה", { exact: true })
     .fill(openSecret(message.encryptedSecret!));
-  await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
+  await submitAuth(
+    page,
+    "/api/auth/verify-code",
+    page.getByRole("button", { name: "כניסה לחשבון", exact: true })
+  );
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })
   ).toBeVisible();

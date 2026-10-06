@@ -14,7 +14,8 @@ import {
 import {
   emailTypeLabels,
   preferencesPayload,
-  reminderHoursText,
+  reminderFieldName,
+  reminderRows,
   hiddenPreferenceTypes,
 } from "@/client/notifications";
 import { preferenceTypes } from "@/domain/notification-preferences";
@@ -34,6 +35,7 @@ import { effectiveDiffers } from "@/domain/time";
 import { CancellationRequests } from "./cancellation-requests";
 import { MailHealthRow, MailPanel } from "./mail-operations";
 import { BackupsView, BackupFreshnessBadge } from "./backups";
+import { CalendarSettings } from "./calendar-settings";
 type Props = { state: AppState; action: Action };
 export { ConstraintsView } from "./constraints";
 export function RequestsView({ state, action }: Props) {
@@ -94,6 +96,7 @@ export function NotificationsView({ state, action }: Props) {
 export function SettingsView({ state, action }: Props) {
   const settings = state.settings;
   const defaults = obj(state.notificationDefaults);
+  const calendarAvailable = Boolean(obj(state.calendar).available);
   return (
     <>
       {state.actor.role === "manager" && (
@@ -112,11 +115,13 @@ export function SettingsView({ state, action }: Props) {
           />
         </Panel>
       )}
+      <CalendarSettings calendar={state.calendar} action={action} />
       <Panel title="העדפות הודעות">
         <p className="muted">
           הודעות האתר נשמרות תמיד. המתגים קובעים אילו הודעות יישלחו גם במייל.
-          שעות התזכורת חלות על תזכורות האתר והמייל. קוד כניסה, הזמנה ואימות מייל
-          נשלחים תמיד.
+          לכל תזכורת לפני תורנות בוחרים איפה לקבל אותה: באתר (תמיד), במייל
+          {calendarAvailable ? " וביומן Google" : ""}. קוד כניסה, הזמנה ואימות
+          מייל נשלחים תמיד.
         </p>
         <Notice tone={settings.source === "personal" ? "info" : "success"}>
           {settings.source === "personal"
@@ -127,6 +132,7 @@ export function SettingsView({ state, action }: Props) {
           key={`${str(settings.source)}-${num(settings.version)}-${num(defaults.version)}`}
           values={settings}
           role={state.actor.role}
+          calendarShown={calendarAvailable}
           submitLabel="שמירת העדפות אישיות"
           onSubmit={(payload) =>
             action(
@@ -159,6 +165,7 @@ export function SettingsView({ state, action }: Props) {
             key={`defaults-${num(defaults.version)}`}
             values={defaults}
             role="manager"
+            calendarShown={calendarAvailable}
             submitLabel="שמירת ברירות המחדל"
             onSubmit={(payload) =>
               action(
@@ -178,11 +185,14 @@ export function SettingsView({ state, action }: Props) {
 function PreferencesForm({
   values,
   role,
+  calendarShown,
   submitLabel,
   onSubmit,
 }: {
   values: Record<string, unknown>;
   role: unknown;
+  /** Whether the Google calendar slot of each reminder is offered (decision 195). */
+  calendarShown: boolean;
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
 }) {
@@ -192,12 +202,51 @@ function PreferencesForm({
     <Form
       submitLabel={submitLabel}
       fields={[
-        {
-          name: "reminderHours",
-          label: "שעות לפני תורנות, מופרדות בפסיק",
-          hint: "עד שלוש תזכורות, בשעות שלמות בין 1 ל־168. שדה ריק: ללא תזכורות.",
-          value: reminderHoursText(values.reminderHours),
-        },
+        ...reminderRows(values.reminders).flatMap((row, index): Field[] => {
+          const group = `תזכורת ${index + 1}`;
+          const label = (part: string) => `${group}: ${part}`;
+          return [
+            {
+              name: reminderFieldName(index, "hours"),
+              label: label("שעות לפני תורנות"),
+              type: "number",
+              step: "any",
+              value: row.hours,
+              group,
+              hint:
+                index === 0
+                  ? "עד שלוש תזכורות, בשעות שלמות בין 1 ל־168. שורה בלי שעות: ללא תזכורת."
+                  : undefined,
+            },
+            {
+              name: `reminder.${index}.site`,
+              label: label("באתר"),
+              type: "checkbox",
+              value: true,
+              disabled: true,
+              group,
+              hint: "תמיד",
+            },
+            {
+              name: reminderFieldName(index, "email"),
+              label: label("במייל"),
+              type: "checkbox",
+              value: row.email,
+              group,
+            },
+            ...(calendarShown
+              ? [
+                  {
+                    name: reminderFieldName(index, "calendar"),
+                    label: label("ביומן Google"),
+                    type: "checkbox" as const,
+                    value: row.calendar,
+                    group,
+                  },
+                ]
+              : []),
+          ];
+        }),
         ...preferenceTypes
           .filter((type) => !hidden.includes(type))
           .map((type): Field => ({
@@ -207,7 +256,16 @@ function PreferencesForm({
             value: email[type] !== false,
           })),
       ]}
-      onSubmit={(form) => onSubmit(preferencesPayload(form, hidden, email))}
+      onSubmit={(form) =>
+        onSubmit(
+          preferencesPayload(
+            form,
+            hidden,
+            { email, reminders: values.reminders },
+            calendarShown
+          )
+        )
+      }
     />
   );
 }

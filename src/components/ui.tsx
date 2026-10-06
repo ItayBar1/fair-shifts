@@ -217,6 +217,10 @@ export type Field = {
   max?: number;
   step?: string;
   full?: boolean;
+  /** Fields that follow each other with the same group share one bordered group. */
+  group?: string;
+  /** A locked field is shown and keeps its value but is not part of the submitted values. */
+  disabled?: boolean;
   /** Tells the caller what a text, number or date field now holds. */
   onChange?: (value: string) => void;
   /**
@@ -225,9 +229,9 @@ export type Field = {
    */
   custom?: ReactNode;
 };
-export function Fields({ fields }: { fields: Field[] }) {
+function FieldList({ fields }: { fields: Field[] }) {
   return (
-    <div className="form-grid">
+    <>
       {fields.map((field) =>
         field.type === "custom" ? (
           <div className="field full" key={field.name}>
@@ -246,6 +250,7 @@ export function Fields({ fields }: { fields: Field[] }) {
                   name={field.name}
                   defaultChecked={Boolean(field.value)}
                   required={field.required}
+                  disabled={field.disabled}
                 />
                 <span>
                   {field.label}
@@ -326,6 +331,33 @@ export function Fields({ fields }: { fields: Field[] }) {
               </>
             )}
           </label>
+        )
+      )}
+    </>
+  );
+}
+export function Fields({ fields }: { fields: Field[] }) {
+  type Part = Field | { title: string; fields: Field[] };
+  const parts: Part[] = [];
+  for (const field of fields) {
+    const last = parts[parts.length - 1];
+    if (!field.group) parts.push(field);
+    else if (last && "title" in last && last.title === field.group)
+      last.fields.push(field);
+    else parts.push({ title: field.group, fields: [field] });
+  }
+  return (
+    <div className="form-grid">
+      {parts.map((part) =>
+        "title" in part ? (
+          <fieldset className="field-group full" key={part.title}>
+            <legend>{part.title}</legend>
+            <div className="field-group-body">
+              <FieldList fields={part.fields} />
+            </div>
+          </fieldset>
+        ) : (
+          <FieldList fields={[part]} key={part.name} />
         )
       )}
     </div>

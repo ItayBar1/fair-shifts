@@ -13,6 +13,7 @@ import {
 } from "./schema";
 import { user } from "./auth-schema";
 import { deleteAccountAuth } from "./auth/accounts";
+import { purgeCalendarLink, type CalendarCleanup } from "./calendar/link";
 import {
   audit,
   createRecord,
@@ -558,6 +559,11 @@ export async function eraseSoldier(
      * and it is not logged a second time.
      */
     restored?: { at: string };
+    /**
+     * Where the calendar permission of the account is handed over, for Google to be
+     * told after the commit (decision 195). A restore passes none and never calls Google.
+     */
+    calendarCleanup?: CalendarCleanup[];
   }
 ) {
   if (!options.restored) {
@@ -607,8 +613,15 @@ export async function eraseSoldier(
       .update(soldierContacts)
       .set({ email: null, phone: null, address: null, fieldVersions: {} })
       .where(eq(soldierContacts.soldierId, soldierId));
-  // Access, sign-in codes, recovery codes, linked providers and queued mail end here.
-  if (login) await deleteAccountAuth(login.id, tx);
+  // Access, sign-in codes, recovery codes, linked providers and queued mail end here,
+  // and so does the calendar permission with the events recorded for it (decision 195).
+  if (login) {
+    const calendar = await purgeCalendarLink(tx, login.id, {
+      collect: Boolean(options.calendarCleanup),
+    });
+    if (calendar) options.calendarCleanup?.push(calendar);
+    await deleteAccountAuth(login.id, tx);
+  }
 
   const erased = await eraseRecords(tx, soldierId, login?.id, requests, at);
   erased.scrubbed += await eraseSeatApprovals(tx, soldierId);
@@ -683,7 +696,8 @@ export async function deleteSoldier(
   tx: DbTransaction,
   actor: Actor,
   payload: unknown,
-  expectedVersion?: number
+  expectedVersion?: number,
+  calendarCleanup?: CalendarCleanup[]
 ) {
   manager(actor);
   const input = deleteInput.parse(payload);
@@ -697,5 +711,6 @@ export async function deleteSoldier(
   return eraseSoldier(tx, actor, input.id, {
     reason: input.reason,
     previewToken: input.previewToken,
+    calendarCleanup,
   });
 }

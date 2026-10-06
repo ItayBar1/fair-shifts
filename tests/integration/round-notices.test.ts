@@ -150,7 +150,6 @@ async function deliverAll(now = Date.now() + 1000) {
 }
 const sorted = (...values: (string | undefined)[]) => [...values].sort();
 const allEmail = {
-  dutyReminder: true,
   roundOpening: true,
   roundClosing: true,
   publication: true,
@@ -191,7 +190,10 @@ describe("constraint round notices", () => {
       .set({ deletedAt: new Date() })
       .where(eq(soldiers.id, removed));
     await command(member, "settings.save", {
-      reminderHours: [24, 2],
+      reminders: [
+        { hours: 24, email: true, calendar: true },
+        { hours: 2, email: true, calendar: true },
+      ],
       email: { ...allEmail, roundOpening: false },
     });
 

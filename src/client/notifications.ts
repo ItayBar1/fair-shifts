@@ -6,10 +6,10 @@ import {
   staffPreferenceTypes,
   technicalPreferenceTypes,
   type PreferenceType,
+  type Reminder,
 } from "../domain/notification-preferences";
 
 export const emailTypeLabels: Record<PreferenceType, string> = {
-  dutyReminder: "תזכורת לפני תורנות",
   roundOpening: "פתיחת סבב אילוצים",
   roundClosing: "תזכורת לפני סגירת סבב, למי שלא הגיש",
   publication: "שיבוץ, שינוי או ביטול של תורנות שפורסמה",
@@ -27,49 +27,85 @@ export function unreadCount(notifications: Row[]) {
   return notifications.filter((row) => !row.readAt && !row.hiddenAt).length;
 }
 
-export function reminderHoursText(value: unknown) {
-  return Array.isArray(value) ? value.join(", ") : "";
+/** The form always shows this many reminder rows; an empty hours field is an unused row. */
+export const reminderRowCount = MAX_REMINDERS;
+export const reminderFieldName = (
+  index: number,
+  part: "hours" | "email" | "calendar"
+) => `reminder.${index}.${part}`;
+
+type ReminderRow = { hours: number | ""; email: boolean; calendar: boolean };
+/** The stored reminders as form rows, closest last, padded with unused rows. */
+export function reminderRows(value: unknown): ReminderRow[] {
+  const stored = Array.isArray(value) ? (value as Row[]) : [];
+  return Array.from({ length: reminderRowCount }, (_, index) => {
+    const reminder = stored[index];
+    return reminder
+      ? {
+          hours: Number(reminder.hours),
+          email: reminder.email !== false,
+          calendar: reminder.calendar !== false,
+        }
+      : { hours: "", email: true, calendar: true };
+  });
 }
 
-/** Mirrors the server rules so the form can explain a rejection in Hebrew. */
-export function parseReminderHours(
-  text: string
-): { hours: number[] } | { error: string } {
-  const parts = text
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const hours = parts.map(Number);
+/**
+ * Mirrors the server rules so the form can explain a rejection in Hebrew. A row
+ * without hours is not a reminder. When the calendar column is not shown, a reminder
+ * keeps the calendar slot it has for the same hours, or is marked as by default.
+ */
+export function parseReminders(
+  values: Row,
+  currentReminders: unknown = [],
+  calendarShown = true
+): { reminders: Reminder[] } | { error: string } {
+  const current = Array.isArray(currentReminders)
+    ? (currentReminders as Row[])
+    : [];
+  const reminders: Reminder[] = [];
+  for (let index = 0; index < reminderRowCount; index++) {
+    const raw = values[reminderFieldName(index, "hours")];
+    if (raw === undefined || raw === null || String(raw).trim() === "")
+      continue;
+    const hours = Number(raw);
+    if (!Number.isInteger(hours) || hours < 1 || hours > MAX_REMINDER_HOURS)
+      return {
+        error: `שעות התזכורת הן מספרים שלמים בין 1 ל־${MAX_REMINDER_HOURS}.`,
+      };
+    reminders.push({
+      hours,
+      email: values[reminderFieldName(index, "email")] === true,
+      calendar: calendarShown
+        ? values[reminderFieldName(index, "calendar")] === true
+        : current.find((reminder) => reminder.hours === hours)?.calendar !==
+          false,
+    });
+  }
   if (
-    hours.some(
-      (hour) => !Number.isInteger(hour) || hour < 1 || hour > MAX_REMINDER_HOURS
-    )
+    new Set(reminders.map((reminder) => reminder.hours)).size !==
+    reminders.length
   )
-    return {
-      error: `שעות התזכורת הן מספרים שלמים בין 1 ל־${MAX_REMINDER_HOURS}.`,
-    };
-  if (new Set(hours).size !== hours.length)
     return { error: "אין לחזור על אותה שעת תזכורת." };
-  if (hours.length > MAX_REMINDERS)
-    return { error: `אפשר לבחור עד ${MAX_REMINDERS} תזכורות.` };
-  return { hours };
+  return { reminders };
 }
 
 /** A type the form does not show keeps its current value instead of turning off. */
 export function preferencesPayload(
   values: Row,
   hidden: readonly PreferenceType[] = [],
-  current: Row = {}
+  current: { email?: Row; reminders?: unknown } = {},
+  calendarShown = true
 ) {
-  const parsed = parseReminderHours(String(values.reminderHours ?? ""));
+  const parsed = parseReminders(values, current.reminders, calendarShown);
   if ("error" in parsed) throw new Error(parsed.error);
   return {
-    reminderHours: parsed.hours,
+    reminders: parsed.reminders,
     email: Object.fromEntries(
       preferenceTypes.map((type) => [
         type,
         hidden.includes(type)
-          ? current[type] !== false
+          ? current.email?.[type] !== false
           : values[`email.${type}`] === true,
       ])
     ),

@@ -13,7 +13,10 @@ import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
 
-const hoursLabel = "שעות לפני תורנות, מופרדות בפסיק";
+const hoursLabel = (row: number) => `תזכורת ${row}: שעות לפני תורנות`;
+const siteSlot = (row: number) => `תזכורת ${row}: באתר`;
+const emailSlot = (row: number) => `תזכורת ${row}: במייל`;
+const calendarSlot = (row: number) => `תזכורת ${row}: ביומן Google`;
 const publicationLabel = "מייל: שיבוץ, שינוי או ביטול של תורנות שפורסמה";
 const departureLabel = "מייל: סיום שירות של חייל (לאחראים)";
 const people = [
@@ -66,9 +69,19 @@ const panel = (page: Page, title: string) =>
   page
     .locator("section.panel")
     .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
-async function fill(form: Locator, hours: string, publication: boolean) {
-  await form.getByLabel(hoursLabel).fill(hours);
+/** Fills the three reminder rows; a row without hours is left empty. */
+async function fill(form: Locator, hours: number[], publication: boolean) {
+  for (const row of [1, 2, 3])
+    await form
+      .getByLabel(hoursLabel(row))
+      .fill(hours[row - 1] === undefined ? "" : String(hours[row - 1]));
   await form.getByLabel(publicationLabel).setChecked(publication);
+}
+async function expectHours(form: Locator, hours: number[]) {
+  for (const row of [1, 2, 3])
+    await expect(form.getByLabel(hoursLabel(row))).toHaveValue(
+      hours[row - 1] === undefined ? "" : String(hours[row - 1])
+    );
 }
 
 test("unit defaults reach soldiers without personal preferences; a saved personal form and inbox states stay personal", async ({
@@ -77,11 +90,22 @@ test("unit defaults reach soldiers without personal preferences; a saved persona
 }) => {
   await login(page, "prefs-manager@example.invalid");
   await page.goto("/settings");
+  // A duty manager takes no part in duties, so has no calendar of their own (decision 192).
+  await expect(
+    page.getByRole("heading", { name: "יומן Google", exact: true })
+  ).toHaveCount(0);
   const defaults = panel(page, "ברירות מחדל להודעות ביחידה");
-  await expect(defaults.getByLabel(hoursLabel)).toHaveValue("24, 2");
-  await fill(defaults, "12", false);
+  await expectHours(defaults, [24, 2]);
+  // Each reminder has a site slot that is always marked and locked, and email and calendar slots (decision 195).
+  for (const row of [1, 2]) {
+    await expect(defaults.getByLabel(siteSlot(row))).toBeChecked();
+    await expect(defaults.getByLabel(siteSlot(row))).toBeDisabled();
+    await expect(defaults.getByLabel(emailSlot(row))).toBeChecked();
+    await expect(defaults.getByLabel(calendarSlot(row))).toBeChecked();
+  }
+  await fill(defaults, [12], false);
   await defaults.getByRole("button", { name: "שמירת ברירות המחדל" }).click();
-  await expect(defaults.getByLabel(hoursLabel)).toHaveValue("12");
+  await expectHours(defaults, [12]);
 
   const soldierContext = await browser.newContext();
   const member = await soldierContext.newPage();
@@ -89,7 +113,7 @@ test("unit defaults reach soldiers without personal preferences; a saved persona
   await member.goto("/settings");
   const own = panel(member, "העדפות הודעות");
   await expect(own.getByText("חלות עליך ברירות המחדל של היחידה")).toBeVisible();
-  await expect(own.getByLabel(hoursLabel)).toHaveValue("12");
+  await expectHours(own, [12]);
   await expect(own.getByLabel(publicationLabel)).not.toBeChecked();
   await expect(
     member.getByRole("heading", { name: "ברירות מחדל להודעות ביחידה" })
@@ -99,28 +123,38 @@ test("unit defaults reach soldiers without personal preferences; a saved persona
   await expect(defaults.getByLabel(departureLabel)).toBeChecked();
 
   // The form explains a rejected timing in Hebrew and keeps the defaults.
-  await own.getByLabel(hoursLabel).fill("0, 2");
+  await fill(own, [0, 2], true);
   await own.getByRole("button", { name: "שמירת העדפות אישיות" }).click();
   await expect(
     own.getByText("שעות התזכורת הן מספרים שלמים בין 1 ל־168.")
   ).toBeVisible();
-  await fill(own, "6, 3", true);
+  await fill(own, [3, 3], true);
+  await own.getByRole("button", { name: "שמירת העדפות אישיות" }).click();
+  await expect(own.getByText("אין לחזור על אותה שעת תזכורת.")).toBeVisible();
+  // Each reminder keeps its own channels: the first goes to the calendar only, the second to mail only.
+  await fill(own, [6, 3], true);
+  await own.getByLabel(emailSlot(1)).setChecked(false);
+  await own.getByLabel(calendarSlot(2)).setChecked(false);
   await own.getByRole("button", { name: "שמירת העדפות אישיות" }).click();
   await expect(own.getByText("שמרת העדפות אישיות")).toBeVisible();
 
   await page.reload();
-  await fill(defaults, "8", false);
+  await fill(defaults, [8], false);
   await defaults.getByRole("button", { name: "שמירת ברירות המחדל" }).click();
-  await expect(defaults.getByLabel(hoursLabel)).toHaveValue("8");
+  await expectHours(defaults, [8]);
   await member.reload();
-  await expect(own.getByLabel(hoursLabel)).toHaveValue("6, 3");
+  await expectHours(own, [6, 3]);
+  await expect(own.getByLabel(emailSlot(1))).not.toBeChecked();
+  await expect(own.getByLabel(calendarSlot(1))).toBeChecked();
+  await expect(own.getByLabel(emailSlot(2))).toBeChecked();
+  await expect(own.getByLabel(calendarSlot(2))).not.toBeChecked();
   await expect(own.getByLabel(publicationLabel)).toBeChecked();
 
   await own
     .getByRole("button", { name: "חזרה לברירות המחדל של היחידה" })
     .click();
   await expect(own.getByText("חלות עליך ברירות המחדל של היחידה")).toBeVisible();
-  await expect(own.getByLabel(hoursLabel)).toHaveValue("8");
+  await expectHours(own, [8]);
 
   // Reading and hiding change only the recipient's inbox and unread count.
   const [account] = await db
@@ -152,7 +186,7 @@ test("unit defaults reach soldiers without personal preferences; a saved persona
   // The settings screen fits a phone without horizontal scrolling.
   await member.setViewportSize({ width: 375, height: 812 });
   await member.goto("/settings");
-  await expect(own.getByLabel(hoursLabel)).toBeVisible();
+  await expect(own.getByLabel(hoursLabel(1))).toBeVisible();
   expect(
     await member.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth

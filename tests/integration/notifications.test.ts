@@ -80,8 +80,10 @@ async function rejection(promise: Promise<unknown>) {
     (error: { status?: number; code?: string; name?: string }) => error
   );
 }
+/** Reminders marked for every channel, as the form saves them by default. */
+const reminders = (...hours: number[]) =>
+  hours.map((value) => ({ hours: value, email: true, calendar: true }));
 const allEmail = {
-  dutyReminder: true,
   roundOpening: true,
   roundClosing: true,
   publication: true,
@@ -190,39 +192,42 @@ describe("notification preferences and defaults", () => {
   it("applies changed unit defaults to inheriting accounts without overriding a saved personal form", async () => {
     expect((await readState(member)).settings).toMatchObject({
       source: "system",
-      reminderHours: [24, 2],
+      reminders: reminders(24, 2),
       email: allEmail,
     });
     await command(other, "settings.save", {
-      reminderHours: [48],
+      reminders: reminders(48),
       email: allEmail,
     });
     const defaults = await command(manager, "notification.defaults.save", {
-      reminderHours: [12],
+      reminders: reminders(12),
       email: { ...allEmail, publication: false },
     });
     expect((await readState(member)).settings).toMatchObject({
       source: "unit",
-      reminderHours: [12],
+      reminders: reminders(12),
       email: { publication: false },
     });
     expect((await readState(other)).settings).toMatchObject({
       source: "personal",
-      reminderHours: [48],
+      reminders: reminders(48),
       email: { publication: true },
     });
     // The other manager sees the same unit defaults and edits them by version.
     expect((await readState(secondManager)).notificationDefaults).toMatchObject(
-      { reminderHours: [12], version: defaults.version }
+      { reminders: reminders(12), version: defaults.version }
     );
     await command(
       secondManager,
       "notification.defaults.save",
-      { reminderHours: [6, 1], email: { ...allEmail, publication: false } },
+      {
+        reminders: reminders(6, 1),
+        email: { ...allEmail, publication: false },
+      },
       defaults.version
     );
     expect((await readState(member)).settings).toMatchObject({
-      reminderHours: [6, 1],
+      reminders: reminders(6, 1),
     });
     const [log] = await db
       .select()
@@ -235,8 +240,8 @@ describe("notification preferences and defaults", () => {
         )
       );
     expect(log.data).toMatchObject({
-      before: { reminderHours: [12] },
-      after: { reminderHours: [6, 1] },
+      before: { reminders: reminders(12) },
+      after: { reminders: reminders(6, 1) },
     });
 
     await queue(member, "publication", "member-publication");
@@ -251,7 +256,7 @@ describe("notification preferences and defaults", () => {
   });
 
   it("lets only managers set unit defaults and rejects a stale default edit", async () => {
-    const payload = { reminderHours: [24], email: allEmail };
+    const payload = { reminders: reminders(24), email: allEmail };
     for (const actor of [member, technical])
       expect(
         await rejection(command(actor, "notification.defaults.save", payload))
@@ -262,7 +267,7 @@ describe("notification preferences and defaults", () => {
       command(
         secondManager,
         "notification.defaults.save",
-        { ...payload, reminderHours: [2] },
+        { ...payload, reminders: reminders(2) },
         first.version
       ),
     ]);
@@ -290,28 +295,31 @@ describe("notification preferences and defaults", () => {
       await rejection(
         command(member, "settings.save", {
           accountId: other.id,
-          reminderHours: [1],
+          reminders: reminders(1),
           email: allEmail,
         })
       )
     ).toMatchObject({ name: "ZodError" });
-    for (const reminderHours of [[0], [169], [1.5], [3, 3], [1, 2, 3, 4]])
+    for (const hours of [[0], [169], [1.5], [3, 3], [1, 2, 3, 4]])
       expect(
         await rejection(
-          command(member, "settings.save", { reminderHours, email: allEmail })
+          command(member, "settings.save", {
+            reminders: reminders(...hours),
+            email: allEmail,
+          })
         )
       ).toMatchObject({ name: "ZodError" });
     const saved = await command(member, "settings.save", {
-      reminderHours: [],
+      reminders: reminders(),
       email: { ...allEmail, roundOpening: false },
     });
     expect((await readState(other)).settings).toMatchObject({
       source: "system",
-      reminderHours: [24, 2],
+      reminders: reminders(24, 2),
     });
     expect((await readState(member)).settings).toMatchObject({
       source: "personal",
-      reminderHours: [],
+      reminders: reminders(),
       email: { roundOpening: false },
       version: saved.version,
     });
@@ -320,14 +328,20 @@ describe("notification preferences and defaults", () => {
     expect(
       await rejection(
         command(member, "settings.save", {
-          reminderHours: [2],
+          reminders: reminders(2),
           email: allEmail,
         })
       )
     ).toMatchObject({ status: 409 });
     const racing = await Promise.allSettled([
-      command(other, "settings.save", { reminderHours: [1], email: allEmail }),
-      command(other, "settings.save", { reminderHours: [2], email: allEmail }),
+      command(other, "settings.save", {
+        reminders: reminders(1),
+        email: allEmail,
+      }),
+      command(other, "settings.save", {
+        reminders: reminders(2),
+        email: allEmail,
+      }),
     ]);
     expect(racing.map((result) => result.status).sort()).toEqual([
       "fulfilled",
@@ -335,22 +349,22 @@ describe("notification preferences and defaults", () => {
     ]);
     // The technical account keeps its own preferences, separate from the units' soldiers.
     await command(technical, "settings.save", {
-      reminderHours: [5],
+      reminders: reminders(5),
       email: allEmail,
     });
     expect((await readState(technical)).settings).toMatchObject({
       source: "personal",
-      reminderHours: [5],
+      reminders: reminders(5),
     });
     // Returning to the defaults makes later unit changes apply again.
     await command(member, "settings.reset", {}, saved.version);
     await command(manager, "notification.defaults.save", {
-      reminderHours: [8],
+      reminders: reminders(8),
       email: allEmail,
     });
     expect((await readState(member)).settings).toMatchObject({
       source: "unit",
-      reminderHours: [8],
+      reminders: reminders(8),
     });
   });
 
@@ -376,7 +390,7 @@ describe("notification preferences and defaults", () => {
     await queue(member, "round-opening", roundKey);
     await queue(member, "invitation", "invitation");
     const saved = await command(member, "settings.save", {
-      reminderHours: [2],
+      reminders: reminders(2),
       email: { ...allEmail, roundOpening: false, publication: false },
     });
     await queue(member, "publication", "publication-later");
@@ -385,7 +399,7 @@ describe("notification preferences and defaults", () => {
       member,
       "settings.save",
       {
-        reminderHours: [2],
+        reminders: reminders(2),
         email: { ...allEmail, roundOpening: false },
       },
       saved.version
@@ -400,12 +414,99 @@ describe("notification preferences and defaults", () => {
       });
     expect((await db.select().from(emailQuota))[0].used).toBe(3);
   });
+
+  it("sends a duty reminder email only when the email slot of that reminder is marked (decision 195)", async () => {
+    const dutyId = await publishedDuty();
+    await db.delete(emailOutbox).where(like(emailOutbox.eventKey, "publish:%"));
+    const [duty] = await db.select().from(duties).where(eq(duties.id, dutyId));
+    const start = Date.parse(duty.data.start);
+    const reminder24 = dutyReminderKey(dutyId, start, 24, member.id);
+    const reminder2 = dutyReminderKey(dutyId, start, 2, member.id);
+    await queue(member, "duty-reminder", reminder24, 24);
+    await queue(member, "duty-reminder", reminder2, 2);
+    // The calendar slot of a reminder never sends mail, and the slots are per reminder.
+    await command(member, "settings.save", {
+      reminders: [
+        { hours: 24, email: false, calendar: true },
+        { hours: 2, email: true, calendar: false },
+      ],
+      email: allEmail,
+    });
+    expect(await deliverAll()).toEqual([reminder2]);
+    expect(await outbox(reminder24)).toMatchObject({
+      status: "cancelled",
+      error: "preference_disabled",
+    });
+  });
+
+  it("reads a form saved with plain hours and one reminder switch as one reminder per hour (decision 195)", async () => {
+    const legacyEmail = {
+      roundOpening: true,
+      roundClosing: true,
+      publication: true,
+      transfer: true,
+      departure: true,
+    };
+    await db.insert(records).values({
+      id: randomUUID(),
+      kind: "settings",
+      subjectId: member.soldierId,
+      data: {
+        accountId: member.id,
+        custom: true,
+        reminderHours: [24, 2],
+        email: { ...legacyEmail, dutyReminder: false },
+      },
+    });
+    await db.insert(records).values({
+      id: randomUUID(),
+      kind: "notification_defaults",
+      data: {
+        reminderHours: [12],
+        email: { ...legacyEmail, dutyReminder: true },
+      },
+    });
+    expect((await readState(member)).settings).toMatchObject({
+      source: "personal",
+      reminders: [
+        { hours: 24, email: false, calendar: true },
+        { hours: 2, email: false, calendar: true },
+      ],
+    });
+    expect((await readState(other)).settings).toMatchObject({
+      source: "unit",
+      reminders: [{ hours: 12, email: true, calendar: true }],
+    });
+    // The manager edits the stored defaults; the audit shows what they were in the current shape.
+    await command(
+      manager,
+      "notification.defaults.save",
+      {
+        reminders: reminders(6),
+        email: allEmail,
+      },
+      1
+    );
+    const [log] = await db
+      .select()
+      .from(records)
+      .where(
+        and(
+          eq(records.kind, "audit"),
+          sql`${records.data}->>'action' = 'notification.defaults.save'`
+        )
+      );
+    expect(log.data).toMatchObject({
+      before: { reminders: reminders(12) },
+      after: { reminders: reminders(6) },
+    });
+  });
 });
 
 describe("site notifications, reading and hiding", () => {
   it("keeps the site notification when email is off and never treats delivery as reading", async () => {
     await command(member, "settings.save", {
-      reminderHours: [24, 2],
+      reminders: reminders(24, 2),
       email: { ...allEmail, publication: false },
     });
     await publishedDuty();

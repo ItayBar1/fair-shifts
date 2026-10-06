@@ -4,11 +4,11 @@
 
 **איך קוראים.** ״מכוסה״: לכל סעיף בסיפור או בתרחיש יש בדיקה אוטומטית. ״חלקי״ ו״פתוח״: השורה ״חוסר״ אומרת מה אין לו בדיקה, ובפתוח גם איזה כרטיס יסגור זאת. בדיקה נקראת לפי הקובץ וחלק משמה, כך שבדיקה שנמחקה או ששמה שונה שוברת את הבדיקה של המפה. תוצאות מול ספק, שרת ופיילוט מופיעות בנפרד בשורה ״ספקים, שרת ופיילוט״: ״נבדק״ מתועד ב[מצב הפרויקט](../config/memory/project-state.md), ״טרם נבדק״ עדיין לא נעשה. מעבר בדיקה אוטומטית אינו הוכחה שקיימת הפעלה בשרת או בפיילוט.
 
-סיפורים: 65 במפה: 65 מכוסים, 0 חלקיים, 0 פתוחים. תרחישי קבלה: 64 במפה: 63 מכוסים, 0 חלקיים, 1 פתוחים.
+סיפורים: 65 במפה: 65 מכוסים, 0 חלקיים, 0 פתוחים. תרחישי קבלה: 64 במפה: 64 מכוסים, 0 חלקיים, 0 פתוחים.
 
 ## מה עדיין פתוח
 
-- תרחיש 59 (פתוח): תורנויות ביומן Google טרם נבנו: אין קוד, בדיקות או הרשאת יומן; ההכרעה (195) והאפיון (1.48) כתובים בלבד ([#92](https://github.com/ItayBar1/fair-shifts/issues/92))
+- אין חוסר פתוח במפה.
 
 ## סיפורי משתמש
 
@@ -293,7 +293,7 @@
 ### 51. כמשתמש, אני רוצה להתאים את סוגי המיילים, תדירותם ומועדיהם כדי לקבל תזכורות שמתאימות לי. — מכוסה
 
 - [notifications.test.ts](../tests/integration/notifications.test.ts): `applies changed unit defaults to inheriting accounts without overriding a saved personal form`; `rechecks type and timing preferences after scheduling and before delivery`
-- [notification-preferences.test.ts](../tests/unit/notification-preferences.test.ts): `validates type, timing and frequency on the server`
+- [notification-preferences.test.ts](../tests/unit/notification-preferences.test.ts): `validates type, timing, channels and frequency on the server`
 - [notification-preferences.spec.ts](../tests/e2e/notification-preferences.spec.ts): `unit defaults reach soldiers without personal preferences; a saved personal form and inbox states stay personal`
 
 ### 52. כמשתמש, אני רוצה לראות הודעות שלא נקראו ולהסתיר הודעות מההיסטוריה האישית כדי לנהל את התיבה שלי. — מכוסה
@@ -723,9 +723,17 @@
 - [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `matches a name part and a personal number part as typed`; `hides a soldier whose exemption covers only part of the range`; `hides a soldier whose qualification expires, or starts, inside the range`; `uses Israel days on the night the clocks go back`; `shows a value added to a catalog with no change in code`
 - [soldier-picker.spec.ts](../tests/e2e/soldier-picker.spec.ts): `the picker opens filtered by the duty and the role, and finds by name and personal number`; `the server still checks a soldier the filters had hidden`; `the picker works with the keyboard and on a phone without sideways scrolling`
 
-### 59. תורנויות ביומן Google — הודעות והעדפות; חשבונות — פתוח
+### 59. תורנויות ביומן Google — הודעות והעדפות; חשבונות — מכוסה
 
-- חוסר: תורנויות ביומן Google טרם נבנו: אין קוד, בדיקות או הרשאת יומן; ההכרעה (195) והאפיון (1.48) כתובים בלבד ([#92](https://github.com/ItayBar1/fair-shifts/issues/92))
+- [calendar-lifecycle.test.ts](../tests/integration/calendar-lifecycle.test.ts): `email replacement erases the old grant and pending events`; `adopts the verified app-created calendar`; `requires the explicit operator acknowledgement`; `does not apply an old recovery after a new grant`
+- [calendar-sync.test.ts](../tests/integration/calendar-sync.test.ts): `creates the calendar once, and one event per published seat`; `has nothing for a soldier who never granted the permission, a duty manager, or a draft`; `updates the event when the duty is updated and published, and removes it when the duty is cancelled`; `moves the event with the seat when the duty is transferred by consent`; `swaps the events of two soldiers when their duties are swapped by consent`; `gives each performer of a seat split into execution periods the event of their own period`; `follows the calendar slots of the reminders`; `removes the events of a soldier who was made a duty manager`; `stops adding and updating as soon as the switch is off`; `removes only the future events on request`; `refuses the switch and the button for anyone without a usable permission`; `shows the four states of the switch`; `never brings back an event the soldier deleted, but creates one for a new seat`; `starts over in a new calendar when the calendar itself was deleted`; `stops without an error`; `treats an access error of the Calendar API like a lost permission`; `keeps only the permission and a sealed token, never a plain one`; `waits after a temporary failure with growing delays`; `never asks Google sooner than it said`; `recovers an event that Google created before the run could record it`; `creates each event once when two runs overlap`; `does not run while a restore keeps the system closed`; `removes the permission, the token and the event records at once`; `deletes a soldier even when Google cannot be reached`; `does not make a link for an account that is already deleted`; `pauses an uncertain calendar creation`; `tracks uncertain event creation`; `does not update after the switch was turned off`; `uses the provider etag`; `does not revoke a fresh grant`; `retains a user-deletion tombstone`
+- [calendar-grant.test.ts](../tests/integration/calendar-grant.test.ts): `asks only for the one calendar permission and for offline access`; `records the permission of a first sign-in with a sealed token`; `lets a person who declines the permission sign in`; `keeps the held token when a later sign-in`; `turns the link to`; `makes no link for a duty manager who signs in with Google`; `lets the button of the settings screen ask Google to show the consent again`
+- [notifications.test.ts](../tests/integration/notifications.test.ts): `sends a duty reminder email only when the email slot of that reminder is marked`; `reads a form saved with plain hours and one reminder switch`
+- [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `classifies every command the server knows, and no other`
+- [calendar-sync.test.ts](../tests/unit/calendar-sync.test.ts): `keeps the real instants in Israel time across midnight, several days and a clock change`; `is blocked without a Google link`; `holds the name, location, instructions`; `adds a popup for every reminder marked for the calendar`; `derives one stable id`; `makes one event per duty, whichever rows the seat has`; `never brings back an event the soldier deleted, and only a new seat gets a new one`; `waits a minute after the first failure`
+- [notification-preferences.test.ts](../tests/unit/notification-preferences.test.ts): `validates type, timing, channels and frequency on the server`; `converts a form saved with plain hours and one reminder email switch`; `never withholds security email and checks each business type and reminder time`
+- [calendar-settings.spec.ts](../tests/e2e/calendar-settings.spec.ts): `a person who signed in with a code only sees the switch blocked, with the reason`; `a person who did not grant the permission sees a button that goes to Google`; `a person with the permission turns the sync off and on`; `the calendar switch and the reminder slots fit a phone`
+- [notification-preferences.spec.ts](../tests/e2e/notification-preferences.spec.ts): `unit defaults reach soldiers without personal preferences`
 
 ### 60. יומן מחיקות עצמאי ושחזור — גיבוי ושחזור; פרטיות; מקביליות — מכוסה
 

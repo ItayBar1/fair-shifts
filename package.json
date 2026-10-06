@@ -25,6 +25,7 @@
     "staging:soldiers": "tsx scripts/staging-soldiers.ts",
     "recover": "tsx scripts/recover.ts",
     "technical-email": "tsx scripts/technical-email.ts",
+    "calendar:recover": "tsx scripts/calendar-recover.ts",
     "deletion-log": "tsx scripts/deletion-log.ts",
     "restore": "tsx scripts/restore.ts",
     "docs:render": "tsx scripts/render-docs.ts",

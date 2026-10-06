@@ -676,9 +676,8 @@ describe("every active copy of the sensitive data", () => {
     );
     // Preferences, a request with a reason, and records written directly in their real shape.
     await command(member, "settings.save", {
-      reminderHours: [2],
+      reminders: [{ hours: 2, email: false, calendar: true }],
       email: {
-        dutyReminder: false,
         roundOpening: true,
         roundClosing: true,
         publication: true,

@@ -5827,9 +5827,8 @@ describe("first duty vertical slice", () => {
       await command(
         "settings.save",
         {
-          reminderHours: [24],
+          reminders: [{ hours: 24, email: true, calendar: true }],
           email: {
-            dutyReminder: true,
             roundOpening: true,
             roundClosing: true,
             publication: true,

@@ -116,6 +116,19 @@ export function validateDeploymentConfig(env: Env): string[] {
       "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET: set both or leave both empty"
     );
 
+  // Duties in the soldier's Google calendar (decisions 195 and 205). It needs the sign-in
+  // client, which must carry the calendar permission before this is switched on.
+  const calendarSync = value("GOOGLE_CALENDAR_SYNC");
+  if (!["", "true", "false"].includes(calendarSync))
+    errors.push("GOOGLE_CALENDAR_SYNC: allowed values are true or false");
+  if (
+    calendarSync === "true" &&
+    !(value("GOOGLE_CLIENT_ID") && value("GOOGLE_CLIENT_SECRET"))
+  )
+    errors.push(
+      "GOOGLE_CALENDAR_SYNC: requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"
+    );
+
   // Backups (decision 173). An empty BACKUP_STORAGE switches them off; the
   // technical screen then shows that no backup is being taken.
   const backup = value("BACKUP_STORAGE");

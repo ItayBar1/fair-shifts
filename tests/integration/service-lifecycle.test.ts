@@ -169,9 +169,8 @@ describe("end of service", () => {
     await expect(readState(member)).rejects.toMatchObject({ status: 401 });
     await expect(
       command(member, "settings.save", {
-        reminderHours: [2],
+        reminders: [{ hours: 2, email: true, calendar: true }],
         email: {
-          dutyReminder: true,
           roundOpening: true,
           roundClosing: true,
           publication: true,
@@ -283,9 +282,11 @@ describe("end of service", () => {
   it("emails each manager once, subject to the departure switch at delivery", async () => {
     // The first manager turns the switch off after the email was queued.
     await command(manager, "settings.save", {
-      reminderHours: [24, 2],
+      reminders: [
+        { hours: 24, email: true, calendar: true },
+        { hours: 2, email: true, calendar: true },
+      ],
       email: {
-        dutyReminder: true,
         roundOpening: true,
         roundClosing: true,
         publication: true,
@@ -311,9 +312,11 @@ describe("end of service", () => {
       manager,
       "settings.save",
       {
-        reminderHours: [24, 2],
+        reminders: [
+          { hours: 24, email: true, calendar: true },
+          { hours: 2, email: true, calendar: true },
+        ],
         email: {
-          dutyReminder: true,
           roundOpening: true,
           roundClosing: true,
           publication: true,
