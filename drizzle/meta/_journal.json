@@ -85,6 +85,13 @@
       "when": 1790936175385,
       "tag": "0011_personal_assignment_feed",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791313844916,
+      "tag": "0012_calendar_sync",
+      "breakpoints": true
     }
   ]
 }

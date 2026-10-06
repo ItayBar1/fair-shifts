@@ -18,6 +18,7 @@
 | `scripts/auto-deploy.sh`            | פריסה אוטומטית של main אחרי שהבדיקות עברו, מטיימר systemd (`scripts/systemd`). פירוט בהמשך.                            |
 | `scripts/restore.ts`                | שחזור מבודד מגיבוי, תרגיל רבעוני והחלפת המסד החי (`pnpm restore`). פירוט בסעיף ״שחזור מבודד ותרגיל רבעוני״.            |
 | `scripts/technical-email.ts`        | החלפת כתובת המנהל הטכני דרך השרת כשאין גישה לכתובת הנוכחית (`pnpm technical-email`). פירוט בסעיף ״סביבת ה־staging״.    |
+| `scripts/calendar-recover.ts`       | התאוששות מיצירת יומן שתוצאתה אינה ידועה, עם אימות מזהה קיים או אישור מפורש לנסות שוב.                                  |
 | `/api/health`                       | בריאות האתר, המסד ופעימת העובד, בלי מידע אישי. הפירוט מוצג גם למנהל הטכני ב״תמונת מצב״.                                |
 
 ## מבנה ההפעלה
@@ -394,6 +395,84 @@ sh scripts/production.sh health
 - **דף הכניסה:** בזמן השהיה, או כשגם המכסה השמורה לקודים נגמרה, מי שמבקש קוד רואה הודעת עיכוב כללית ומופנה לאחראי. ההודעה זהה לכל כתובת.
 - **כשלים:** ״הספק דחה את המייל״ פירושו כתובת או תוכן שנדחו, בלי ניסיון נוסף. ״גם אחרי ניסיונות חוזרים״ פירושו חמישה ניסיונות, או שתוקף המייל פג לפני הניסיון הבא. ״המכסה נגמרה״ פירושו שהמייל חיכה למכסה עד שתוקפו פג. בכל המקרים הודעת האתר והפעולה עצמה נשמרות.
 
+## תורנויות ביומן Google
+
+כרטיס [#92](https://github.com/ItayBar1/fair-shifts/issues/92), הכרעות 195 ו־205. חייל שנכנס ב־Google ונתן את ההרשאה מקבל את תורנויותיו ביומן ״תורנויות״ בחשבון שלו. היכולת **כבויה** עד שמדליקים אותה בשרת, ובמצב כבוי הכניסה ב־Google ומסכי האתר אינם משתנים.
+
+**סדר ההפעלה (החלטת המשתמש, 02.10.2026):** קודם מעבירים את לקוח ה־OAuth של כניסת Google לחשבון הייעודי של הפרויקט (אותו חשבון שמחזיק את הגיבוי ב־Drive והמיועד להיות המנהל הטכני, כרטיס #90), ורק אחרי זה מוסיפים לו את הרשאת היומן:
+
+**אימות 06.10.2026:** מזהה הלקוח הציבורי מתוך תצורת ה־staging תואם ללקוח `fair-shifts-staging` בפרויקט `fairshifts`. החשבון הייעודי נוסף לפרויקט כ־Owner באישור המשתמש, ותוצאת השמירה אומתה ב־IAM; הבעלים הקודם נשאר. באותו שלב לא הוחלפו מזהה או סוד בשרת. לקוח הכניסה הישן נמצא ב־Testing עם שלושה משתמשי בדיקה. לאחר אישור מפורש של המשתמש לתנאים, Calendar API הופעל בפרויקט הישן וסטטוס `Enabled` אומת; ההיקף `calendar.app.created` נשמר לצד היקפי הכניסה `openid`, ‏`userinfo.email` ו־`userinfo.profile`, עם אישור `Data access changes saved`. בקונסולה ארבעתם מוצגים תחת `Your non-sensitive scopes`.
+
+**יעד המעבר המעודכן (הבהרת המשתמש, 06.10.2026; ביצוע 07.10.2026):** פרויקט הפיתוח האישי עתיד להימחק; הוספת Owner אליו אינה המעבר המבוקש. באישור מפורש נוצר בפרויקט **`fairshifts-backup` של החשבון הייעודי** לקוח Web נפרד בשם `fair-shifts-staging`, ואומת אישור `OAuth client created`. המקור הוא `https://classly-studio-management.uk`, וכתובת החזרה `https://classly-studio-management.uk/api/auth/callback/google`. באותו פרויקט הופעל Calendar API ואומת `Enabled`; נשמרו `calendar.app.created`, ‏`openid`, ‏`userinfo.email` ו־`userinfo.profile`, עם אישור `Data access changes saved`. לקוח `fair-shifts-backup` של Drive לא שונה. מצב OAuth בפרויקט הייעודי אומת כ־`In production`; זה אינו שינוי של סביבת האתר מ־staging ל־production. המשתמש הזין בעצמו את `GOOGLE_CLIENT_ID` ו־`GOOGLE_CLIENT_SECRET` בשרת והפעיל מחדש את הקונטיינרים. הפלט שסיפק אישר את מזהה הלקוח החדש בקונטיינר האתר, בריאות מסד/אתר/עובד וגרסה תואמת `8b5c452ed6a7`; המשתמש דיווח שהמנהל הטכני נכנס בהצלחה ב־Google. סוד לא נמסר בצ׳אט או נשמר בתיעוד. מעבר הכניסה הושלם לפי ראיות אלה; גיבוי Drive אחרי ההפעלה מחדש טרם אומת. עדיין נדרשים מיזוג הקוד, הדלקת דגל Calendar והדגמה סינתטית. פרויקט הפיתוח לא נמחק כחלק מהפעולות האלה.
+
+**החלפת לקוח הכניסה בלי החלפת הגרסה:** משהים את הטיימר ובודקים שה־checkout הוא הגרסה הפעילה. המשתמש מעתיק בעצמו את שני ערכי הלקוח מהקונסולה ל־`app.env`, בלי שינוי `GOOGLE_DRIVE_*`, מפתח ההצפנה או דגל Calendar. אין להדפיס את הסוד או להכניסו לפקודה שנשמרת בהיסטוריית המסוף.
+
+```sh
+cd /opt/fair-shifts/app
+touch /opt/fair-shifts/deploy-state/paused
+if [ "$(git rev-parse HEAD)" != "$(cat /opt/fair-shifts/deploy-state/deployed)" ]; then
+  echo "STOP: checkout differs from the live version; keep deployment paused"
+else
+  if nano /opt/fair-shifts/config/app.env && chmod 600 /opt/fair-shifts/config/app.env && sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && sh scripts/production.sh health; then
+    rm -f /opt/fair-shifts/deploy-state/paused
+    echo "Google client configuration loaded; verify a fresh Google sign-in"
+  else
+    echo "STOP: update or health check failed; keep deployment paused and inspect the services"
+  fi
+fi
+```
+
+הפעלה מחדש של app והעובד משתמשת בתמונה הקיימת; היא אינה פורסת את ענף PR #113. מאמתים כניסה חדשה ב־Google עם חשבון בדיקה מורשה, וכן שהגיבוי הקיים ממשיך לפעול, לפני הסרת הפרויקט הישן. כשהתיקייה אינה תואמת לגרסה הפעילה, עוצרים לבירור ולא בונים או פורסים גרסה אחרת כחלק מהחלפת הסוד.
+
+1. בפרויקט Cloud של לקוח הכניסה: **Google Calendar API** מופעל.
+2. ב־Google Auth Platform, ב־Data Access: ההרשאה `https://www.googleapis.com/auth/calendar.app.created` בנוסף ל־`openid`, ‏`email` ו־`profile`. זו ההרשאה היחידה שהאתר מבקש: יומן שהאתר יוצר בעצמו.
+3. בדיקה בקונסולה, במסך ההסכמה: סיווג ההיקף (רגיש או לא) ומספר המשתמשים המותר לפני אימות. אפליקציה ציבורית שמבקשת היקף רגיש חייבת באימות Google: דומיין קבוע, מדיניות פרטיות ציבורית והצדקה להיקף. **במצב Testing אסימון הרענון פג אחרי שבעה ימים**, והחיילים יתבקשו לאשר שוב. הדומיין של staging זמני.
+4. מדליקים את המתג ומעלים מחדש את האתר והעובד (בשרת עם טיימר הפריסה, כמו ב״שינוי ערך ב־`app.env`״):
+
+```sh
+# Switch the calendar sync on; the app and the worker read it when they start
+env=/opt/fair-shifts/config/app.env; { grep -v '^GOOGLE_CALENDAR_SYNC=' "$env"; printf 'GOOGLE_CALENDAR_SYNC=true\n'; } > "$env.new" && chmod 600 "$env.new" && mv "$env.new" "$env"
+sh scripts/production.sh deploy
+```
+
+בדיקת התצורה דוחה `GOOGLE_CALENDAR_SYNC=true` בלי `GOOGLE_CLIENT_ID` ו־`GOOGLE_CLIENT_SECRET`. הלקוח של הגיבוי (`drive.file`) נשאר נפרד ואין להוסיף לו את הרשאת היומן.
+
+- **איך זה עובד:** העובד מריץ כל דקה, בתור נפרד (`calendar-sync`), השוואה בין האירועים שצריכים להיות לכל חייל עם הרשאה תקפה לבין אלה שנרשמו, ומשנה ב־Google רק את ההפרש. האירוע מגיע ליומן עד כדקה או שתיים אחרי הפעולה. הריצה נעצרת במצב שחזור ובזמן שהשער סגור.
+- **מה נשמר:** אסימון רענון מוצפן באותו מפתח של סודות המייל (`MAIL_ENCRYPTION_KEY`), ורשומה לכל אירוע. אסימוני Google אינם נשמרים בטבלת הכניסה, ואינם נרשמים ביומנים. מחיקת משתמש מוחקת אותם ומנסה להסיר את האירועים העתידיים.
+- **כשל זמני:** ההשהיה גדלה מדקה לשש שעות, ו־`Retry-After` של Google מכובד. בלוג העובד מופיעה רק שורה כמו `Calendar sync failed GoogleError`, בלי תשובת Google. הסיבה האחרונה לכל חשבון נשמרת כקטגוריה בלבד (`rate`, ‏`transient`, ‏`configuration`, ‏`permission_lost`).
+- **הרשאה שבוטלה או פגה:** הסנכרון של אותו חשבון נעצר, החייל רואה במסך ההעדפות ״אישור הרשאה ליומן״ ומקבל הודעת אתר אחת. אין מה לתקן בשרת.
+- **שגיאת תצורה (`configuration`):** בדרך כלל Calendar API לא מופעל בפרויקט, או שלקוח ה־OAuth שונה. בודקים את שני הסעיפים הראשונים לעיל.
+- **ספירה בלי לחשוף תוכן:**
+
+```sh
+# Count calendar links by state, switch and last failure category; no tokens, names or addresses are printed
+sh scripts/production.sh exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select state, enabled, error_code, count(*) from calendar_link group by 1,2,3"'
+```
+
+### יצירת יומן שתוצאתה אינה ידועה
+
+אם התשובה ליצירת יומן אבדה, הסנכרון מושהה בקטגוריה `calendar_creation_uncertain` (או `calendar_creation_pending` לאחר קריסה). במסך החייל מופיעה המתנה לטיפול טכני. כניסה נוספת ב־Google אינה מוחקת את הסימון. אין ניסיון אוטומטי ליצור עוד יומן: [רשימת היומנים](https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list) דורשת הרשאה רחבה יותר, בעוד [קריאת יומן לפי מזהה](https://developers.google.com/workspace/calendar/api/v3/reference/calendars/get) אפשרית בהרשאה המצומצמת.
+
+מפעיל השרת מברר עם חשבון הבדיקה אם יומן ״תורנויות״ נוצר, ומעתיק את מזהה היומן מתוך הגדרותיו ב־Google. `adopt` מאמתת שם ואזור זמן באמצעות ההרשאה, ואז משלימה רק אם החשבון וההרשאה לא השתנו. אין בדיקת ספק תוך נעילה. מזהים ואסימונים אינם נכתבים בפלט.
+
+```sh
+# Use the internal account ID and the verified calendar ID from Google Calendar settings.
+sh scripts/production.sh run --rm --no-deps \
+  -e CALENDAR_ACCOUNT_ID="<internal-account-id>" \
+  -e CALENDAR_CREATED_ID="<verified-app-created-calendar-id>" \
+  -e CALENDAR_RECOVERY_REASON="<reason, at least 5 characters>" \
+  app node_modules/.bin/tsx scripts/calendar-recover.ts adopt
+
+# Only after checking that no calendar was created; this permits a new create attempt.
+sh scripts/production.sh run --rm --no-deps \
+  -e CALENDAR_ACCOUNT_ID="<internal-account-id>" \
+  -e CALENDAR_RECOVERY_REASON="<reason, at least 5 characters>" \
+  -e CALENDAR_RECOVERY_ACKNOWLEDGE="no calendar was created" \
+  app node_modules/.bin/tsx scripts/calendar-recover.ts retry
+```
+
+ממתינים לסיום חכירת העובד (עד חמש דקות) לפני הטיפול. בהחלפת כתובת מייל מוסרים האסימון וקישורי היומן הישן, ומנסים להסיר אירועים עתידיים ולבטל הרשאה אחרי העסקה. מיגרציה 0012 מנקה גם אסימוני Google לא מוצפנים שנשמרו בגרסאות הקודמות; הרשאת יומן חדשה מתקבלת בכניסה ב־Google.
+
 ## בדיקת התצורה ב־Docker
 
 ```sh
@@ -404,6 +483,7 @@ sh scripts/production-smoke.sh
 
 ## מה עוד לא נבדק
 
+- תורנויות ביומן Google (#92) נבדקו ב־Docker מול Google מדומה בלבד: ההרשאה, ההתנהגות של Google לאירוע או ליומן שנמחקו, התזכורות ביומן והאסימון שפג ב־Testing טרם נבדקו מול חשבון אמיתי.
 - staging (#25), כניסת Google (#26) ו־Brevo (#28) נבדקו בחשבונות בדיקה, והתוצאות מתועדות בכרטיסים. חריגה מהמכסה של הספק נבדקה רק ב־Docker.
 - הגיבוי נבדק מול Drive אמיתי ב־01.10.2026 (ראו "חיבור Drive וחידוש הרשאה"), חוץ מנפח שנגמר באמת. עדיין לא נבדקו: עותק יומן המחיקות ב־Drive, שנוצר רק עם המחיקה הראשונה, ושחזור מבודד מגיבוי שהורד מ־Drive אמיתי (#37). השחזור המבודד, הבדיקות, החלפת המסד והתרגיל נבדקו ב־Docker מול מסד ואחסון תיקייה (#35); נוהל החזרה אחרי מיגרציה שנכשלה טרם הודגם בשרת.
 - פריסה אוטומטית (#36): רצה בשרת, ותקלה וחזרה הודגמו שם ב־30.09.2026. הגיבוי לפני מיגרציה נבדק ב־Docker בלבד (`scripts/auto-deploy-test.sh` ו־`tests/integration/backup.test.ts`), הגיבוי ב־staging מחובר ל־Drive מ־01.10.2026, ולכן ההדגמה בשרת תהיה במיזוג הראשון שמשנה את המסד. נוהל שחזור אחרי מיגרציה שנכשלה שייך ל־#35.

@@ -18,6 +18,7 @@ import { projectSwaps } from "./swaps";
 import { projectCancellationRequests } from "./cancellation-requests";
 import { projectPlanning } from "./planning";
 import { effectivePreferences } from "./notifications";
+import { calendarSettings } from "./calendar/link";
 import { resolvePreferences } from "../domain/notification-preferences";
 import type { DbTransaction } from "./db";
 
@@ -82,6 +83,9 @@ export async function readState(actor: Actor) {
       ledger: [],
       notifications: [],
       settings: {},
+      calendar: { available: false } as Awaited<
+        ReturnType<typeof calendarSettings>
+      >,
       notificationDefaults: undefined as
         ReturnType<typeof unitDefaults> | undefined,
       // The technical account's own address and open request to change it (decision 204).
@@ -165,6 +169,7 @@ export async function readState(actor: Actor) {
           .map((row) => ({ ...row.data, id: row.id, version: row.version })),
         backups: await backupState(tx),
         settings: await preferencesState(tx, actor),
+        calendar: await calendarSettings(tx, actor),
         accounts,
         // Account operations within technical authority; no soldier data is resolved.
         audit: projectAudit(
@@ -374,6 +379,7 @@ export async function readState(actor: Actor) {
         )
         .map((row) => ({ ...row.data, id: row.id, version: row.version })),
       settings: await preferencesState(tx, actor),
+      calendar: await calendarSettings(tx, actor),
       notificationDefaults: managing ? unitDefaults(workflows) : undefined,
       ledger: managing
         ? scoreRows

@@ -14,6 +14,7 @@ import {
 import { soldiers, records, soldierContacts } from "../schema";
 import { invariant } from "../errors";
 import { closeWindowsOf } from "../assignment-mail-delivery";
+import { purgeCalendarLink, type CalendarCleanup } from "../calendar/link";
 import { canAccessAfterService } from "../../domain/eligibility";
 import {
   digestCode,
@@ -278,6 +279,7 @@ export async function deleteAccountAuth(targetId: string, tx?: DbTransaction) {
       .where(eq(user.id, targetId))
       .for("update");
     if (!target) return;
+    await purgeCalendarLink(cx, targetId, { collect: false });
     await revokeAccess(cx, targetId);
     await cx.delete(account).where(eq(account.userId, targetId));
     await cx.delete(recoveryCode).where(eq(recoveryCode.userId, targetId));
@@ -416,7 +418,8 @@ export async function recoverTechnicalAccess(email: string, reason: string) {
 export async function applyVerifiedEmailChange(
   tx: DbTransaction,
   targetId: string,
-  newEmail: string
+  newEmail: string,
+  calendarCleanups?: CalendarCleanup[]
 ) {
   const [target] = await tx
     .select()
@@ -424,6 +427,10 @@ export async function applyVerifiedEmailChange(
     .where(eq(user.id, targetId))
     .for("update");
   invariant(target && !target.deletedAt, "NOT_FOUND", "חשבון לא נמצא");
+  const calendarCleanup = await purgeCalendarLink(tx, target.id, {
+    collect: Boolean(calendarCleanups),
+  });
+  if (calendarCleanup) calendarCleanups?.push(calendarCleanup);
   await revokeAccess(tx, target.id);
   await tx.delete(account).where(eq(account.userId, target.id));
   await tx

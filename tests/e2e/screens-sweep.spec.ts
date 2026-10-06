@@ -16,6 +16,7 @@ import {
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { assignment, duty, soldier } from "../fixtures";
+import { submitAuth } from "./auth-submit";
 
 // Every screen of every role, as the browser shows it (scenarios 2 and 35,
 // stories 35 and 36): Hebrew right to left, labelled controls, no sideways
@@ -179,7 +180,11 @@ async function seed(withDuties: boolean) {
 async function login(page: Page, key: Key) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(people[key].email);
-  await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
+  await submitAuth(
+    page,
+    "/api/auth/request-code",
+    page.getByRole("button", { name: "שליחת קוד למייל" })
+  );
   await expect(page.getByLabel("קוד כניסה", { exact: true })).toBeVisible();
   const [account] = await db
     .select()
@@ -194,8 +199,15 @@ async function login(page: Page, key: Key) {
   await page
     .getByLabel("קוד כניסה", { exact: true })
     .fill(openSecret(message.encryptedSecret!));
-  await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(page.locator("main h1")).toBeVisible();
+  await submitAuth(
+    page,
+    "/api/auth/verify-code",
+    page.getByRole("button", { name: "כניסה לחשבון", exact: true })
+  );
+  // The login page already has a heading. Wait for the authenticated page
+  // before closing this tab, so the session cookie has actually been stored.
+  await expect(page).toHaveURL("/");
+  await expect(page.locator("main h1")).toHaveText(screens[key][0].title);
 }
 
 /**
@@ -453,7 +465,7 @@ test.describe("loading, failing and signed-out screens", () => {
       }
       // A manager's screen holds the unit defaults as well; the first form is the personal one.
       const hours = (tab: Page) =>
-        tab.getByLabel("שעות לפני תורנות, מופרדות בפסיק").first();
+        tab.getByLabel("תזכורת 1: שעות לפני תורנות", { exact: true }).first();
       const save = (tab: Page) =>
         tab.getByRole("button", { name: "שמירת העדפות אישיות" });
       await hours(page).fill("5");

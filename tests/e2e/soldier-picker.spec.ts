@@ -24,6 +24,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { submitAuth } from "./auth-submit";
 
 // Search and filters in the soldier picker (card #83, decision 193). Synthetic people only.
 // Dates are Israel dates around D, ten days ahead; the duty runs 08:00-16:00 on D.
@@ -104,7 +105,11 @@ async function createDuty(name: string, typeId = ids.type) {
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(email);
-  await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
+  await submitAuth(
+    page,
+    "/api/auth/request-code",
+    page.getByRole("button", { name: "שליחת קוד למייל" })
+  );
   await expect(page.getByLabel("קוד כניסה", { exact: true })).toBeVisible();
   const [person] = await db.select().from(user).where(eq(user.email, email));
   const [message] = (
@@ -118,7 +123,11 @@ async function login(page: Page, email: string) {
   await page
     .getByLabel("קוד כניסה", { exact: true })
     .fill(openSecret(message.encryptedSecret!));
-  await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
+  await submitAuth(
+    page,
+    "/api/auth/verify-code",
+    page.getByRole("button", { name: "כניסה לחשבון", exact: true })
+  );
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })
   ).toBeVisible();

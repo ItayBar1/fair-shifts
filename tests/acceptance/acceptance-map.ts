@@ -33,6 +33,7 @@ const U = {
   audit: "tests/unit/audit-time.test.ts",
   backup: "tests/unit/backup.test.ts",
   calendar: "tests/unit/calendar.test.ts",
+  calendarSync: "tests/unit/calendar-sync.test.ts",
   calFilters: "tests/unit/calendar-filters.test.ts",
   composition: "tests/unit/composition.test.ts",
   digest: "tests/unit/assignment-digest.test.ts",
@@ -59,6 +60,9 @@ const U = {
 const I = {
   mine: "tests/integration/my-assignments.test.ts",
   access: "tests/integration/access.test.ts",
+  calendarSync: "tests/integration/calendar-sync.test.ts",
+  calendarGrant: "tests/integration/calendar-grant.test.ts",
+  calendarLifecycle: "tests/integration/calendar-lifecycle.test.ts",
   genders: "tests/integration/all-genders.test.ts",
   digest: "tests/integration/assignment-digest.test.ts",
   inactive: "tests/integration/inactivity-normalization.test.ts",
@@ -94,6 +98,7 @@ const E = {
   audit: "tests/e2e/audit-log.spec.ts",
   backups: "tests/e2e/backups.spec.ts",
   cards: "tests/e2e/calendar-cards.spec.ts",
+  calendarSettings: "tests/e2e/calendar-settings.spec.ts",
   cancel: "tests/e2e/cancellation-requests.spec.ts",
   rounds: "tests/e2e/constraint-rounds.spec.ts",
   delExec: "tests/e2e/deletion-in-execution.spec.ts",
@@ -126,6 +131,12 @@ const covered = (evidence: Evidence[], external?: External[]): Entry => ({
   status: "covered",
   evidence,
   external,
+});
+const partial = (evidence: Evidence[], gap: string, ticket: number): Entry => ({
+  status: "partial",
+  evidence,
+  gap,
+  ticket,
 });
 const open = (
   gap: string,
@@ -795,7 +806,10 @@ export const stories: Record<number, Entry> = {
       "applies changed unit defaults to inheriting accounts without overriding a saved personal form",
       "rechecks type and timing preferences after scheduling and before delivery"
     ),
-    ...t(U.notifications, "validates type, timing and frequency on the server"),
+    ...t(
+      U.notifications,
+      "validates type, timing, channels and frequency on the server"
+    ),
     ...t(
       E.prefs,
       "unit defaults reach soldiers without personal preferences; a saved personal form and inbox states stay personal"
@@ -898,21 +912,25 @@ export const stories: Record<number, Entry> = {
       "leaves a manual selection to an explicit exception instead of blocking"
     ),
   ]),
-  60: covered([
-    ...t(
-      I.access,
-      "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
-      "keeps the technical account out of soldier records, rankings and role changes"
-    ),
-    ...t(
-      I.roles,
-      "makes the technical account read the account again before changing a role"
-    ),
-    ...t(
-      E.access,
-      "the technical account grants and removes manager permission, ending the open connection each time"
-    ),
-  ]),
+  60: partial(
+    [
+      ...t(
+        I.access,
+        "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
+        "keeps the technical account out of soldier records, rankings and role changes"
+      ),
+      ...t(
+        I.roles,
+        "makes the technical account read the account again before changing a role"
+      ),
+      ...t(
+        E.access,
+        "the technical account grants and removes manager permission, ending the open connection each time"
+      ),
+    ],
+    "הוספת משתמש בודד בידי הטכני, גם בלי אחראי פעיל, טרם מומשה ונבדקה (הכרעה 206).",
+    114
+  ),
   61: covered([
     ...t(
       I.access,
@@ -1596,26 +1614,30 @@ export const scenarios: Record<number, Entry> = {
       "goes to a manager, who sets the handover, and the original seat binds until then"
     ),
   ]),
-  45: covered([
-    ...t(
-      I.access,
-      "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
-      "keeps the technical account out of soldier records, rankings and role changes"
-    ),
-    ...t(
-      I.roles,
-      "makes the technical account read the account again before changing a role",
-      "gives the technical account accounts and operations but no soldiers or scores"
-    ),
-    ...t(
-      I.mgrEx,
-      "changes the role only for the technical account, and only from a current version"
-    ),
-    ...t(
-      E.access,
-      "the technical account grants and removes manager permission, ending the open connection each time"
-    ),
-  ]),
+  45: partial(
+    [
+      ...t(
+        I.access,
+        "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
+        "keeps the technical account out of soldier records, rankings and role changes"
+      ),
+      ...t(
+        I.roles,
+        "makes the technical account read the account again before changing a role",
+        "gives the technical account accounts and operations but no soldiers or scores"
+      ),
+      ...t(
+        I.mgrEx,
+        "changes the role only for the technical account, and only from a current version"
+      ),
+      ...t(
+        E.access,
+        "the technical account grants and removes manager permission, ending the open connection each time"
+      ),
+    ],
+    "הטופס הטכני ליצירת משתמש, בדיקות הרשאה/כפילויות ומסלול מינוי כשאין אחראי קודם פתוחים בכרטיס #114.",
+    114
+  ),
   46: covered([
     ...t(
       I.access,
@@ -1822,10 +1844,93 @@ export const scenarios: Record<number, Entry> = {
       "the picker works with the keyboard and on a phone without sideways scrolling"
     ),
   ]),
-  59: open(
-    "תורנויות ביומן Google טרם נבנו: אין קוד, בדיקות או הרשאת יומן; ההכרעה (195) והאפיון (1.48) כתובים בלבד",
-    92
-  ),
+  59: covered([
+    ...t(
+      I.calendarLifecycle,
+      "email replacement erases the old grant and pending events",
+      "adopts the verified app-created calendar",
+      "requires the explicit operator acknowledgement",
+      "does not apply an old recovery after a new grant"
+    ),
+    ...t(
+      I.calendarSync,
+      "creates the calendar once, and one event per published seat",
+      "has nothing for a soldier who never granted the permission, a duty manager, or a draft",
+      "updates the event when the duty is updated and published, and removes it when the duty is cancelled",
+      "moves the event with the seat when the duty is transferred by consent",
+      "swaps the events of two soldiers when their duties are swapped by consent",
+      "gives each performer of a seat split into execution periods the event of their own period",
+      "follows the calendar slots of the reminders",
+      "removes the events of a soldier who was made a duty manager",
+      "stops adding and updating as soon as the switch is off",
+      "removes only the future events on request",
+      "refuses the switch and the button for anyone without a usable permission",
+      "shows the four states of the switch",
+      "never brings back an event the soldier deleted, but creates one for a new seat",
+      "starts over in a new calendar when the calendar itself was deleted",
+      "stops without an error",
+      "treats an access error of the Calendar API like a lost permission",
+      "keeps only the permission and a sealed token, never a plain one",
+      "waits after a temporary failure with growing delays",
+      "never asks Google sooner than it said",
+      "recovers an event that Google created before the run could record it",
+      "creates each event once when two runs overlap",
+      "does not run while a restore keeps the system closed",
+      "removes the permission, the token and the event records at once",
+      "deletes a soldier even when Google cannot be reached",
+      "does not make a link for an account that is already deleted"
+    ),
+    ...t(
+      I.calendarSync,
+      "pauses an uncertain calendar creation",
+      "tracks uncertain event creation",
+      "does not update after the switch was turned off",
+      "uses the provider etag",
+      "does not revoke a fresh grant",
+      "retains a user-deletion tombstone"
+    ),
+    ...t(
+      I.calendarGrant,
+      "asks only for the one calendar permission and for offline access",
+      "records the permission of a first sign-in with a sealed token",
+      "lets a person who declines the permission sign in",
+      "keeps the held token when a later sign-in",
+      "turns the link to",
+      "makes no link for a duty manager who signs in with Google",
+      "lets the button of the settings screen ask Google to show the consent again"
+    ),
+    ...t(
+      I.notif,
+      "sends a duty reminder email only when the email slot of that reminder is marked",
+      "reads a form saved with plain hours and one reminder switch"
+    ),
+    ...t(I.roles, "classifies every command the server knows, and no other"),
+    ...t(
+      U.calendarSync,
+      "keeps the real instants in Israel time across midnight, several days and a clock change",
+      "is blocked without a Google link",
+      "holds the name, location, instructions",
+      "adds a popup for every reminder marked for the calendar",
+      "derives one stable id",
+      "makes one event per duty, whichever rows the seat has",
+      "never brings back an event the soldier deleted, and only a new seat gets a new one",
+      "waits a minute after the first failure"
+    ),
+    ...t(
+      U.notifications,
+      "validates type, timing, channels and frequency on the server",
+      "converts a form saved with plain hours and one reminder email switch",
+      "never withholds security email and checks each business type and reminder time"
+    ),
+    ...t(
+      E.calendarSettings,
+      "a person who signed in with a code only sees the switch blocked, with the reason",
+      "a person who did not grant the permission sees a button that goes to Google",
+      "a person with the permission turns the sync off and on",
+      "the calendar switch and the reminder slots fit a phone"
+    ),
+    ...t(E.prefs, "unit defaults reach soldiers without personal preferences"),
+  ]),
   60: covered([
     ...t(
       I.delLog,

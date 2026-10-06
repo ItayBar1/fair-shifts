@@ -26,6 +26,7 @@ import { Client } from "pg";
 import { db, pool, unitTransaction } from "../../src/server/db";
 import {
   backupRun,
+  account,
   emailOutbox,
   loginCode,
   operationsState,
@@ -560,10 +561,11 @@ describe("a restore drill", () => {
     ).rows;
     expect(removed.length).toBeGreaterThanOrEqual(1);
     // A backup from before 0008 must omit later schema objects as well as
-    // migration records. Otherwise replaying 0010/0011 would create the mail windows and feed twice.
+    // migration records. Later migrations must recreate their own tables once.
     const client = await pool.connect();
     try {
       await client.query("begin");
+      await client.query("drop table calendar_event, calendar_link");
       await client.query("drop trigger duty_feed_change on duties");
       await client.query("drop trigger assignment_feed_change on assignments");
       await client.query("drop function fs_duty_feed_change()");
@@ -590,6 +592,15 @@ describe("a restore drill", () => {
       client.release();
     }
     try {
+      await db.insert(account).values({
+        id: randomUUID(),
+        providerId: "google",
+        accountId: "synthetic-legacy-subject",
+        userId: people[0]!.id,
+        accessToken: "synthetic-legacy-access",
+        refreshToken: "synthetic-legacy-refresh",
+        idToken: "synthetic-legacy-identity",
+      });
       await takeBackup();
     } finally {
       await migrate(db, { migrationsFolder: migrationsFolder() });
@@ -608,6 +619,16 @@ describe("a restore drill", () => {
         "select 1 from pg_indexes where indexname = 'auth_account_user_provider'"
       )
     ).toHaveLength(1);
+    expect(
+      await rows(
+        "select 1 from information_schema.tables where table_name in ('calendar_link', 'calendar_event')"
+      )
+    ).toHaveLength(2);
+    expect(
+      await rows(
+        "select access_token, refresh_token, id_token from auth_account where provider_id = 'google'"
+      )
+    ).toEqual([{ access_token: null, refresh_token: null, id_token: null }]);
     expect(
       (
         await rows(

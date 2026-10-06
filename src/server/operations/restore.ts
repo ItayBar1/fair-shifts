@@ -637,6 +637,12 @@ async function deletedSoldierResidue(database: Executor): Promise<CheckResult> {
           join soldiers s on s.id = u.soldier_id
           where s.deleted_at is not null`
     );
+  for (const table of ["calendar_link", "calendar_event"])
+    await query(sql`
+      select s.id::text as id, 1 as total from ${sql.raw(table)} c
+      join auth_user u on u.id = c.account_id
+      join soldiers s on s.id = u.soldier_id
+      where s.deleted_at is not null`);
   await query(sql`
     select s.id::text as id, 1 as total
     from email_outbox m

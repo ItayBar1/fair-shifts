@@ -145,7 +145,6 @@ const notices = async (actor: Actor) =>
     readAt?: string;
   }[];
 const allEmail = {
-  dutyReminder: true,
   roundOpening: true,
   roundClosing: true,
   publication: true,
@@ -442,7 +441,7 @@ describe("one mail and one site notice for several assignments", () => {
 
   it("does not mail a switched-off type, and still writes the notice", async () => {
     await command(member, "settings.save", {
-      reminderHours: [2],
+      reminders: [{ hours: 2, email: true, calendar: true }],
       email: { ...allEmail, publication: false },
     });
     const t0 = Date.now();
@@ -461,7 +460,7 @@ describe("one mail and one site notice for several assignments", () => {
 
   it("checks preferences at delivery, not when the window opened", async () => {
     const saved = await command(member, "settings.save", {
-      reminderHours: [2],
+      reminders: [{ hours: 2, email: true, calendar: true }],
       email: { ...allEmail, publication: false },
     });
     const t0 = Date.now();
@@ -469,7 +468,10 @@ describe("one mail and one site notice for several assignments", () => {
     await command(
       member,
       "settings.save",
-      { reminderHours: [2], email: allEmail },
+      {
+        reminders: [{ hours: 2, email: true, calendar: true }],
+        email: allEmail,
+      },
       saved.version
     );
     expect(await deliver(t0 + 11 * MINUTE)).toHaveLength(1);

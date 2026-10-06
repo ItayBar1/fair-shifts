@@ -71,6 +71,8 @@ services:
       DATABASE_URL: postgresql://fair_shifts:test-only@test-db:5432/fair_shifts_test
       TEST_DATABASE_URL: postgresql://fair_shifts:test-only@test-db:5432/fair_shifts_test
       NODE_ENV: test
+      # The calendar sync is on in tests; Google itself is always replaced (decision 195).
+      GOOGLE_CALENDAR_SYNC: "true"
     depends_on:
       test-db:
         condition: service_healthy
@@ -92,6 +94,7 @@ services:
       TEST_DATABASE_URL: postgresql://fair_shifts:test-only@test-db:5432/fair_shifts_test
       BETTER_AUTH_URL: http://127.0.0.1:3000
       CI: "true"
+      GOOGLE_CALENDAR_SYNC: "true"
       # Synthetic public key only; no worker runs here, the screen reads the setup.
       BACKUP_STORAGE: directory
       BACKUP_DIRECTORY: /tmp/fair-shifts-e2e-backups

@@ -22,6 +22,7 @@ import {
   OTP_TTL_MS,
 } from "./policy";
 import { applyVerifiedEmailChange, type Actor } from "./accounts";
+import type { CalendarCleanup } from "../calendar/link";
 
 export async function requestEmailChange(
   tx: DbTransaction,
@@ -123,7 +124,8 @@ export async function confirmEmailChange(
   tx: DbTransaction,
   actor: Actor,
   payload: unknown,
-  expectedVersion?: number
+  expectedVersion?: number,
+  calendarCleanups?: CalendarCleanup[]
 ) {
   manager(actor);
   const input = z
@@ -184,7 +186,12 @@ export async function confirmEmailChange(
       },
     };
   }
-  await applyVerifiedEmailChange(tx, target.id, String(record.data.email));
+  await applyVerifiedEmailChange(
+    tx,
+    target.id,
+    String(record.data.email),
+    calendarCleanups
+  );
   const [contact] = await tx
     .select()
     .from(soldierContacts)
