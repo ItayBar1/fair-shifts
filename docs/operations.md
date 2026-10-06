@@ -403,7 +403,26 @@ sh scripts/production.sh health
 
 **אימות 06.10.2026:** מזהה הלקוח הציבורי מתוך תצורת ה־staging תואם ללקוח `fair-shifts-staging` בפרויקט `fairshifts`. החשבון הייעודי נוסף לפרויקט כ־Owner באישור המשתמש, ותוצאת השמירה אומתה ב־IAM; הבעלים הקודם נשאר. באותו שלב לא הוחלפו מזהה או סוד בשרת. לקוח הכניסה הישן נמצא ב־Testing עם שלושה משתמשי בדיקה. לאחר אישור מפורש של המשתמש לתנאים, Calendar API הופעל בפרויקט הישן וסטטוס `Enabled` אומת; ההיקף `calendar.app.created` נשמר לצד היקפי הכניסה `openid`, ‏`userinfo.email` ו־`userinfo.profile`, עם אישור `Data access changes saved`. בקונסולה ארבעתם מוצגים תחת `Your non-sensitive scopes`.
 
-**יעד המעבר המעודכן (הבהרת המשתמש, 06.10.2026):** פרויקט הפיתוח האישי עתיד להימחק; הוספת Owner אליו אינה המעבר המבוקש. הכניסה והיומן יוגדרו בפרויקט **`fairshifts-backup` של החשבון הייעודי**, בלקוח Web נפרד בשם `fair-shifts-staging`. לקוח `fair-shifts-backup` של Drive יישאר ללא שינוי. מצב OAuth בפרויקט הייעודי אומת כ־`In production`; זה אינו שינוי של סביבת האתר מ־staging ל־production. הוכנה טיוטת לקוח עם מקור `https://classly-studio-management.uk` וכתובת חזרה `https://classly-studio-management.uk/api/auth/callback/google`, וכן טיוטת ההיקפים. יצירת הלקוח, Calendar API ושמירת ההיקפים בפרויקט הייעודי ממתינים לאישור הפעולה. המעבר יחייב מזהה וסוד חדשים ב־`app.env`, תוך שמירת הגדרות הגיבוי. אין למחוק את פרויקט הפיתוח לפני כניסה מאומתת דרך הלקוח החדש; עדיין נדרשים מיזוג הקוד, הדלקת דגל Calendar והדגמה סינתטית.
+**יעד המעבר המעודכן (הבהרת המשתמש, 06.10.2026; ביצוע 07.10.2026):** פרויקט הפיתוח האישי עתיד להימחק; הוספת Owner אליו אינה המעבר המבוקש. באישור מפורש נוצר בפרויקט **`fairshifts-backup` של החשבון הייעודי** לקוח Web נפרד בשם `fair-shifts-staging`, ואומת אישור `OAuth client created`. המקור הוא `https://classly-studio-management.uk`, וכתובת החזרה `https://classly-studio-management.uk/api/auth/callback/google`. באותו פרויקט הופעל Calendar API ואומת `Enabled`; נשמרו `calendar.app.created`, ‏`openid`, ‏`userinfo.email` ו־`userinfo.profile`, עם אישור `Data access changes saved`. לקוח `fair-shifts-backup` של Drive לא שונה. מצב OAuth בפרויקט הייעודי אומת כ־`In production`; זה אינו שינוי של סביבת האתר מ־staging ל־production. החלפת `GOOGLE_CLIENT_ID` ו־`GOOGLE_CLIENT_SECRET` בשרת עדיין ממתינה להזנה ידנית של המשתמש; סוד הלקוח אינו נשמר בתיעוד או בצ׳אט. אין למחוק את פרויקט הפיתוח לפני כניסה מאומתת דרך הלקוח החדש; עדיין נדרשים מיזוג הקוד, הדלקת דגל Calendar והדגמה סינתטית.
+
+**החלפת לקוח הכניסה בלי החלפת הגרסה:** משהים את הטיימר ובודקים שה־checkout הוא הגרסה הפעילה. המשתמש מעתיק בעצמו את שני ערכי הלקוח מהקונסולה ל־`app.env`, בלי שינוי `GOOGLE_DRIVE_*`, מפתח ההצפנה או דגל Calendar. אין להדפיס את הסוד או להכניסו לפקודה שנשמרת בהיסטוריית המסוף.
+
+```sh
+cd /opt/fair-shifts/app
+touch /opt/fair-shifts/deploy-state/paused
+if [ "$(git rev-parse HEAD)" != "$(cat /opt/fair-shifts/deploy-state/deployed)" ]; then
+  echo "STOP: checkout differs from the live version; keep deployment paused"
+else
+  if nano /opt/fair-shifts/config/app.env && chmod 600 /opt/fair-shifts/config/app.env && sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && sh scripts/production.sh health; then
+    rm -f /opt/fair-shifts/deploy-state/paused
+    echo "Google client configuration loaded; verify a fresh Google sign-in"
+  else
+    echo "STOP: update or health check failed; keep deployment paused and inspect the services"
+  fi
+fi
+```
+
+הפעלה מחדש של app והעובד משתמשת בתמונה הקיימת; היא אינה פורסת את ענף PR #113. מאמתים כניסה חדשה ב־Google עם חשבון בדיקה מורשה, וכן שהגיבוי הקיים ממשיך לפעול, לפני הסרת הפרויקט הישן. כשהתיקייה אינה תואמת לגרסה הפעילה, עוצרים לבירור ולא בונים או פורסים גרסה אחרת כחלק מהחלפת הסוד.
 
 1. בפרויקט Cloud של לקוח הכניסה: **Google Calendar API** מופעל.
 2. ב־Google Auth Platform, ב־Data Access: ההרשאה `https://www.googleapis.com/auth/calendar.app.created` בנוסף ל־`openid`, ‏`email` ו־`profile`. זו ההרשאה היחידה שהאתר מבקש: יומן שהאתר יוצר בעצמו.
