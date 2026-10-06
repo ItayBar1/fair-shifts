@@ -4,11 +4,12 @@
 
 **איך קוראים.** ״מכוסה״: לכל סעיף בסיפור או בתרחיש יש בדיקה אוטומטית. ״חלקי״ ו״פתוח״: השורה ״חוסר״ אומרת מה אין לו בדיקה, ובפתוח גם איזה כרטיס יסגור זאת. בדיקה נקראת לפי הקובץ וחלק משמה, כך שבדיקה שנמחקה או ששמה שונה שוברת את הבדיקה של המפה. תוצאות מול ספק, שרת ופיילוט מופיעות בנפרד בשורה ״ספקים, שרת ופיילוט״: ״נבדק״ מתועד ב[מצב הפרויקט](../config/memory/project-state.md), ״טרם נבדק״ עדיין לא נעשה. מעבר בדיקה אוטומטית אינו הוכחה שקיימת הפעלה בשרת או בפיילוט.
 
-סיפורים: 65 במפה: 65 מכוסים, 0 חלקיים, 0 פתוחים. תרחישי קבלה: 64 במפה: 64 מכוסים, 0 חלקיים, 0 פתוחים.
+סיפורים: 65 במפה: 64 מכוסים, 1 חלקיים, 0 פתוחים. תרחישי קבלה: 64 במפה: 63 מכוסים, 1 חלקיים, 0 פתוחים.
 
 ## מה עדיין פתוח
 
-- אין חוסר פתוח במפה.
+- סיפור 60 (חלקי): הוספת משתמש בודד בידי הטכני, גם בלי אחראי פעיל, טרם מומשה ונבדקה (הכרעה 206). ([#114](https://github.com/ItayBar1/fair-shifts/issues/114))
+- תרחיש 45 (חלקי): הטופס הטכני ליצירת משתמש, בדיקות הרשאה/כפילויות ומסלול מינוי כשאין אחראי קודם פתוחים בכרטיס #114. ([#114](https://github.com/ItayBar1/fair-shifts/issues/114))
 
 ## סיפורי משתמש
 
@@ -341,11 +342,12 @@
 - [domain.test.ts](../tests/unit/domain.test.ts): `routes a volunteer's exemption or rank exception to a manager instead of blocking`
 - [rank-conditions.test.ts](../tests/unit/rank-conditions.test.ts): `leaves a manual selection to an explicit exception instead of blocking`
 
-### 60. כמנהל טכני, אני רוצה להעניק ולהסיר הרשאת אחראי, כדי לשלוט בגישת הניהול מחשבון נפרד. — מכוסה
+### 60. כמנהל טכני, אני רוצה להעניק ולהסיר הרשאת אחראי, ולהוסיף משתמש בודד כשצריך למנות אחראי חדש, כדי לשלוט בגישת הניהול מחשבו… — חלקי
 
 - [access.test.ts](../tests/integration/access.test.ts): `rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both`; `keeps the technical account out of soldier records, rankings and role changes`
 - [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `makes the technical account read the account again before changing a role`
 - [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `the technical account grants and removes manager permission, ending the open connection each time`
+- חוסר: הוספת משתמש בודד בידי הטכני, גם בלי אחראי פעיל, טרם מומשה ונבדקה (הכרעה 206). ([#114](https://github.com/ItayBar1/fair-shifts/issues/114))
 
 ### 61. כאחראי, אני רוצה לשחרר חשבון חייל שננעל; כמנהל טכני, אני רוצה לשחרר חשבון אחראי, כדי לאפשר חזרה מבוקרת למערכת. — מכוסה
 
@@ -635,12 +637,13 @@
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `sends a swap whose duty started to a manager, who needs a handover time to approve it and may reject it with a visible reason`
 - [execution-periods.test.ts](../tests/integration/execution-periods.test.ts): `swaps a started seat at a handover for a whole seat that has not started`; `goes to a manager, who sets the handover, and the original seat binds until then`
 
-### 45. מנהל טכני והסרת הרשאה — הרשאות — מכוסה
+### 45. מנהל טכני והסרת הרשאה — הרשאות — חלקי
 
 - [access.test.ts](../tests/integration/access.test.ts): `rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both`; `keeps the technical account out of soldier records, rankings and role changes`
 - [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `makes the technical account read the account again before changing a role`; `gives the technical account accounts and operations but no soldiers or scores`
 - [manager-exclusion.test.ts](../tests/integration/manager-exclusion.test.ts): `changes the role only for the technical account, and only from a current version`
 - [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `the technical account grants and removes manager permission, ending the open connection each time`
+- חוסר: הטופס הטכני ליצירת משתמש, בדיקות הרשאה/כפילויות ומסלול מינוי כשאין אחראי קודם פתוחים בכרטיס #114. ([#114](https://github.com/ItayBar1/fair-shifts/issues/114))
 
 ### 46. קודים, נעילה ושחזור — חשבונות — מכוסה
 

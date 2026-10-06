@@ -132,6 +132,12 @@ const covered = (evidence: Evidence[], external?: External[]): Entry => ({
   evidence,
   external,
 });
+const partial = (evidence: Evidence[], gap: string, ticket: number): Entry => ({
+  status: "partial",
+  evidence,
+  gap,
+  ticket,
+});
 const open = (
   gap: string,
   ticket: number,
@@ -906,21 +912,25 @@ export const stories: Record<number, Entry> = {
       "leaves a manual selection to an explicit exception instead of blocking"
     ),
   ]),
-  60: covered([
-    ...t(
-      I.access,
-      "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
-      "keeps the technical account out of soldier records, rankings and role changes"
-    ),
-    ...t(
-      I.roles,
-      "makes the technical account read the account again before changing a role"
-    ),
-    ...t(
-      E.access,
-      "the technical account grants and removes manager permission, ending the open connection each time"
-    ),
-  ]),
+  60: partial(
+    [
+      ...t(
+        I.access,
+        "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
+        "keeps the technical account out of soldier records, rankings and role changes"
+      ),
+      ...t(
+        I.roles,
+        "makes the technical account read the account again before changing a role"
+      ),
+      ...t(
+        E.access,
+        "the technical account grants and removes manager permission, ending the open connection each time"
+      ),
+    ],
+    "הוספת משתמש בודד בידי הטכני, גם בלי אחראי פעיל, טרם מומשה ונבדקה (הכרעה 206).",
+    114
+  ),
   61: covered([
     ...t(
       I.access,
@@ -1604,26 +1614,30 @@ export const scenarios: Record<number, Entry> = {
       "goes to a manager, who sets the handover, and the original seat binds until then"
     ),
   ]),
-  45: covered([
-    ...t(
-      I.access,
-      "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
-      "keeps the technical account out of soldier records, rankings and role changes"
-    ),
-    ...t(
-      I.roles,
-      "makes the technical account read the account again before changing a role",
-      "gives the technical account accounts and operations but no soldiers or scores"
-    ),
-    ...t(
-      I.mgrEx,
-      "changes the role only for the technical account, and only from a current version"
-    ),
-    ...t(
-      E.access,
-      "the technical account grants and removes manager permission, ending the open connection each time"
-    ),
-  ]),
+  45: partial(
+    [
+      ...t(
+        I.access,
+        "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
+        "keeps the technical account out of soldier records, rankings and role changes"
+      ),
+      ...t(
+        I.roles,
+        "makes the technical account read the account again before changing a role",
+        "gives the technical account accounts and operations but no soldiers or scores"
+      ),
+      ...t(
+        I.mgrEx,
+        "changes the role only for the technical account, and only from a current version"
+      ),
+      ...t(
+        E.access,
+        "the technical account grants and removes manager permission, ending the open connection each time"
+      ),
+    ],
+    "הטופס הטכני ליצירת משתמש, בדיקות הרשאה/כפילויות ומסלול מינוי כשאין אחראי קודם פתוחים בכרטיס #114.",
+    114
+  ),
   46: covered([
     ...t(
       I.access,
