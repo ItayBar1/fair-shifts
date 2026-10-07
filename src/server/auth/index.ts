@@ -365,7 +365,14 @@ export function getAuth() {
               : undefined;
           // The server owns OAuth scopes and offline access. A direct caller
           // cannot broaden access with scopes or authorization parameters.
-          request = new Request(request, {
+          // A fresh request, not `new Request(request, …)`: under Next.js on
+          // Node 24 the route's request is of another Request class, and
+          // wrapping it throws (#118).
+          const headers = new Headers(request.headers);
+          headers.delete("content-length");
+          request = new Request(request.url, {
+            method: request.method,
+            headers,
             body: JSON.stringify({
               ...payload,
               scopes: [],

@@ -100,6 +100,7 @@ const E = {
   backups: "tests/e2e/backups.spec.ts",
   cards: "tests/e2e/calendar-cards.spec.ts",
   calendarSettings: "tests/e2e/calendar-settings.spec.ts",
+  google: "tests/e2e/google-sign-in.spec.ts",
   cancel: "tests/e2e/cancellation-requests.spec.ts",
   rounds: "tests/e2e/constraint-rounds.spec.ts",
   delExec: "tests/e2e/deletion-in-execution.spec.ts",
@@ -244,6 +245,10 @@ export const stories: Record<number, Entry> = {
       ...t(
         I.google,
         "lets an invited person start with Google and then use either Google or an email code"
+      ),
+      ...t(
+        E.google,
+        "the Google button gets a Google link from the server, with the server's own permissions"
       ),
       ...t(
         I.auth,
