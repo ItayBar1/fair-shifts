@@ -20,6 +20,8 @@ import {
 } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db, type DbTransaction } from "../db";
+import { staffMailRelevant } from "../notification-audience";
+import { seatRequestMailRelevant } from "../seat-mail-relevance";
 import {
   emailOutbox,
   emailQuota,
@@ -107,11 +109,18 @@ type EnqueueInput = {
 export async function enqueueEmail(tx: DbTransaction, input: EnqueueInput) {
   const { secret, ...values } = input;
   const singleDuty = /^\/duties\/([0-9a-f-]{36})$/.exec(values.href ?? "");
+  const requestEvent =
+    /^(transfer|swap|execution):([0-9a-f-]{36}):(.+):([0-9a-f-]{36})$/.exec(
+      values.eventKey
+    );
   await tx
     .insert(emailOutbox)
     .values({
       id: randomUUID(),
       ...values,
+      requestScope: requestEvent?.[1] ?? null,
+      requestId: requestEvent?.[2] ?? null,
+      requestEvent: requestEvent?.[3] ?? null,
       dutyIds: values.dutyIds ?? (singleDuty ? [singleDuty[1]] : []),
       encryptedSecret: secret ? sealSecret(secret) : null,
     })
@@ -329,6 +338,10 @@ export async function deliverNextEmail(
         .where(eq(user.id, message.recipientAccountId));
       let skip: OutboxError | null =
         recipient && !recipient.deletedAt ? null : "recipient_unavailable";
+      if (!skip && !(await staffMailRelevant(tx, recipient, message.kind, now)))
+        skip = "recipient_unavailable";
+      if (!skip && !(await seatRequestMailRelevant(tx, message, recipient)))
+        skip = "not_relevant";
       // Only the real provider is spared reserved addresses; an injected test
       // transport still receives them (decision 190).
       if (

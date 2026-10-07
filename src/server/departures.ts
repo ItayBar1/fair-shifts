@@ -8,6 +8,7 @@ import { enqueueEmail } from "./operations/email";
 import { reassessAssignments } from "./personnel";
 import { canAccessAfterService } from "../domain/eligibility";
 import { localDate } from "../domain/time";
+import { staffNotificationRecipients } from "./notification-audience";
 
 /**
  * Worker step after the end of a release day. Access is already refused on
@@ -71,9 +72,10 @@ export async function announceDepartures(tx: DbTransaction, now = new Date()) {
         ? ` ${flagged} שיבוצים שמורים חורגים ממועד השחרור ומסומנים לטיפול.`
         : "");
     const href = "/manage/soldiers";
-    for (const recipient of accounts.filter(
-      (row) =>
-        row.role === "manager" && !row.deletedAt && row.soldierId !== person.id
+    for (const recipient of await staffNotificationRecipients(
+      tx,
+      ["manager"],
+      now
     )) {
       await createRecord(tx, "notification", {
         accountId: recipient.id,

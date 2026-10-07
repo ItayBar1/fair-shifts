@@ -4,6 +4,8 @@ import { records } from "./schema";
 import { user } from "./auth-schema";
 import { createRecord, updateRecord, type Workflow } from "./repository";
 import { enqueueEmail } from "./operations/email";
+import { staffNotificationRecipients } from "./notification-audience";
+import { reserveDailyBudget } from "./auth/budgets";
 import type { EligibilityReason, Soldier } from "../domain/types";
 
 // Helpers shared by the consent flows that move a published seat: a transfer to another
@@ -30,6 +32,31 @@ export async function accountOf(tx: DbTransaction, soldierId: string) {
 }
 
 /** A site notification, and a mail of the "swaps and transfers" type while it is still relevant. */
+export async function reserveOfferRecipients(
+  tx: DbTransaction,
+  senderAccountId: string,
+  soldierIds: readonly string[]
+) {
+  const mailRecipients = new Set<string>();
+  let mailLimited = false;
+  for (const soldierId of new Set(soldierIds)) {
+    if (!(await accountOf(tx, soldierId))) continue;
+    if (
+      await reserveDailyBudget(
+        tx,
+        "seat-offer:issue",
+        senderAccountId,
+        1,
+        30,
+        undefined
+      )
+    )
+      mailRecipients.add(soldierId);
+    else mailLimited = true;
+  }
+  return { mailRecipients, mailLimited };
+}
+
 export async function notifySoldier(
   tx: DbTransaction,
   soldierId: string,
@@ -79,10 +106,7 @@ export async function notifyManagers(
   title: string,
   body: string
 ) {
-  const managers = await tx
-    .select()
-    .from(user)
-    .where(and(eq(user.role, "manager"), isNull(user.deletedAt)));
+  const managers = await staffNotificationRecipients(tx);
   // Site notifications only (decision 163); no subject so the soldier never receives the manager copy.
   for (const account of managers)
     await createRecord(tx, "notification", {

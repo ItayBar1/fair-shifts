@@ -575,6 +575,11 @@ export function SwapRequests({
               <div className="grow">
                 <strong>{str(row.dutyName)}</strong>
                 <EntryLine state={state} entry={row} />
+                {row.mailLimited === true && (
+                  <small>
+                    ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה היומית.
+                  </small>
+                )}
                 <small>
                   {rows(row.candidates)
                     .map(

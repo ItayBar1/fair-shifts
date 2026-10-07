@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
+import { staffNotificationRecipients } from "./notification-audience";
 import {
   assignments,
   balances,
@@ -10,7 +11,6 @@ import {
   records,
   soldiers,
 } from "./schema";
-import { user } from "./auth-schema";
 import {
   audit,
   createRecord,
@@ -428,10 +428,7 @@ export async function applyPerformanceCorrection(
     correctionId,
   });
   if (outcomes.some((outcome) => outcome.status === "decision_required")) {
-    const managers = await tx
-      .select({ id: user.id })
-      .from(user)
-      .where(eq(user.role, "manager"));
+    const managers = await staffNotificationRecipients(tx);
     for (const account of managers)
       await createRecord(tx, "notification", {
         accountId: account.id,

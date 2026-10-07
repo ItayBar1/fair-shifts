@@ -32,6 +32,7 @@ import {
   nameOf as soldierName,
   notifyManagers,
   notifySoldier,
+  reserveOfferRecipients,
   OPEN_CONSENT as OPEN,
   openSeatRequests,
   seatCommitted,
@@ -59,6 +60,7 @@ type TransferStatus = ConsentStatus;
 export type TransferData = {
   type: "transfer";
   status: TransferStatus;
+  mailLimited?: boolean;
   assignmentId: string;
   dutyId: string;
   slotId: string;
@@ -201,9 +203,15 @@ export async function offerTransfer(
     );
   }
   const now = new Date().toISOString();
+  const { mailRecipients, mailLimited } = await reserveOfferRecipients(
+    tx,
+    actor.id,
+    candidateIds
+  );
   const data: TransferData = {
     type: "transfer",
     status: "awaiting_consent",
+    mailLimited,
     assignmentId: seat.id,
     dutyId: duty.id,
     slotId: seat.slotId,
@@ -229,7 +237,7 @@ export async function offerTransfer(
       body: remaining
         ? `${offerer} מבקש שתחליף אותו בתורנות ${duty.name}, שכבר התחילה. אם תסכים, אחראי יקבע את מועד החילוף.`
         : `${offerer} מציע לך לקבל את התורנות ${duty.name}. אפשר להסכים או לדחות במסך ההחלפות.`,
-      email: true,
+      email: mailRecipients.has(candidateId),
       expiresAt: remaining
         ? instant(remaining.end).toMillis()
         : instant(duty.start).toMillis(),
@@ -1216,6 +1224,7 @@ export function projectRequests(
           {
             ...shared,
             status: data.status,
+            mailLimited: data.mailLimited,
             closedReason: data.closedReason,
             acceptedBy: data.acceptedBy,
             candidates: data.candidates,
