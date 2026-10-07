@@ -2,8 +2,8 @@ import { createHash, randomInt } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
+import { staffNotificationRecipients } from "./notification-audience";
 import { records } from "./schema";
-import { user } from "./auth-schema";
 import {
   audit,
   createRecord,
@@ -653,10 +653,7 @@ export async function stepPlan(
       completedAt: new Date().toISOString(),
     });
     if (missing.length)
-      for (const recipient of await tx
-        .select()
-        .from(user)
-        .where(eq(user.role, "manager")))
+      for (const recipient of await staffNotificationRecipients(tx))
         if (!recipient.deletedAt)
           await createRecord(tx, "notification", {
             accountId: recipient.id,

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { unitTransaction, type Database, type DbTransaction } from "./db";
+import { staffNotificationRecipients } from "./notification-audience";
 import { soldiers } from "./schema";
 import { user } from "./auth-schema";
 import { purgeCalendarLink } from "./calendar/link";
@@ -189,10 +190,7 @@ export async function acknowledgeUnverifiedLog(
 }
 
 async function notifyManagers(tx: DbTransaction) {
-  for (const manager of await tx
-    .select({ id: user.id, deletedAt: user.deletedAt })
-    .from(user)
-    .where(eq(user.role, "manager")))
+  for (const manager of await staffNotificationRecipients(tx))
     if (!manager.deletedAt)
       await createRecord(tx, "notification", {
         accountId: manager.id,

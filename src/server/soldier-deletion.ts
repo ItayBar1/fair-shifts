@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
+import { staffNotificationRecipients } from "./notification-audience";
 import {
   assignments,
   assignmentFeed,
@@ -651,10 +652,11 @@ export async function eraseSoldier(
       (impact.inProgress.length
         ? `, ו־${impact.inProgress.length} שיבוצים בתורנויות שכבר התחילו נשארו ומסומנים לטיפול דחוף: יש לרשום תקופות ביצוע, מחליף ואת הניקוד.`
         : ".");
-    for (const recipient of await tx
-      .select()
-      .from(user)
-      .where(eq(user.role, "manager")))
+    for (const recipient of await staffNotificationRecipients(
+      tx,
+      ["manager"],
+      now
+    ))
       if (!recipient.deletedAt) {
         await createRecord(tx, "notification", {
           accountId: recipient.id,

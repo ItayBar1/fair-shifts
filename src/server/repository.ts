@@ -6,6 +6,7 @@ import { user } from "./auth-schema";
 import { AppError, invariant } from "./errors";
 import type { Constraint } from "../domain/types";
 import type { Actor } from "./auth/accounts";
+import { cancelObsoleteSeatRequestMail } from "./seat-mail-relevance";
 export type { Actor } from "./auth/accounts";
 
 export type Workflow = typeof records.$inferSelect;
@@ -65,6 +66,11 @@ export async function updateRecord(
     .returning();
   if (!result)
     throw new AppError("stale_version", "המידע השתנה בזמן השמירה", 409);
+  if (
+    record.kind === "request" &&
+    ["transfer", "swap"].includes(String(data.type))
+  )
+    await cancelObsoleteSeatRequestMail(tx, record.id);
   return result;
 }
 /**

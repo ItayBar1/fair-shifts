@@ -58,6 +58,7 @@ const U = {
   weekend: "tests/unit/weekend-surcharge.test.ts",
 } as const;
 const I = {
+  securityMail: "tests/integration/security-mail.test.ts",
   mine: "tests/integration/my-assignments.test.ts",
   access: "tests/integration/access.test.ts",
   calendarSync: "tests/integration/calendar-sync.test.ts",
@@ -1372,6 +1373,10 @@ export const scenarios: Record<number, Entry> = {
       "keeps the original until consent, moves the full value without a score check and completes once when candidates race"
     ),
     ...t(
+      I.securityMail,
+      "cancels old offers when completed but retains valid completion messages for both parties"
+    ),
+    ...t(
       I.swaps,
       "swaps both seats together with their full value, without a score check, and completes once when two acceptances race"
     ),
@@ -1384,6 +1389,10 @@ export const scenarios: Record<number, Entry> = {
     ...t(
       I.auth,
       "rejects an unsuitable candidate without revealing why and rechecks at acceptance"
+    ),
+    ...t(
+      I.securityMail,
+      "retains a swap offer while another seat for that recipient is pending, then cancels it"
     ),
     ...t(
       I.swaps,
@@ -1748,6 +1757,13 @@ export const scenarios: Record<number, Entry> = {
   ]),
   49: covered(
     [
+      ...t(
+        I.securityMail,
+        "saves proposals and site notices beyond 30 recipients, never refunds withdrawal, and shares the budget with swaps",
+        "reserves the final recipient only once while both competing proposals remain saved",
+        "keeps old manager notices but creates none after demotion or release",
+        "rechecks a historical pending offer even when it was closed without the command helper"
+      ),
       ...t(
         I.otp,
         "limits the whole unit to 200 issued login codes",

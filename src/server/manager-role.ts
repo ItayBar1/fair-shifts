@@ -1,6 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
+import { staffNotificationRecipients } from "./notification-audience";
 import { assignments, balances, records } from "./schema";
 import { user } from "./auth-schema";
 import {
@@ -114,10 +115,7 @@ async function afterRoleChange(
 }
 
 async function notifyManagers(tx: DbTransaction, name: string, count: number) {
-  const recipients = await tx
-    .select({ id: user.id })
-    .from(user)
-    .where(and(eq(user.role, "manager"), isNull(user.deletedAt)));
+  const recipients = await staffNotificationRecipients(tx);
   const title = "חייל מונה לאחראי תורנויות";
   const body =
     `${name} מונה לאחראי תורנויות ואינו משובץ עוד לתורנויות. ` +

@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
+import { staffNotificationRecipients } from "./notification-audience";
 import { duties, records } from "./schema";
 import { user } from "./auth-schema";
 import {
@@ -274,10 +275,7 @@ export async function submitCancellationRequest(
   const row = await createRecord(tx, "request", data, actor.soldierId);
   const name =
     state.soldiers.find((item) => item.id === actor.soldierId)?.name ?? "חייל";
-  const managers = await tx
-    .select()
-    .from(user)
-    .where(and(eq(user.role, "manager"), isNull(user.deletedAt)));
+  const managers = await staffNotificationRecipients(tx);
   // Managers get a site notice only; no subject, so the soldier never sees the manager copy.
   for (const account of managers)
     await createRecord(tx, "notification", {
