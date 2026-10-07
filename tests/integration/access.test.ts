@@ -68,7 +68,7 @@ async function invite(
 }
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   ids = {
     technical: (
@@ -195,9 +195,15 @@ async function auditActions(targetId: string) {
 }
 async function lock(email: string) {
   const [row] = await db.select().from(user).where(eq(user.email, email));
-  await allowResend(row.id);
-  await requestCode(email);
-  for (let attempt = 0; attempt < 5; attempt++) await fail(email);
+  // A lock retained from the pre-207 policy still needs authorized release.
+  await db
+    .update(user)
+    .set({
+      lockedAt: new Date(),
+      failedAttempts: 5,
+      securityEpoch: row.securityEpoch + 1,
+    })
+    .where(eq(user.id, row.id));
 }
 
 describe("manager permission is granted and removed only by the technical account", () => {
@@ -394,30 +400,31 @@ describe("connection lifetime", () => {
 });
 
 describe("failed codes, lock and release", () => {
-  it("warns after the third and fourth failure, keeps counting across a resend and locks on the fifth", async () => {
+  it("warns after the third and fourth failure, keeps counting across a resend and burns on the fifth failure without locking", async () => {
     const start = new Date();
     await requestCode(emails.member, start);
     expect((await fail(emails.member, start)).message).toBe("קוד לא תקין");
     expect((await fail(emails.member, start)).message).toBe("קוד לא תקין");
     expect((await fail(emails.member, start)).message).toBe(
-      "קוד לא תקין. נותרו שני ניסיונות לפני נעילת החשבון"
+      "קוד לא תקין. נותרו שני ניסיונות לפני ביטול הקוד"
     );
     const later = new Date(start.getTime() + 61_000);
     await requestCode(emails.member, later);
     expect((await account(ids.member)).failedAttempts).toBe(3);
     const resent = await storedCode(ids.member);
     expect((await fail(emails.member, later)).message).toBe(
-      "קוד לא תקין. נותר ניסיון אחד לפני נעילת החשבון"
+      "קוד לא תקין. נותר ניסיון אחד לפני ביטול הקוד"
     );
-    const locked = await fail(emails.member, later);
-    expect(locked.code).toBe("account_locked");
-    expect(locked.message).toBe(
-      "החשבון ננעל. יש לפנות לאחראי התורנויות לשחרור"
+    const burned = await fail(emails.member, later);
+    expect(burned.code).toBe("invalid_code");
+    expect(burned.message).toBe(
+      "הקוד בוטל לאחר חמש טעויות. יש להמתין לפני בקשת קוד חדש"
     );
     // The correct code of the resend no longer opens the account.
     await expect(
       verifyCode(emails.member, resent, later)
-    ).rejects.toMatchObject({ code: "account_locked" });
+    ).rejects.toMatchObject({ code: "invalid_code" });
+    expect((await account(ids.member)).lockedAt).toBeNull();
   });
 
   it("blocks an existing connection, a provider sign-in and new codes until a manager releases the soldier", async () => {
@@ -455,12 +462,9 @@ describe("failed codes, lock and release", () => {
 
   it("sends a locked manager to the technical account, which alone releases it", async () => {
     const connection = await signIn(emails.careerManager);
-    await allowResend(ids.careerManager);
-    await requestCode(emails.careerManager);
-    for (let attempt = 0; attempt < 4; attempt++)
-      await fail(emails.careerManager);
+    await lock(emails.careerManager);
     expect((await fail(emails.careerManager)).message).toBe(
-      "החשבון ננעל. יש לפנות למנהל הטכני לשחרור"
+      "החשבון נעול. יש לפנות למנהל הטכני לשחרור"
     );
     expect(await getActor(connection)).toBeNull();
     expect(await providerSession(ids.careerManager)).toBeNull();
@@ -502,10 +506,9 @@ describe("technical access recovery", () => {
     const codes = await db.transaction((tx) =>
       issueRecoveryCodes(ids.technical, tx)
     );
-    await requestCode(emails.technical);
-    for (let attempt = 0; attempt < 4; attempt++) await fail(emails.technical);
+    await lock(emails.technical);
     expect((await fail(emails.technical)).message).toBe(
-      "החשבון ננעל. יש להשתמש בקוד שחזור חד־פעמי או בשחזור דרך השרת"
+      "החשבון נעול. יש להשתמש בקוד שחזור חד־פעמי או בשחזור דרך השרת"
     );
     await expect(
       useRecoveryCode(emails.member, codes[0])

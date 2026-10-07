@@ -55,6 +55,9 @@ import {
   type OutboxError,
 } from "../../domain/mail-delivery";
 import { signalMail } from "./mail-signal";
+import { reserveCodeBudget } from "../auth/budgets";
+import { quotaDay } from "./mail-quota-day";
+export { quotaDay } from "./mail-quota-day";
 
 function encryptionKey() {
   const value = process.env.MAIL_ENCRYPTION_KEY ?? "";
@@ -163,11 +166,6 @@ type MailState = {
   /** The quota day on which messages were held back for lack of quota. */
   quotaExhaustedDay?: string;
 };
-export function quotaDay(now: Date) {
-  return DateTime.fromJSDate(now)
-    .setZone(process.env.MAIL_QUOTA_TIME_ZONE ?? "UTC")
-    .toISODate()!;
-}
 async function readMailState(tx: Executor): Promise<MailState> {
   const [row] = await tx
     .select()
@@ -403,6 +401,34 @@ export async function deliverNextEmail(
         await tx
           .update(emailOutbox)
           .set({ status: "cancelled", error: skip, ...cleared, updatedAt: now })
+          .where(eq(emailOutbox.id, message.id));
+        return "skipped";
+      }
+      if (
+        (message.kind === "login-code" || message.kind === "email-change") &&
+        !(await reserveCodeBudget(
+          tx,
+          message.kind,
+          message.recipientAccountId,
+          1,
+          "attempt",
+          now
+        ))
+      ) {
+        const nextDay = DateTime.fromISO(day, {
+          zone: process.env.MAIL_QUOTA_TIME_ZONE ?? "UTC",
+        })
+          .plus({ days: 1 })
+          .toJSDate();
+        await tx
+          .update(emailOutbox)
+          .set({
+            status: "pending",
+            error: "quota_waiting",
+            leaseUntil: null,
+            nextAttemptAt: nextDay,
+            updatedAt: now,
+          })
           .where(eq(emailOutbox.id, message.id));
         return "skipped";
       }

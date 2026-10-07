@@ -3,8 +3,8 @@ import { PgBoss } from "pg-boss";
 import { pool, unitTransaction } from "./server/db";
 import { settleDue } from "./server/scoring";
 import { deliverNextEmail } from "./server/operations/email";
-import { operationsState } from "./server/auth-schema";
-import { eq } from "drizzle-orm";
+import { operationsState, authRateLimit } from "./server/auth-schema";
+import { eq, lt } from "drizzle-orm";
 import { refreshRankReminders } from "./server/ranks";
 import { announceDepartures } from "./server/departures";
 import { recordWorkerHeartbeat } from "./server/operations/health";
@@ -60,6 +60,9 @@ await boss.work("unit-maintenance", async () => {
     await refreshRoundNotices(tx, now);
     await announceDepartures(tx, now);
     await refreshDutyReminders(tx, now);
+    await tx
+      .delete(authRateLimit)
+      .where(lt(authRateLimit.expiresAt, new Date(now.getTime() - 86_400_000)));
     // A restore drill overdue by more than 100 days reminds the technical account (decision 200).
     // In a savepoint: a failed reminder must not undo the settlement above.
     await tx

@@ -136,7 +136,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results, backup_run cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results, backup_run cascade`
   );
   store = join(work, `store-${randomUUID()}`);
   await mkdir(store);

@@ -60,6 +60,8 @@ const content = {
     "BREVO_API_KEY=",
     "BREVO_SENDER_EMAIL=",
     "MAIL_QUOTA_TIME_ZONE=UTC",
+    "# Trust this header only while the site is reachable exclusively through the Cloudflare Tunnel.",
+    "TRUST_CLOUDFLARE_IP=true",
     "GOOGLE_CLIENT_ID=",
     "GOOGLE_CLIENT_SECRET=",
     "# Duties in the soldier's Google calendar (decision 205). Switch on only after the sign-in client",

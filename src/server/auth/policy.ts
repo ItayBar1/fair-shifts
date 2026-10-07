@@ -31,10 +31,15 @@ export const newCode = () =>
   randomInt(0, 1_000_000).toString().padStart(6, "0");
 export const newRecoveryCode = () => randomBytes(24).toString("base64url");
 export function failureResult(previous: number) {
-  const count = Math.min(MAX_FAILURES, previous + 1);
+  const count = previous + 1;
+  const ordinal = count % MAX_FAILURES;
   return {
     count,
-    locked: count >= MAX_FAILURES,
-    remaining: count >= 3 ? MAX_FAILURES - count : undefined,
+    burned: ordinal === 0,
+    remaining: ordinal >= 3 ? MAX_FAILURES - ordinal : undefined,
+    delayMs: Math.min(
+      86_400_000,
+      OTP_RESEND_MS * 2 ** Math.min(20, Math.floor(count / MAX_FAILURES))
+    ),
   };
 }

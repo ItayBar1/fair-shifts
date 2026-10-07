@@ -163,6 +163,8 @@ function configureAuth() {
     baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
     database: drizzleAdapter(db, { provider: "pg", schema: tables }),
     emailAndPassword: { enabled: false },
+    // Public OTP endpoints use atomic PostgreSQL counters at the route boundary.
+    rateLimit: { enabled: false },
     socialProviders: googleProvider(),
     logger: {
       level: "warn",
@@ -271,6 +273,7 @@ function configureAuth() {
                 .update(tables.user)
                 .set({
                   failedAttempts: 0,
+                  nextCodeAllowedAt: null,
                   firstSignInAt: person.firstSignInAt ?? new Date(),
                 })
                 .where(eq(tables.user.id, person.id));

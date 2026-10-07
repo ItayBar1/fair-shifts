@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   check,
   bigint,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 const dates = () => ({
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -37,6 +38,9 @@ export const user = pgTable(
       .default(1),
     securityEpoch: integer("security_epoch").notNull().default(1),
     failedAttempts: integer("failed_attempts").notNull().default(0),
+    nextCodeAllowedAt: timestamp("next_code_allowed_at", {
+      withTimezone: true,
+    }),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     invitedAt: timestamp("invited_at", { withTimezone: true })
@@ -128,6 +132,34 @@ export const loginCode = pgTable("login_code", {
   sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
 });
+
+// Issuance and provider attempts are separate durable budgets, never refunded.
+export const authBudget = pgTable(
+  "auth_budget",
+  {
+    day: text("day").notNull(),
+    category: text("category").notNull(),
+    scope: text("scope").notNull(),
+    used: integer("used").notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.day, t.category, t.scope] }),
+    check("auth_budget_nonnegative", sql`${t.used} >= 0`),
+  ]
+);
+
+export const authRateLimit = pgTable(
+  "auth_rate_limit",
+  {
+    key: text("key").primaryKey(),
+    used: integer("used").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("auth_rate_limit_expiry").on(t.expiresAt),
+    check("auth_rate_limit_positive", sql`${t.used} > 0`),
+  ]
+);
 export const recoveryCode = pgTable(
   "recovery_code",
   {

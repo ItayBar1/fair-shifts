@@ -118,7 +118,7 @@ async function status(promise: Promise<unknown>) {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   manager = await invite("אחראי לבדיקה", "manager", "0000001", 0);
   // Away from yesterday to the day after tomorrow, so a duty in two days still falls inside.

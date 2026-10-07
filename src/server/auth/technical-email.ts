@@ -13,6 +13,7 @@ import {
 import { AppError, invariant } from "../errors";
 import { id, text } from "../validation";
 import type { CalendarCleanup } from "../calendar/link";
+import { reserveCodeBudget } from "./budgets";
 import { enqueueEmail } from "../operations/email";
 import {
   digestCode,
@@ -157,6 +158,21 @@ async function openRequest(
     429
   );
   // A new request cancels the earlier one, whichever route opened it.
+  invariant(
+    await reserveCodeBudget(
+      tx,
+      "email-change",
+      target.id,
+      requiresCurrentCode(input.mode) ? 2 : 1,
+      "issue",
+      now
+    ),
+    "rate_limit",
+    input.mode === "server"
+      ? "Daily verification mail budget exhausted"
+      : "מכסת הודעות האימות היומית מוצתה",
+    429
+  );
   for (const row of existing.filter((entry) => entry.data.status === "pending"))
     await updateRecord(tx, row, {
       accountId: target.id,

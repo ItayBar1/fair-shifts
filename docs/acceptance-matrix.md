@@ -263,6 +263,7 @@
 
 ### 46. כחייל, אני רוצה להציע החלפה של שתי תורנויות כדי ששתי ההעברות יושלמו יחד או לא יושלמו כלל. — מכוסה
 
+- [otp-protection.test.ts](../tests/integration/otp-protection.test.ts): `burns exactly once in a race`; `anchors the wait to burning`; `doubles each burn delay to 24 hours`; `gives the same code-request response`; `returns an identical recovery error`; `does not trust client-provided proxy headers`; `enforces 60 requests, 300 verifications and 10 recoveries`; `applies the rate limit at the public authentication route`
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `swaps both seats together with their full value, without a score check, and completes once when two acceptances race`; `rechecks both sides at acceptance and keeps both seats when one side no longer fits, without revealing the offerer's reason`
 - [swaps.spec.ts](../tests/e2e/swaps.spec.ts): `two soldiers swap seats by consent, and a manager approves a swap that needs an exception`
 
@@ -355,7 +356,7 @@
 ### 61. כאחראי, אני רוצה לשחרר חשבון חייל שננעל; כמנהל טכני, אני רוצה לשחרר חשבון אחראי, כדי לאפשר חזרה מבוקרת למערכת. — מכוסה
 
 - [access.test.ts](../tests/integration/access.test.ts): `blocks an existing connection, a provider sign-in and new codes until a manager releases the soldier`; `sends a locked manager to the technical account, which alone releases it`
-- [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `a soldier is warned, locked across a resend and released only by a manager`; `a locked manager is sent to the technical account, which releases it; a recovery code works once`
+- [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `a soldier is warned, its code burns without revoking access, and a legacy lock is released by a manager`; `a locked manager is sent to the technical account, which releases it; a recovery code works once`
 
 ### 62. כמנהל טכני, אני רוצה קודי שחזור חד־פעמיים ושחזור מתועד דרך השרת, כדי לא לאבד גישה במקרה שחשבוני ננעל. — מכוסה
 
@@ -653,9 +654,9 @@
 
 ### 46. קודים, נעילה ושחזור — חשבונות — מכוסה
 
-- [access.test.ts](../tests/integration/access.test.ts): `warns after the third and fourth failure, keeps counting across a resend and locks on the fifth`; `blocks an existing connection, a provider sign-in and new codes until a manager releases the soldier`; `sends a locked manager to the technical account, which alone releases it`; `keeps a soldier seven days and managers and the technical account 24 hours, without extending on use`
+- [access.test.ts](../tests/integration/access.test.ts): `warns after the third and fourth failure, keeps counting across a resend and burns on the fifth failure without locking`; `blocks an existing connection, a provider sign-in and new codes until a manager releases the soldier`; `sends a locked manager to the technical account, which alone releases it`; `keeps a soldier seven days and managers and the technical account 24 hours, without extending on use`
 - [auth.test.ts](../tests/integration/auth.test.ts): `expires a code at ten minutes`
-- [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `a soldier is warned, locked across a resend and released only by a manager`
+- [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `a soldier is warned, its code burns without revoking access, and a legacy lock is released by a manager`
 
 ### 47. דחיית קובץ, דריסה ושחזור — ייבוא — מכוסה
 
@@ -671,6 +672,7 @@
 
 ### 49. מכסת מייל, העדפות והתאוששות — הודעות — מכוסה
 
+- [otp-protection.test.ts](../tests/integration/otp-protection.test.ts): `limits the whole unit to 200 issued login codes`; `resets failures on success while retaining the ten-code issuance budget`; `allocates a pair atomically at both account and unit boundaries`; `uses the configured quota-day boundary`; `lets only one competing pair take the final two unit slots`; `charges actual retry attempts atomically`; `retains issuance budgets when a new service connection replaces the old one`
 - [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `sends 290 of three waves of 120, keeps the rest for the next day and never counts 360`; `holds business mail at 290 and still sends a sign-in code from the reserve`; `never sends an expired code, and reports one that expired waiting for quota`; `retries with growing delays, then fails visibly while the site notice stays`; `stops retrying when the message is no longer relevant`
 - [notifications.test.ts](../tests/integration/notifications.test.ts): `applies changed unit defaults to inheriting accounts without overriding a saved personal form`
 - [mail-delivery.test.ts](../tests/unit/mail-delivery.test.ts): `retries five times in total with growing delays inside 24 hours`
