@@ -2,10 +2,17 @@ import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { unitTransaction, type DbTransaction } from "../db";
 import { user, emailOutbox } from "../auth-schema";
-import { records } from "../schema";
-import { audit, createRecord, technical, updateRecord } from "../repository";
+import { records, soldiers, soldierContacts } from "../schema";
+import {
+  audit,
+  createRecord,
+  manager,
+  technical,
+  updateRecord,
+} from "../repository";
 import { AppError, invariant } from "../errors";
-import { text } from "../validation";
+import { id, text } from "../validation";
+import type { CalendarCleanup } from "../calendar/link";
 import { enqueueEmail } from "../operations/email";
 import {
   digestCode,
@@ -37,7 +44,15 @@ import {
  */
 const KIND = "technical_email_change";
 
-type Mode = "web" | "server";
+type Mode = "web" | "server" | "manager-self" | "manager-recovery";
+const requiresCurrentCode = (mode: Mode) =>
+  mode === "web" || mode === "manager-self";
+const actionOf = (mode: Mode) =>
+  mode === "manager-self"
+    ? "manager.email"
+    : mode === "manager-recovery"
+      ? "technical.manager-email"
+      : "technical.email";
 const messages = {
   web: {
     notFound: "חשבון לא נמצא",
@@ -58,7 +73,9 @@ const messages = {
     invalid: "The code is not valid",
     blocked: "Cancelled after five wrong codes. Start again",
   },
-} satisfies Record<Mode, Record<string, string>>;
+} satisfies Record<"web" | "server", Record<string, string>>;
+const messagesOf = (mode: Mode) =>
+  mode === "server" ? messages.server : messages.web;
 
 /** What the server route reports in the audit log in place of an account. */
 const serverOperator = {
@@ -80,7 +97,7 @@ const accountRequests = (tx: DbTransaction, accountId: string) =>
     .from(records)
     .where(
       and(
-        eq(records.kind, KIND),
+        inArray(records.kind, [KIND, "manager_email_change"]),
         sql`${records.data}->>'accountId' = ${accountId}`
       )
     );
@@ -120,7 +137,7 @@ async function openRequest(
   target: Target,
   input: Pending
 ) {
-  const say = messages[input.mode];
+  const say = messagesOf(input.mode);
   const email = normalizeEmail(input.email);
   invariant(email !== target.email, "unchanged_email", say.unchanged);
   invariant(
@@ -149,9 +166,9 @@ async function openRequest(
     });
   await cancelCodeMail(tx, target.id);
   const nextCode = newCode();
-  const currentCode = input.mode === "web" ? newCode() : undefined;
+  const currentCode = requiresCurrentCode(input.mode) ? newCode() : undefined;
   const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
-  const record = await createRecord(tx, "technical_email_change", {
+  const data = {
     accountId: target.id,
     securityEpoch: target.securityEpoch,
     mode: input.mode,
@@ -164,7 +181,11 @@ async function openRequest(
     status: "pending",
     expiresAt: expiresAt.toISOString(),
     reason: input.reason,
-  });
+  };
+  const record =
+    target.role === "technical"
+      ? await createRecord(tx, "technical_email_change", data)
+      : await createRecord(tx, "manager_email_change", data, target.soldierId!);
   const mail = (side: "new" | "current", code: string, to: string) =>
     enqueueEmail(tx, {
       recipientAccountId: target.id,
@@ -172,12 +193,12 @@ async function openRequest(
       kind: "email-change",
       title:
         side === "new"
-          ? "החלפת כתובת המנהל הטכני: קוד לכתובת החדשה"
-          : "החלפת כתובת המנהל הטכני: קוד לכתובת הנוכחית",
+          ? "החלפת כתובת החשבון: קוד לכתובת החדשה"
+          : "החלפת כתובת החשבון: קוד לכתובת הנוכחית",
       body:
         side === "new"
-          ? "קוד אימות לכתובת החדשה של החשבון הטכני: {{CODE}}. הקוד תקף לעשר דקות."
-          : "קוד אימות להחלפת הכתובת של החשבון הטכני: {{CODE}}. הקוד תקף לעשר דקות. אם לא ביקשת להחליף כתובת, אין למסור אותו.",
+          ? "קוד אימות לכתובת החדשה של החשבון: {{CODE}}. הקוד תקף לעשר דקות."
+          : "קוד אימות להחלפת הכתובת של החשבון: {{CODE}}. הקוד תקף לעשר דקות. אם לא ביקשת להחליף כתובת, אין למסור אותו.",
       secret: code,
       destination: to,
       priority: 0,
@@ -186,10 +207,7 @@ async function openRequest(
   await mail("new", nextCode, email);
   if (currentCode) await mail("current", currentCode, target.email);
   // The technical account's own reason, no soldier's text, so it can sit in the envelope.
-  await audit(tx, actor, "technical.email.request", target.id, {
-    reason: input.reason,
-    ...(input.mode === "server" && { via: "server" }),
-  });
+  await emailAudit(tx, actor, target, input.mode, "request", input.reason);
   return { expiresAt: expiresAt.toISOString() };
 }
 
@@ -197,6 +215,27 @@ type Failure = {
   committedError: { code: string; message: string; status: number };
 };
 type Codes = { current?: string; next: string };
+
+async function emailAudit(
+  tx: DbTransaction,
+  actor: Actor,
+  target: Target,
+  mode: Mode,
+  stage: "request" | "confirm",
+  reason: string
+) {
+  await audit(
+    tx,
+    actor,
+    `${actionOf(mode)}.${stage}`,
+    target.id,
+    target.soldierId
+      ? {}
+      : { reason, ...(mode === "server" && { via: "server" }) },
+    target.soldierId ?? undefined,
+    target.soldierId ? { reason } : undefined
+  );
+}
 
 /**
  * Checks the codes and, when they are right, moves the account. A wrong
@@ -209,9 +248,10 @@ async function settleRequest(
   actor: Actor,
   target: Target,
   mode: Mode,
-  codes: Codes
+  codes: Codes,
+  calendarCleanups?: CalendarCleanup[]
 ): Promise<Failure | { recoveryCodes?: string[] }> {
-  const say = messages[mode];
+  const say = messagesOf(mode);
   const record = (await accountRequests(tx, target.id)).find(
     (row) => row.data.status === "pending" && row.data.mode === mode
   );
@@ -233,7 +273,7 @@ async function settleRequest(
       newDigest(target.id, codes.next),
       String(record.data.digest)
     ) &&
-    (mode === "server" ||
+    (!requiresCurrentCode(mode) ||
       matchesDigest(
         currentDigest(target.id, codes.current ?? ""),
         String(record.data.currentDigest)
@@ -270,17 +310,41 @@ async function settleRequest(
       committedError: { code: "email_exists", message: say.taken, status: 409 },
     };
   }
-  await applyVerifiedEmailChange(tx, target.id, email);
+  await applyVerifiedEmailChange(tx, target.id, email, calendarCleanups);
+  if (target.soldierId) {
+    const [contact] = await tx
+      .select()
+      .from(soldierContacts)
+      .where(eq(soldierContacts.soldierId, target.soldierId));
+    invariant(contact, "missing_contact", "פרטי הקשר חסרים; נדרש תיקון רשומה");
+    await tx
+      .update(soldierContacts)
+      .set({
+        fieldVersions: {
+          ...contact.fieldVersions,
+          email: (contact.fieldVersions.email ?? 0) + 1,
+        },
+      })
+      .where(eq(soldierContacts.soldierId, target.soldierId));
+    await tx
+      .update(soldiers)
+      .set({ version: sql`${soldiers.version} + 1`, updatedAt: new Date() })
+      .where(eq(soldiers.id, target.soldierId));
+  }
   await updateRecord(tx, record, {
     ...base,
     attempts: record.data.attempts,
     status: "completed",
   });
   await cancelCodeMail(tx, target.id);
-  await audit(tx, actor, "technical.email.confirm", target.id, {
-    reason: String(record.data.reason),
-    ...(mode === "server" && { via: "server" }),
-  });
+  await emailAudit(
+    tx,
+    actor,
+    target,
+    mode,
+    "confirm",
+    String(record.data.reason)
+  );
   // Taking the account over from the server also takes the recovery codes the
   // previous holder kept. On the site the same person holds both mailboxes.
   return mode === "server"
@@ -314,16 +378,98 @@ export async function requestTechnicalEmailChange(
 export async function confirmTechnicalEmailChange(
   tx: DbTransaction,
   actor: Actor,
-  payload: unknown
+  payload: unknown,
+  calendarCleanups?: CalendarCleanup[]
 ) {
   technical(actor);
   const input = siteConfirmation.parse(payload);
   const target = await lockTechnical(tx, eq(user.id, actor.id));
   invariant(target, "not_found", messages.web.notFound, 404);
-  const outcome = await settleRequest(tx, actor, target, "web", {
-    current: input.currentCode,
-    next: input.newCode,
-  });
+  const outcome = await settleRequest(
+    tx,
+    actor,
+    target,
+    "web",
+    {
+      current: input.currentCode,
+      next: input.newCode,
+    },
+    calendarCleanups
+  );
+  return "committedError" in outcome ? outcome : { success: true };
+}
+
+async function lockManager(tx: DbTransaction, accountId: string) {
+  const [target] = await tx
+    .select()
+    .from(user)
+    .where(eq(user.id, accountId))
+    .for("update");
+  invariant(
+    target &&
+      !target.deletedAt &&
+      target.role === "manager" &&
+      target.soldierId,
+    "forbidden",
+    "הפעולה זמינה לחשבון אחראי בלבד",
+    403
+  );
+  return target;
+}
+
+export async function requestManagerEmailChange(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  recovery = false
+) {
+  if (recovery) technical(actor);
+  else manager(actor);
+  const input = (
+    recovery ? siteRequest.extend({ accountId: id }) : siteRequest
+  ).parse(payload);
+  const target = await lockManager(
+    tx,
+    "accountId" in input ? String(input.accountId) : actor.id
+  );
+  return {
+    success: true,
+    ...(await openRequest(tx, actor, target, {
+      ...input,
+      mode: recovery ? "manager-recovery" : "manager-self",
+    })),
+  };
+}
+
+export async function confirmManagerEmailChange(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  recovery = false,
+  calendarCleanups?: CalendarCleanup[]
+) {
+  if (recovery) technical(actor);
+  else manager(actor);
+  const input = (
+    recovery
+      ? z.object({ accountId: id, newCode: siteConfirmation.shape.newCode })
+      : siteConfirmation
+  ).parse(payload);
+  const target = await lockManager(
+    tx,
+    "accountId" in input ? input.accountId : actor.id
+  );
+  const outcome = await settleRequest(
+    tx,
+    actor,
+    target,
+    recovery ? "manager-recovery" : "manager-self",
+    {
+      next: input.newCode,
+      current: "currentCode" in input ? input.currentCode : undefined,
+    },
+    calendarCleanups
+  );
   return "committedError" in outcome ? outcome : { success: true };
 }
 

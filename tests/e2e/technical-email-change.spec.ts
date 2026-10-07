@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../src/server/db";
 import { user, emailOutbox, loginCode } from "../../src/server/auth-schema";
-import { soldiers, soldierContacts, balances } from "../../src/server/schema";
+import {
+  soldiers,
+  soldierContacts,
+  balances,
+  records,
+} from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
@@ -177,13 +182,13 @@ test("the technical account moves itself to a new address with a code from each 
   ).toHaveCount(0);
 });
 
-test("a manager has no such screen and the server refuses the route", async ({
+test("a manager uses its own screen and the server refuses the technical route", async ({
   page,
 }) => {
   await login(page, emails.manager, "לוח התורנויות");
   await expect(
     page.getByRole("link", { name: "החשבון שלי", exact: true })
-  ).toHaveCount(0);
+  ).toBeVisible();
   await page.goto("/technical/account");
   await expect(page.getByText("המסך הזה אינו זמין לחשבון שלך")).toBeVisible();
   for (const [type, payload] of [
@@ -198,4 +203,80 @@ test("a manager has no such screen and the server refuses the route", async ({
     });
     expect(response.status()).toBe(403);
   }
+});
+
+test("a manager changes its own email using two codes on desktop and mobile", async ({
+  page,
+}) => {
+  const next = "manager-self-next@example.invalid";
+  await login(page, emails.manager, "לוח התורנויות");
+  await page.getByRole("link", { name: "החשבון שלי", exact: true }).click();
+  await expect(page).toHaveURL(/\/manage\/account$/);
+  const change = panel(page, "החלפת כתובת מייל");
+  await expect(
+    panel(page, "החשבון שלי").getByText(emails.manager)
+  ).toBeVisible();
+  await change.getByRole("button", { name: "בקשת החלפת כתובת" }).click();
+  const request = page.getByRole("dialog");
+  await request.getByLabel("הכתובת החדשה").fill(next);
+  await request.getByLabel("סיבת ההחלפה").fill("החלפת תיבה אישית");
+  await request.getByRole("button", { name: "שליחת הקודים" }).click();
+  await expect(change.getByText(next)).toBeVisible();
+  const sent = await codes();
+  expect(Object.keys(sent).sort()).toEqual([emails.manager, next].sort());
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await noOverflow(page)).toBeLessThanOrEqual(0);
+  await change.getByRole("button", { name: "אימות והחלפת הכתובת" }).click();
+  const confirm = page.getByRole("dialog");
+  expect(await noOverflow(page)).toBeLessThanOrEqual(0);
+  await confirm
+    .getByLabel("הקוד שנשלח לכתובת הנוכחית")
+    .fill(sent[emails.manager]);
+  await confirm.getByLabel("הקוד שנשלח לכתובת החדשה").fill(sent[next]);
+  await page.screenshot({ path: "test-results/manager-email-mobile.png" });
+  await confirm.getByRole("button", { name: "אימות והחלפה" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await login(page, next, "לוח התורנויות");
+  await page.getByRole("link", { name: "החשבון שלי", exact: true }).click();
+  await expect(panel(page, "החשבון שלי").getByText(next)).toBeVisible();
+});
+
+test("the technical account recovers a manager email using a reason and the new code", async ({
+  page,
+}) => {
+  const next = "manager-recovered@example.invalid";
+  await db
+    .update(records)
+    .set({ createdAt: new Date(Date.now() - 120_000) })
+    .where(eq(records.kind, "manager_email_change"));
+  await login(page, emails.next, "תמונת מצב");
+  await page
+    .getByRole("link", { name: "חשבונות והרשאות", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "חילוץ כתובת מייל", exact: true })
+    .click();
+  const request = page.getByRole("dialog");
+  await request.getByLabel("הכתובת החדשה").fill(next);
+  await request.getByLabel("סיבת החילוץ").fill("התיבה הקודמת אינה זמינה");
+  await request.getByRole("button", { name: "שליחת קוד אימות" }).click();
+  await expect(request).not.toBeVisible();
+  const sent = await codes();
+  expect(Object.keys(sent)).toEqual([next]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole("button", { name: "אימות חילוץ מייל", exact: true })
+    .click();
+  const confirm = page.getByRole("dialog");
+  expect(await noOverflow(page)).toBeLessThanOrEqual(0);
+  await confirm.getByLabel("הקוד שנשלח לכתובת החדשה").fill(sent[next]);
+  await page.screenshot({ path: "test-results/manager-recovery-mobile.png" });
+  await confirm.getByRole("button", { name: "אימות והחלפה" }).click();
+  await expect(confirm).not.toBeVisible();
+  expect((await accountOf(next)).emailVerified).toBe(true);
+  await page.goto("/technical/audit");
+  await expect(
+    page.getByText("חילוץ כתובת אחראי", { exact: true })
+  ).toBeVisible();
 });

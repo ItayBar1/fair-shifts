@@ -60,6 +60,7 @@ const commonLinks = [
   { path: "/notifications", title: "הודעות", icon: Bell },
 ];
 const managementLinks = [
+  { path: "/manage/account", title: "החשבון שלי", icon: UserRound },
   { path: "/manage", title: "מרכז טיפול", icon: ListChecks },
   { path: "/manage/soldiers", title: "חיילי היחידה", icon: UsersRound },
   { path: "/manage/eligibility", title: "פטורים וכשירויות", icon: ShieldCheck },
@@ -335,7 +336,10 @@ export function Workspace({
       return <AuditView state={state} refId={effectivePath.split("/")[3]} />;
     if (effectivePath === "/technical/audit")
       return <AuditView state={state} title="יומן תפעול והרשאות" />;
-    if (effectivePath === "/technical/account")
+    if (
+      effectivePath === "/technical/account" ||
+      effectivePath === "/manage/account"
+    )
       return <TechnicalAccount state={state} action={action} />;
     if (effectivePath.startsWith("/technical"))
       return (

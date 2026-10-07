@@ -664,13 +664,49 @@ function AccountsPanel({
             </QuickAction>
           )}
           {row.role === "manager" && (
-            <ResponsibilitySelect
-              id={row.id}
-              label={`תחום אחריות · ${str(row.name)}`}
-              value={row.responsibility}
-              version={row.responsibilityVersion}
-              action={action}
-            />
+            <>
+              <ActionDialog
+                title={`חילוץ כתובת מייל · ${str(row.name)}`}
+                buttonLabel="חילוץ כתובת מייל"
+                type="technical.manager-email.request"
+                action={action}
+                payload={{ accountId: row.id }}
+                fields={[
+                  {
+                    name: "email",
+                    label: "הכתובת החדשה",
+                    type: "email",
+                    required: true,
+                  },
+                  { name: "reason", label: "סיבת החילוץ", required: true },
+                ]}
+                submitLabel="שליחת קוד אימות"
+                description="לשימוש כשהכתובת הנוכחית אינה זמינה. הפעולה מתועדת ומחייבת אימות הכתובת החדשה."
+              />
+              <ActionDialog
+                title={`אימות חילוץ מייל · ${str(row.name)}`}
+                buttonLabel="אימות חילוץ מייל"
+                type="technical.manager-email.confirm"
+                action={action}
+                payload={{ accountId: row.id }}
+                fields={[
+                  {
+                    name: "newCode",
+                    label: "הקוד שנשלח לכתובת החדשה",
+                    required: true,
+                  },
+                ]}
+                submitLabel="אימות והחלפה"
+                description="השלמת החילוץ מבטלת את חיבורי האחראי וקישור Google הישן."
+              />
+              <ResponsibilitySelect
+                id={row.id}
+                label={`תחום אחריות · ${str(row.name)}`}
+                value={row.responsibility}
+                version={row.responsibilityVersion}
+                action={action}
+              />
+            </>
           )}
           {row.lockedAt ? <Badge tone="danger">נעול</Badge> : null}
           {row.lockedAt && row.role === "manager" ? (
