@@ -1735,6 +1735,20 @@ export const scenarios: Record<number, Entry> = {
       "shows each kind of activity as a conflict, including an edit that was reverted, and closes the batch only when every row is handled"
     ),
     ...t(
+      "tests/unit/bounded-body.test.ts",
+      "counts streamed action bodies despite a missing or false length"
+    ),
+    ...t(
+      "tests/unit/workbook-archive.test.ts",
+      "counts actual bytes even when the directory advertises one byte"
+    ),
+    ...t(
+      "tests/unit/workbook-process.test.ts",
+      "contains a parser process crash",
+      "kills a parser that exceeds the actual resident-memory limit",
+      "kills a stalled parser at the deadline"
+    ),
+    ...t(
       I.securityErasure,
       "completes the subject links of an import preview after the new soldier is created, then erases its replay content"
     ),
@@ -2086,6 +2100,9 @@ export const scenarios: Record<number, Entry> = {
     ...t(
       I.mine,
       "records batch publication and highlights every duty in the recipient's mail",
+      "reads without waiting for a unit-wide writer",
+      "serializes two tabs on their account",
+      "does not hold another account behind a locked account",
       "records publication, advances the cursor once, and keeps later events for another window",
       "records changed duty details and removal, then clears the cancelled section on revisit",
       "highlights mail items only for their recipient and blocks technical and manager without history"

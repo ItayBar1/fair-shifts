@@ -665,6 +665,9 @@
 ### 47. דחיית קובץ, דריסה ושחזור — ייבוא — מכוסה
 
 - [auth.test.ts](../tests/integration/auth.test.ts): `rejects all rows on duplicate, conflicting identities, incomplete ranks or deleted people`; `restores unchanged imported fields while preserving later edits and reservations`; `cancels a new soldier without activity: removes every trace, frees the number and keeps the row`; `shows each kind of activity as a conflict, including an edit that was reverted, and closes the batch only when every row is handled`
+- [bounded-body.test.ts](../tests/unit/bounded-body.test.ts): `counts streamed action bodies despite a missing or false length`
+- [workbook-archive.test.ts](../tests/unit/workbook-archive.test.ts): `counts actual bytes even when the directory advertises one byte`
+- [workbook-process.test.ts](../tests/unit/workbook-process.test.ts): `contains a parser process crash`; `kills a parser that exceeds the actual resident-memory limit`; `kills a stalled parser at the deadline`
 - [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `completes the subject links of an import preview after the new soldier is created, then erases its replay content`
 - [import-restore-creations.spec.ts](../tests/e2e/import-restore-creations.spec.ts): `cancels a new soldier without activity and waits for a decision on one who signed in`
 
@@ -766,7 +769,7 @@
 - [assignment-digest.test.ts](../tests/integration/assignment-digest.test.ts): `gathers publications of a window into one notice and one mail, sent when the window closes`; `does not extend the window: an event after ten minutes opens a new window and a second mail`; `sends a duty starting within two hours at once and apart, and keeps the rest in the window`; `leaves out a duty published and cancelled in the same window, and sends nothing when none is left`; `shows a read or hidden notice again, unread, when an event joins its window`; `does not mail a switched-off type, and still writes the notice`; `does not send a window twice when two workers claim at once`
 - [assignment-digest.test.ts](../tests/unit/assignment-digest.test.ts): `sends a duty starting within two hours at once, the boundary included`; `follows the clock change: a night that loses an hour still reads 22:00 to 06:00`
 - [assignment-digest.spec.ts](../tests/e2e/assignment-digest.spec.ts): `several publications reach the soldier as one notice that counts them and leads to all assignments`
-- [my-assignments.test.ts](../tests/integration/my-assignments.test.ts): `records batch publication and highlights every duty in the recipient's mail`; `records publication, advances the cursor once, and keeps later events for another window`; `records changed duty details and removal, then clears the cancelled section on revisit`; `highlights mail items only for their recipient and blocks technical and manager without history`
+- [my-assignments.test.ts](../tests/integration/my-assignments.test.ts): `records batch publication and highlights every duty in the recipient's mail`; `reads without waiting for a unit-wide writer`; `serializes two tabs on their account`; `does not hold another account behind a locked account`; `records publication, advances the cursor once, and keeps later events for another window`; `records changed duty details and removal, then clears the cancelled section on revisit`; `highlights mail items only for their recipient and blocks technical and manager without history`
 - [my-assignments.test.ts](../tests/unit/my-assignments.test.ts): `uses Israel dates across midnight and distinguishes the repeated autumn hour`
 - [my-assignments.spec.ts](../tests/e2e/my-assignments.spec.ts): `personal assignments on desktop and mobile, private mail highlight and visit markers`
 

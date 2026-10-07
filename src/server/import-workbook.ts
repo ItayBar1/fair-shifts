@@ -2,6 +2,8 @@ import ExcelJS from "exceljs";
 import { z } from "zod";
 import { AppError, invariant } from "./errors";
 import { date, population } from "./validation";
+import { validateWorkbookArchive } from "./workbook-archive";
+import { parseWorkbookInProcess } from "./workbook-process";
 
 export const importValues = z
   .object({
@@ -132,62 +134,6 @@ export async function createImportTemplate(
   return Buffer.from(new Uint8Array(await workbook.xlsx.writeBuffer()));
 }
 
-// Bound the ZIP directory before ExcelJS allocates the workbook contents.
-function validateArchive(buffer: Buffer) {
-  invariant(
-    buffer.length > 22 && buffer.length <= 5 * 1024 * 1024,
-    "invalid_workbook",
-    "נדרש קובץ XLSX עד 5MB"
-  );
-  let end = -1;
-  for (
-    let offset = buffer.length - 22;
-    offset >= Math.max(0, buffer.length - 65557);
-    offset--
-  )
-    if (
-      buffer.readUInt32LE(offset) === 0x06054b50 &&
-      offset + 22 + buffer.readUInt16LE(offset + 20) === buffer.length
-    ) {
-      end = offset;
-      break;
-    }
-  invariant(end >= 0, "invalid_workbook", "הקובץ אינו XLSX תקין");
-  const count = buffer.readUInt16LE(end + 10);
-  let offset = buffer.readUInt32LE(end + 16);
-  const directorySize = buffer.readUInt32LE(end + 12);
-  invariant(
-    count > 0 &&
-      count <= 2000 &&
-      offset + directorySize === end &&
-      buffer.readUInt16LE(end + 4) === 0 &&
-      buffer.readUInt16LE(end + 6) === 0,
-    "invalid_workbook",
-    "מבנה או גודל הקובץ אינם נתמכים"
-  );
-  let total = 0;
-  const directoryEnd = offset + directorySize;
-  for (let index = 0; index < count; index++) {
-    invariant(
-      offset + 46 <= directoryEnd && buffer.readUInt32LE(offset) === 0x02014b50,
-      "invalid_workbook",
-      "מבנה הקובץ פגום"
-    );
-    total += buffer.readUInt32LE(offset + 24);
-    invariant(
-      total <= 50 * 1024 * 1024,
-      "invalid_workbook",
-      "הקובץ גדול מדי לאחר פתיחה; יש לפצל את הנתונים"
-    );
-    offset +=
-      46 +
-      buffer.readUInt16LE(offset + 28) +
-      buffer.readUInt16LE(offset + 30) +
-      buffer.readUInt16LE(offset + 32);
-  }
-  invariant(offset === directoryEnd, "invalid_workbook", "מבנה הקובץ פגום");
-}
-
 const populationNames: Record<string, string> = {
   חובה: "mandatory",
   קבע: "career",
@@ -237,10 +183,10 @@ function readValue(cell: ExcelJS.Cell, column: Column): unknown {
   return text;
 }
 
-export async function parseImportWorkbook(
+export async function decodeImportWorkbook(
   buffer: Buffer
 ): Promise<ImportRow[]> {
-  validateArchive(buffer);
+  await validateWorkbookArchive(buffer);
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(new Uint8Array(buffer).buffer);
@@ -351,4 +297,10 @@ export async function parseImportWorkbook(
   );
   invariant(parsed.length > 0, "empty_workbook", "אין שורות נתונים לייבוא");
   return parsed;
+}
+
+export async function parseImportWorkbook(
+  buffer: Buffer
+): Promise<ImportRow[]> {
+  return parseWorkbookInProcess(buffer);
 }
