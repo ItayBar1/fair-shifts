@@ -95,6 +95,9 @@ services:
       BETTER_AUTH_URL: http://127.0.0.1:3000
       CI: "true"
       GOOGLE_CALENDAR_SYNC: "true"
+      # Synthetic Google client: the server builds the sign-in link only; Google is never called (#118).
+      GOOGLE_CLIENT_ID: synthetic-e2e-client.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: synthetic-e2e-client-secret
       # Synthetic public key only; no worker runs here, the screen reads the setup.
       BACKUP_STORAGE: directory
       BACKUP_DIRECTORY: /tmp/fair-shifts-e2e-backups

@@ -39,6 +39,7 @@
 ### 5. כחייל, אני רוצה להתחבר באמצעות Google או קוד למייל המאושר כדי לגשת לחשבון שלי. — מכוסה
 
 - [google-sign-in.test.ts](../tests/integration/google-sign-in.test.ts): `lets an invited person start with Google and then use either Google or an email code`
+- [google-sign-in.spec.ts](../tests/e2e/google-sign-in.spec.ts): `the Google button gets a Google link from the server, with the server's own permissions`
 - [auth.test.ts](../tests/integration/auth.test.ts): `consumes a code only once`; `expires a code at ten minutes`
 - [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `a refused Google sign-in returns to the login page with guidance, also on a phone`
 - ספקים, שרת ופיילוט:
