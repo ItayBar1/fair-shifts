@@ -7,6 +7,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { DateTime } from "luxon";
 import { Client } from "pg";
 import { connectDatabase, type Database, type DbTransaction } from "../db";
+import { staffNotificationRecipients } from "../notification-audience";
 import {
   backupRun,
   emailOutbox,
@@ -721,12 +722,11 @@ export async function announceRestore(
   now: Date
 ) {
   const text = restoreNoticeText(input);
-  const staff = await tx
-    .select({ id: user.id, role: user.role })
-    .from(user)
-    .where(
-      and(inArray(user.role, ["manager", "technical"]), isNull(user.deletedAt))
-    );
+  const staff = await staffNotificationRecipients(
+    tx,
+    ["manager", "technical"],
+    now
+  );
   for (const account of staff) {
     const href = account.role === "technical" ? "/technical" : "/manage";
     await createRecord(tx, "notification", {

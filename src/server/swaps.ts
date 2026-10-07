@@ -46,6 +46,7 @@ import {
   nameOf,
   notifyManagers,
   notifySoldier,
+  reserveOfferRecipients,
   OPEN_CONSENT,
   openSeatRequests,
   seatCommitted,
@@ -73,6 +74,7 @@ type SideReason = EligibilityReason & { soldierId?: string };
 export type SwapData = {
   type: "swap";
   status: ConsentStatus;
+  mailLimited?: boolean;
   assignmentId: string;
   dutyId: string;
   slotId: string;
@@ -267,9 +269,15 @@ export async function offerSwap(
     });
   }
   const now = new Date().toISOString();
+  const { mailRecipients, mailLimited } = await reserveOfferRecipients(
+    tx,
+    actor.id,
+    entries.map((entry) => entry.soldierId)
+  );
   const data: SwapData = {
     type: "swap",
     status: "awaiting_consent",
+    mailLimited,
     assignmentId: seat.id,
     dutyId: duty.id,
     slotId: seat.slotId,
@@ -298,7 +306,7 @@ export async function offerSwap(
           ? " אחת התורנויות כבר התחילה, ולכן אחרי ההסכמה אחראי יקבע את מועד החילוף."
           : ""
       }`,
-      email: true,
+      email: mailRecipients.has(soldierId),
       // Relevant until the first seat involved can no longer change hands.
       expiresAt: Math.min(
         instant(executionPeriod(seat, duty).end).toMillis(),
@@ -1726,6 +1734,7 @@ export function projectSwaps(
           {
             ...shared,
             status: data.status,
+            mailLimited: data.mailLimited,
             closedReason: data.closedReason,
             acceptedBy: data.acceptedBy,
             acceptedAssignmentId: data.acceptedAssignmentId,

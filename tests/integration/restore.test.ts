@@ -26,7 +26,6 @@ import { Client } from "pg";
 import { db, pool, unitTransaction } from "../../src/server/db";
 import {
   backupRun,
-  account,
   emailOutbox,
   loginCode,
   operationsState,
@@ -565,6 +564,9 @@ describe("a restore drill", () => {
     const client = await pool.connect();
     try {
       await client.query("begin");
+      await client.query(
+        "alter table email_outbox drop column request_id, drop column request_scope, drop column request_event"
+      );
       await client.query("drop trigger google_account_proof on auth_account");
       await client.query("drop trigger session_proof on auth_session");
       await client.query("drop function fs_google_account_guard()");

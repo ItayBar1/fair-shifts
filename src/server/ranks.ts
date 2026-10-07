@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "./db";
+import { staffNotificationRecipients } from "./notification-audience";
 import { records, soldiers } from "./schema";
-import { user } from "./auth-schema";
 import {
   audit,
   createRecord,
@@ -266,10 +266,7 @@ export async function refreshRankReminders(
       : await createRecord(tx, "rank_reminder", data, person.id);
     desiredIds.add(reminder.id);
     if (status === "pending" && previous?.data.notified !== true) {
-      const managers = await tx
-        .select()
-        .from(user)
-        .where(eq(user.role, "manager"));
+      const managers = await staffNotificationRecipients(tx, ["manager"], now);
       for (const recipient of managers.filter((row) => !row.deletedAt))
         await createRecord(tx, "notification", {
           accountId: recipient.id,

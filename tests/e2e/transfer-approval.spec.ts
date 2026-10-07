@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db } from "../../src/server/db";
-import { user, emailOutbox } from "../../src/server/auth-schema";
+import { user, emailOutbox, authBudget } from "../../src/server/auth-schema";
+import { quotaDay } from "../../src/server/operations/mail-quota-day";
 import { soldiers, balances, duties, records } from "../../src/server/schema";
 import {
   createInvitedAccount,
@@ -173,6 +174,12 @@ test("a manager approves an exemption transfer per exception, rejects another wi
     ).toMatchObject({ status: "awaiting_manager" });
     return offer.id;
   }
+  await db.insert(authBudget).values({
+    day: quotaDay(new Date()),
+    category: "seat-offer:issue",
+    scope: `account:${owner.id}`,
+    used: 30,
+  });
   await awaiting("העברה לאישור", 5);
   await awaiting("העברה לדחייה", 7);
   const retracted = await awaiting("העברה לביטול", 9);
@@ -238,6 +245,9 @@ test("a manager approves an exemption transfer per exception, rejects another wi
     .locator(".task-item")
     .filter({ hasText: "העברה לאישור" });
   await expect(approved).toContainText("הושלמה");
+  await expect(approved).toContainText(
+    "ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה היומית."
+  );
   await expect(approved).not.toContainText("אישור סינתטי");
   const pending = ownerPage
     .locator(".task-item")

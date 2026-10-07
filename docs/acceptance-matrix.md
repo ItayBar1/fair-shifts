@@ -526,12 +526,14 @@
 ### 25. החלפה בהסכמה לפני התחלה — החלפות ובקשות שינוי — מכוסה
 
 - [auth.test.ts](../tests/integration/auth.test.ts): `keeps the original until consent, moves the full value without a score check and completes once when candidates race`
+- [security-mail.test.ts](../tests/integration/security-mail.test.ts): `cancels old offers when completed but retains valid completion messages for both parties`
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `swaps both seats together with their full value, without a score check, and completes once when two acceptances race`
 - [first-duty.spec.ts](../tests/e2e/first-duty.spec.ts): `a soldier offers a published duty to several replacements and the first consent transfers it`
 
 ### 26. החלפה אטומית ובדיקה חוזרת — החלפות ובקשות שינוי — מכוסה
 
 - [auth.test.ts](../tests/integration/auth.test.ts): `rejects an unsuitable candidate without revealing why and rechecks at acceptance`
+- [security-mail.test.ts](../tests/integration/security-mail.test.ts): `retains a swap offer while another seat for that recipient is pending, then cancels it`
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `rechecks both sides at acceptance and keeps both seats when one side no longer fits, without revealing the offerer's reason`; `closes the entries of seats that moved or of a duty that changed, and competing moves of a seat end in one outcome`
 
 ### 27. החלפה במהלך ביצוע — החלפות; ניקוד — מכוסה
@@ -673,6 +675,7 @@
 
 ### 49. מכסת מייל, העדפות והתאוששות — הודעות — מכוסה
 
+- [security-mail.test.ts](../tests/integration/security-mail.test.ts): `saves proposals and site notices beyond 30 recipients, never refunds withdrawal, and shares the budget with swaps`; `reserves the final recipient only once while both competing proposals remain saved`; `keeps old manager notices but creates none after demotion or release`; `rechecks a historical pending offer even when it was closed without the command helper`
 - [otp-protection.test.ts](../tests/integration/otp-protection.test.ts): `limits the whole unit to 200 issued login codes`; `resets failures on success while retaining the ten-code issuance budget`; `allocates a pair atomically at both account and unit boundaries`; `uses the configured quota-day boundary`; `lets only one competing pair take the final two unit slots`; `charges actual retry attempts atomically`; `retains issuance budgets when a new service connection replaces the old one`
 - [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `sends 290 of three waves of 120, keeps the rest for the next day and never counts 360`; `holds business mail at 290 and still sends a sign-in code from the reserve`; `never sends an expired code, and reports one that expired waiting for quota`; `retries with growing delays, then fails visibly while the site notice stays`; `stops retrying when the message is no longer relevant`
 - [notifications.test.ts](../tests/integration/notifications.test.ts): `applies changed unit defaults to inheriting accounts without overriding a saved personal form`

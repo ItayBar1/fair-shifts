@@ -197,6 +197,10 @@ export const emailOutbox = pgTable(
       .references(() => user.id),
     eventKey: text("event_key").notNull().unique(),
     kind: text("kind").notNull(),
+    // Explicit workflow identity; counterpart erasure must not depend on recipient alone.
+    requestId: uuid("request_id"),
+    requestScope: text("request_scope"),
+    requestEvent: text("request_event"),
     // Hours before the duty for a duty reminder; checked against current preferences.
     reminderHours: integer("reminder_hours"),
     priority: integer("priority").notNull().default(2),
@@ -221,6 +225,7 @@ export const emailOutbox = pgTable(
   (t) => [
     index("email_ready").on(t.status, t.nextAttemptAt, t.priority),
     index("email_recipient").on(t.recipientAccountId),
+    index("email_request").on(t.requestId),
   ]
 );
 export const emailQuota = pgTable(

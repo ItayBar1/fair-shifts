@@ -82,6 +82,8 @@ export function TransferOffer({
         {open.status === "awaiting_manager"
           ? `${kind} ממתינה לטיפול אחראי. עד אז השיבוץ שלך בתוקף.`
           : `הצעת ${kind} שלך ממתינה להסכמה. עד להשלמתה השיבוץ שלך בתוקף.`}{" "}
+        {open.mailLimited === true &&
+          "ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה היומית. "}
         <Link className="text-link" href="/requests">
           למסך ההחלפות
         </Link>
@@ -509,6 +511,11 @@ export function TransferRequests({
               <div className="grow">
                 <strong>{str(row.dutyName)}</strong>
                 <DutyLine state={state} row={row} />
+                {row.mailLimited === true && (
+                  <small>
+                    ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה היומית.
+                  </small>
+                )}
                 <small>
                   {rows(row.candidates)
                     .map(
