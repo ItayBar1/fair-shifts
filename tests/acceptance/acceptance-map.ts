@@ -91,6 +91,7 @@ const I = {
   staging: "tests/integration/staging-soldiers.test.ts",
   swaps: "tests/integration/swaps.test.ts",
   techEmail: "tests/integration/technical-email.test.ts",
+  techIntake: "tests/integration/technical-user-create.test.ts",
 } as const;
 const E = {
   mine: "tests/e2e/my-assignments.spec.ts",
@@ -132,12 +133,6 @@ const covered = (evidence: Evidence[], external?: External[]): Entry => ({
   evidence,
   external,
 });
-const partial = (evidence: Evidence[], gap: string, ticket: number): Entry => ({
-  status: "partial",
-  evidence,
-  gap,
-  ticket,
-});
 const open = (
   gap: string,
   ticket: number,
@@ -175,6 +170,11 @@ const stagingTechnicalAddress: External = {
   what: "החלפת כתובת החשבון הטכני ב־staging לחשבון הייעודי, ומשלוח קוד אמיתי לשתי הכתובות",
   state: "pending",
   ref: "#90",
+};
+const stagingTechnicalIntake: External = {
+  what: "קליטת משתמש ומינוי אחראי חדש בממשק הטכני ב־staging סינתטי",
+  state: "pending",
+  ref: "#114",
 };
 const pilot: External = {
   what: "פיילוט עם שני האחראים ונתוני אמת",
@@ -912,8 +912,22 @@ export const stories: Record<number, Entry> = {
       "leaves a manual selection to an explicit exception instead of blocking"
     ),
   ]),
-  60: partial(
+  60: covered(
     [
+      ...t(
+        I.techIntake,
+        "creates an invited identity with zero balance without any manager",
+        "grants the existing manager role, revokes old access",
+        "refuses soldier and manager actors before validating payload",
+        "rejects duplicate identity and normalized email",
+        "replays one idempotent result",
+        "serializes competing creations",
+        "rolls back person, contact, balance and account"
+      ),
+      ...t(
+        "tests/e2e/technical-user-create.spec.ts",
+        "technical intake without managers, validation, keyboard and promotion"
+      ),
       ...t(
         I.access,
         "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
@@ -928,8 +942,7 @@ export const stories: Record<number, Entry> = {
         "the technical account grants and removes manager permission, ending the open connection each time"
       ),
     ],
-    "הוספת משתמש בודד בידי הטכני, גם בלי אחראי פעיל, טרם מומשה ונבדקה (הכרעה 206).",
-    114
+    [stagingTechnicalIntake]
   ),
   61: covered([
     ...t(
@@ -1614,8 +1627,23 @@ export const scenarios: Record<number, Entry> = {
       "goes to a manager, who sets the handover, and the original seat binds until then"
     ),
   ]),
-  45: partial(
+  45: covered(
     [
+      ...t(
+        I.techIntake,
+        "creates an invited identity with zero balance without any manager",
+        "grants the existing manager role, revokes old access",
+        "refuses soldier and manager actors before validating payload",
+        "rejects invalid or out-of-scope identity fields",
+        "rejects duplicate identity and normalized email",
+        "replays one idempotent result",
+        "serializes competing creations",
+        "rolls back person, contact, balance and account"
+      ),
+      ...t(
+        "tests/e2e/technical-user-create.spec.ts",
+        "technical intake without managers, validation, keyboard and promotion"
+      ),
       ...t(
         I.access,
         "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
@@ -1635,8 +1663,7 @@ export const scenarios: Record<number, Entry> = {
         "the technical account grants and removes manager permission, ending the open connection each time"
       ),
     ],
-    "הטופס הטכני ליצירת משתמש, בדיקות הרשאה/כפילויות ומסלול מינוי כשאין אחראי קודם פתוחים בכרטיס #114.",
-    114
+    [stagingTechnicalIntake]
   ),
   46: covered([
     ...t(

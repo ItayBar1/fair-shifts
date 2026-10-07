@@ -40,6 +40,12 @@ export const profileInput = z.object({
   graceEligible: z.boolean().default(false),
   rankTrack: z.string().max(100).optional(),
 });
+// The technical form creates an identity only; extra fields cannot grant roles,
+// edit a person, supply a balance or attach sensitive personnel information.
+export const technicalUserInput = profileInput
+  .pick({ name: true, personalNumber: true, email: true })
+  .extend({ email: z.email() })
+  .strict();
 export const scoreInput = z.object({
   soldierIds: z.array(id).min(1).max(500),
   operation: z.enum(["add", "subtract", "set", "percent"]),

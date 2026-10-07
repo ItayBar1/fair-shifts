@@ -13,7 +13,11 @@ import {
 import { changeRole, keepReturnedBalance } from "./manager-role";
 import { currentVersion, manager } from "./repository";
 import { invariant, AppError } from "./errors";
-import { previewSoldierUpdate, saveSoldier } from "./people";
+import {
+  createTechnicalUser,
+  previewSoldierUpdate,
+  saveSoldier,
+} from "./people";
 import { deleteSoldier, previewSoldierDeletion } from "./soldier-deletion";
 import {
   saveDutyType,
@@ -164,6 +168,9 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "import.apply":
         result = await applyImport(tx, actor, payload, expectedVersion);
+        break;
+      case "technical.user.create":
+        result = await createTechnicalUser(tx, actor, payload);
         break;
       case "soldier.create":
         manager(actor);

@@ -102,6 +102,7 @@ const access: Record<string, Access> = {
   ...Object.fromEntries(MANAGER.map((type) => [type, "manager" as Access])),
   // Only the technical account grants a role or asks for a backup (scenario 45).
   "account.role": "technical",
+  "technical.user.create": "technical",
   "backup.request": "technical",
   // The technical account moves its own address with a code from each mailbox (decision 204).
   "technical.email.request": "technical",

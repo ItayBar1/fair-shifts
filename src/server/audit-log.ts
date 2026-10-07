@@ -78,6 +78,7 @@ const labels: Record<string, string> = {
   "score.decision": "הכרעה בתיקון שממתין",
   "manager.return.keep": "השארת היתרה של אחראי שחזר",
   "soldier.create": "קליטת חייל",
+  "account.create": "הוספת משתמש בידי המנהל הטכני",
   "soldier.update": "עדכון פרטי חייל",
   "soldier.delete": "מחיקת משתמש",
   "soldier.timeline": "הוספת תקופה בפרופיל",
