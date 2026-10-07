@@ -1,0 +1,22 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90m/app[39m
+
+[90mstdout[2m | audit/state-projection.test.ts[2m > [22m[2msoldier projection of /api/v1/state[2m > [22m[2momits other soldiers' contacts, exemptions, constraints, requests and notices
+[22m[39mSOLDIER_VIEW_LEAKED []
+SOLDIER_VIEW_SOLDIER_KEYS [["currentScore","deletedAt","id","name","population","rankName","version"],["currentScore","deletedAt","id","name","population","rankName","version"]]
+SOLDIER_VIEW_NAMES_MAP {"33fbd0a3-eb14-490f-8785-788c64ea23cf":"NAME_mgr"}
+
+[90mstdout[2m | audit/state-projection.test.ts[2m > [22m[2msoldier projection of /api/v1/state[2m > [22m[2mtechnical view resolves no soldier data
+[22m[39mTECHNICAL_VIEW_LEAKED []
+
+[90mstdout[2m | audit/state-projection.test.ts[2m > [22m[2msoldier projection of /api/v1/state[2m > [22m[2ma demoted manager keeps manager-addressed notices (observation)
+[22m[39mDEMOTED_ROLE soldier NOTICES ["MANAGER_ONLY_NOTICE about NAME_other release date"]
+DEMOTED_VIEW_OTHER_PRIVATE []
+
+ [32m✓[39m audit/state-projection.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 236[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 07:56:44
+[2m   Duration [22m 969ms[2m (transform 44%, import 30%, tests 26%)[22m
+

@@ -1,0 +1,71 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, describe, expect, it } from "vitest";
+import { and, eq, sql } from "drizzle-orm";
+import { DateTime } from "luxon";
+import { db, pool, unitTransaction } from "../src/server/db";
+import { emailOutbox, user } from "../src/server/auth-schema";
+import { balances, soldierContacts, soldiers } from "../src/server/schema";
+import { accountAvailable, createInvitedAccount } from "../src/server/auth/accounts";
+import { deliverNextEmail } from "../src/server/operations/email";
+import { announceDepartures } from "../src/server/departures";
+import { soldier } from "../tests/fixtures";
+
+const day = (d: number) =>
+  DateTime.now().setZone("Asia/Jerusalem").plus({ days: d }).toISODate()!;
+
+async function invite(name: string, role: "soldier" | "manager", pn: string) {
+  const id = randomUUID();
+  await db.insert(soldiers).values({ id, name, personalNumber: pn, data: soldier({ id, name, personalNumber: pn }) });
+  const email = `${pn}@example.invalid`;
+  await db.insert(soldierContacts).values({ soldierId: id, email });
+  await db.insert(balances).values({ soldierId: id });
+  const row = await createInvitedAccount({ name, role, email, soldierId: id });
+  return { accountId: row.id, soldierId: id, email };
+}
+async function release(soldierId: string, releaseDate: string) {
+  const [row] = await db.select().from(soldiers).where(eq(soldiers.id, soldierId));
+  await db.update(soldiers).set({ data: { ...row.data, service: { ...row.data.service, releaseDate } } }).where(eq(soldiers.id, soldierId));
+}
+async function drain() {
+  const sent: { to: string; subject: string; text: string; eventKey: string }[] = [];
+  for (let i = 0; i < 20; i++) {
+    const r = await deliverNextEmail(async (m) => {
+      sent.push({ to: m.to, subject: m.subject, text: m.text, eventKey: m.eventKey });
+      return `v12-${i}`;
+    }, new Date(Date.now() + 1000));
+    if (r.status === "idle") break;
+  }
+  return sent;
+}
+
+afterAll(async () => pool.end());
+
+describe("v12 departed manager alert mail", () => {
+  it("delivers a later departure alert to a manager whose own service ended", async () => {
+    await db.execute(sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`);
+    const former = await invite("FORMER-MGR", "manager", "01201");
+    await invite("ACTIVE-MGR", "manager", "01202");
+    const subject = await invite("SUBJECT-SOLDIER", "soldier", "01203");
+
+    await release(former.soldierId, day(-10));
+    await unitTransaction((tx) => announceDepartures(tx, new Date()));
+    await drain();
+
+    const [formerRow] = await db.select().from(user).where(eq(user.id, former.accountId));
+    console.log("V12_FORMER", JSON.stringify({ role: formerRow.role, deletedAt: formerRow.deletedAt, available: await accountAvailable(formerRow) }));
+
+    await release(subject.soldierId, day(-1));
+    await unitTransaction((tx) => announceDepartures(tx, new Date()));
+    const queued = await db.select().from(emailOutbox).where(and(eq(emailOutbox.recipientAccountId, former.accountId), eq(emailOutbox.kind, "departure")));
+    console.log("V12_QUEUED_FOR_FORMER", JSON.stringify(queued.map((q) => ({ kind: q.kind, status: q.status }))));
+
+    const sent = await drain();
+    const toFormer = sent.filter((m) => m.to === former.email);
+    console.log("V12_DELIVERED_TO_FORMER", JSON.stringify(toFormer.map((m) => ({ to: m.to, subject: m.subject, namesSubject: m.text.includes("SUBJECT-SOLDIER"), eventKey: m.eventKey.split(":")[0] }))));
+    console.log("V12_ALL_RECIPIENTS", JSON.stringify(sent.map((m) => m.to)));
+
+    expect(await accountAvailable(formerRow)).toBe(false);
+    expect(toFormer).toHaveLength(1);
+    expect(toFormer[0].text).toContain("SUBJECT-SOLDIER");
+  });
+});

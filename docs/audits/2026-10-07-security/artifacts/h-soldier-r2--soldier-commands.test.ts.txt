@@ -1,0 +1,290 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { db, pool } from "../src/server/db";
+import { user } from "../src/server/auth-schema";
+import {
+  assignments,
+  balances,
+  duties,
+  records,
+  soldierContacts,
+  soldiers,
+} from "../src/server/schema";
+import {
+  createInvitedAccount,
+  type Actor,
+} from "../src/server/auth/accounts";
+import { executeAction } from "../src/server/actions";
+import { soldier } from "../tests/fixtures";
+
+if (
+  !process.env.TEST_DATABASE_URL ||
+  process.env.TEST_DATABASE_URL !== process.env.DATABASE_URL ||
+  !new URL(process.env.TEST_DATABASE_URL).pathname.endsWith("_test")
+)
+  throw new Error("Integration tests require a dedicated *_test database");
+
+// Audit harness h-soldier-r2: soldier-initiated commands, synthetic data only.
+const DAY = 86_400_000;
+let mgr: Actor;
+let alon: Actor;
+let bar: Actor;
+let chen: Actor;
+
+async function invite(name: string, role: "soldier" | "manager", pn: string) {
+  const soldierId = randomUUID();
+  await db.insert(soldiers).values({
+    id: soldierId,
+    name,
+    personalNumber: pn,
+    data: soldier({ id: soldierId, name, personalNumber: pn }),
+  });
+  await db
+    .insert(soldierContacts)
+    .values({ soldierId, email: `${pn}@example.invalid` });
+  await db.insert(balances).values({ soldierId });
+  const row = await createInvitedAccount({
+    name,
+    role,
+    email: `${pn}@example.invalid`,
+    soldierId,
+  });
+  return { id: row.id, name, role, soldierId, securityEpoch: 1 } as Actor;
+}
+async function command(
+  actor: Actor,
+  type: string,
+  payload: Record<string, unknown>,
+  expectedVersion?: number
+) {
+  return (await executeAction(actor, {
+    type,
+    payload,
+    expectedVersion,
+    idempotencyKey: randomUUID(),
+  })) as { id: string; version: number } & Record<string, unknown>;
+}
+async function outcome(p: Promise<unknown>) {
+  try {
+    const value = await p;
+    return { ok: true, value };
+  } catch (error) {
+    const e = error as { code?: string; status?: number; message?: string };
+    return { ok: false, code: e.code, status: e.status };
+  }
+}
+async function dutyRow(id: string) {
+  const [row] = await db.select().from(duties).where(eq(duties.id, id));
+  return row;
+}
+async function requestRow(id: string) {
+  const [row] = await db.select().from(records).where(eq(records.id, id));
+  return row;
+}
+async function seatOf(dutyId: string, person: Actor) {
+  const seat = (
+    await db.select().from(assignments).where(eq(assignments.dutyId, dutyId))
+  ).find((row) => row.status === "reserved" && row.soldierId === person.soldierId);
+  if (!seat) throw new Error("seat not found");
+  return seat;
+}
+async function publishedDuty(people: Actor[], startInDays: number) {
+  const type = await command(mgr, "dutyType.save", {
+    name: `type ${randomUUID().slice(0, 6)}`,
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "role", count: people.length }],
+  });
+  const duty = await command(mgr, "duty.create", {
+    typeId: type.id,
+    name: `duty ${startInDays}`,
+    start: new Date(Date.now() + startInDays * DAY).toISOString(),
+    end: new Date(Date.now() + (startInDays + 1) * DAY).toISOString(),
+  });
+  const created = await dutyRow(duty.id);
+  let version = 1;
+  for (const [index, person] of people.entries()) {
+    await command(
+      mgr,
+      "duty.assign",
+      {
+        dutyId: duty.id,
+        slotId: created.data.slots[index].id,
+        soldierId: person.soldierId,
+        callUpBonus: 0,
+      },
+      version
+    );
+    version++;
+  }
+  await command(mgr, "duty.publish", { id: duty.id, confirmed: true }, version);
+  return dutyRow(duty.id);
+}
+/** What the technical admin's role change writes to the account row (setRole). */
+async function promote(person: Actor): Promise<Actor> {
+  await db
+    .update(user)
+    .set({ role: "manager", securityEpoch: person.securityEpoch + 1 })
+    .where(eq(user.id, person.id));
+  return { ...person, role: "manager", securityEpoch: person.securityEpoch + 1 };
+}
+
+beforeEach(async () => {
+  await db.execute(
+    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+  );
+  mgr = await invite("manager", "manager", "00002");
+  alon = await invite("alon", "soldier", "00001");
+  bar = await invite("bar", "soldier", "00004");
+  chen = await invite("chen", "soldier", "00005");
+});
+afterAll(async () => pool.end());
+
+describe("h-soldier-r2 transfer ownership and state", () => {
+  it("rejects non-owner offers, non-candidate responses and replays", async () => {
+    const duty = await publishedDuty([alon], 3);
+    const seat = await seatOf(duty.id, alon);
+    const foreignOffer = await outcome(
+      command(bar, "transfer.offer", { assignmentId: seat.id, candidateIds: [chen.soldierId] }, seat.version)
+    );
+    const offer = await command(alon, "transfer.offer", { assignmentId: seat.id, candidateIds: [bar.soldierId] }, seat.version);
+    const row = await requestRow(offer.id);
+    const outsider = await outcome(
+      command(chen, "transfer.respond", { id: offer.id, decision: "accept", confirmed: true }, row.version)
+    );
+    const outsiderWithdraw = await outcome(command(chen, "transfer.withdraw", { id: offer.id }, row.version));
+    const managerDecideBySoldier = await outcome(
+      command(bar, "transfer.decide", { id: offer.id, decision: "reject", reason: "x" }, row.version)
+    );
+    const accepted = await command(bar, "transfer.respond", { id: offer.id, decision: "accept", confirmed: true }, row.version);
+    const after = await requestRow(offer.id);
+    const replay = await outcome(
+      command(bar, "transfer.respond", { id: offer.id, decision: "accept", confirmed: true }, after.version)
+    );
+    const withdrawAfter = await outcome(command(alon, "transfer.withdraw", { id: offer.id }, after.version));
+    const reofferOld = await outcome(
+      command(alon, "transfer.offer", { assignmentId: seat.id, candidateIds: [chen.soldierId] }, seat.version + 1)
+    );
+    const result = { foreignOffer, outsider, outsiderWithdraw, managerDecideBySoldier, acceptedStatus: accepted.status, replay, withdrawAfter, reofferOld };
+    console.log("TRANSFER_RESULT " + JSON.stringify(result));
+    expect(foreignOffer).toMatchObject({ ok: false, status: 403 });
+    expect(outsider).toMatchObject({ ok: false, status: 403 });
+    expect(outsiderWithdraw).toMatchObject({ ok: false, status: 403 });
+    expect(managerDecideBySoldier).toMatchObject({ ok: false, status: 403 });
+    expect(accepted.status).toBe("completed");
+    expect(replay).toMatchObject({ ok: false, status: 409 });
+    expect(withdrawAfter).toMatchObject({ ok: false, status: 409 });
+    expect(reofferOld.ok).toBe(false);
+  });
+
+  it("a candidate promoted to manager after the offer cannot take the seat", async () => {
+    const duty = await publishedDuty([alon], 3);
+    const seat = await seatOf(duty.id, alon);
+    const offer = await command(alon, "transfer.offer", { assignmentId: seat.id, candidateIds: [chen.soldierId] }, seat.version);
+    const promoted = await promote(chen);
+    const row = await requestRow(offer.id);
+    const accept = await outcome(
+      command(promoted, "transfer.respond", { id: offer.id, decision: "accept", confirmed: true }, row.version)
+    );
+    const still = await seatOf(duty.id, alon);
+    console.log("PROMOTED_TRANSFER_RESULT " + JSON.stringify({ accept, seatOwnerUnchanged: still.id === seat.id }));
+    expect(accept).toMatchObject({ ok: false, code: "candidate_ineligible" });
+    expect(still.id).toBe(seat.id);
+  });
+});
+
+describe("h-soldier-r2 swap ownership and state", () => {
+  it("rejects responses from non-entries and with another soldier's seat id", async () => {
+    const d1 = await publishedDuty([alon], 3);
+    const d2 = await publishedDuty([bar], 5);
+    const d3 = await publishedDuty([chen], 7);
+    const s1 = await seatOf(d1.id, alon);
+    const s2 = await seatOf(d2.id, bar);
+    const s3 = await seatOf(d3.id, chen);
+    const offer = await command(alon, "swap.offer", { assignmentId: s1.id, targetAssignmentIds: [s2.id] }, s1.version);
+    const row = await requestRow(offer.id);
+    const withBarsSeat = await outcome(
+      command(chen, "swap.respond", { id: offer.id, assignmentId: s2.id, decision: "accept", confirmed: true }, row.version)
+    );
+    const withOwnSeat = await outcome(
+      command(chen, "swap.respond", { id: offer.id, assignmentId: s3.id, decision: "accept", confirmed: true }, row.version)
+    );
+    const foreignSwapOffer = await outcome(
+      command(chen, "swap.offer", { assignmentId: s2.id, targetAssignmentIds: [s1.id] }, s2.version)
+    );
+    const promotedBar = await promote(bar);
+    const promotedAccept = await outcome(
+      command(promotedBar, "swap.respond", { id: offer.id, assignmentId: s2.id, decision: "accept", confirmed: true }, row.version)
+    );
+    const result = { withBarsSeat, withOwnSeat, foreignSwapOffer, promotedAccept };
+    console.log("SWAP_RESULT " + JSON.stringify(result));
+    expect(withBarsSeat).toMatchObject({ ok: false, status: 403 });
+    expect(withOwnSeat).toMatchObject({ ok: false, status: 403 });
+    expect(foreignSwapOffer).toMatchObject({ ok: false, status: 403 });
+    expect(promotedAccept).toMatchObject({ ok: false, code: "candidate_ineligible" });
+  });
+});
+
+describe("h-soldier-r2 cancellation, constraint and notification ownership", () => {
+  it("keeps each soldier to their own requests, constraints and notifications", async () => {
+    const duty = await publishedDuty([alon], 3);
+    const seat = await seatOf(duty.id, alon);
+    const foreignSubmit = await outcome(
+      command(bar, "cancellation.submit", { assignmentId: seat.id, kind: "cancel", reason: "r" }, seat.version)
+    );
+    const request = await command(alon, "cancellation.submit", { assignmentId: seat.id, kind: "cancel", reason: "r" }, seat.version);
+    const foreignWithdraw = await outcome(command(bar, "cancellation.withdraw", { id: request.id }, request.version));
+    const soldierReject = await outcome(command(bar, "cancellation.reject", { id: request.id, reason: "r" }, request.version));
+    const round = await command(mgr, "round.create", {
+      name: "round",
+      opensAt: new Date(Date.now() - 60_000).toISOString(),
+      closesAt: new Date(Date.now() + 3600_000).toISOString(),
+      targetStart: "2026-11-01",
+      targetEnd: "2026-11-30",
+    });
+    const own = await command(alon, "constraint.submit", { roundId: round.id, startDate: "2026-11-10", endDate: "2026-11-11", reason: "r" });
+    const forOther = await outcome(
+      command(bar, "constraint.submit", { roundId: round.id, soldierId: alon.soldierId, startDate: "2026-11-12", endDate: "2026-11-12", reason: "r" })
+    );
+    const editOther = await outcome(
+      command(bar, "constraint.submit", { roundId: round.id, id: own.id, none: true }, own.version)
+    );
+    const managerSubmit = await outcome(
+      command(mgr, "constraint.submit", { roundId: round.id, startDate: "2026-11-12", endDate: "2026-11-12", reason: "r" })
+    );
+    const notes = (await db.select().from(records).where(eq(records.kind, "notification")));
+    const alonNote = notes.find((n) => n.subjectId === alon.soldierId || n.data.accountId === alon.id);
+    const managerNote = notes.find((n) => n.data.accountId === mgr.id);
+    const readOthers = managerNote
+      ? await outcome(command(bar, "notification.read", { id: managerNote.id }))
+      : { ok: "no-manager-note" };
+    const hideOthers = alonNote
+      ? await outcome(command(bar, "notification.hide", { id: alonNote.id }))
+      : { ok: "no-alon-note" };
+    const settingsOverride = await outcome(
+      command(bar, "settings.save", {
+        accountId: alon.id,
+        reminderHours: [24],
+        email: { dutyReminder: true, roundOpening: true, roundClosing: true, publication: true, transfer: true, departure: true },
+      })
+    );
+    const defaultsBySoldier = await outcome(
+      command(bar, "notification.defaults.save", {
+        reminderHours: [24],
+        email: { dutyReminder: true, roundOpening: true, roundClosing: true, publication: true, transfer: true, departure: true },
+      })
+    );
+    const result = { foreignSubmit, foreignWithdraw, soldierReject, forOther, editOther, managerSubmit, readOthers, hideOthers, settingsOverride, defaultsBySoldier };
+    console.log("OWNERSHIP_RESULT " + JSON.stringify(result));
+    expect(foreignSubmit).toMatchObject({ ok: false, status: 403 });
+    expect(foreignWithdraw).toMatchObject({ ok: false, status: 403 });
+    expect(soldierReject).toMatchObject({ ok: false, status: 403 });
+    expect(forOther).toMatchObject({ ok: false, status: 403 });
+    expect(editOther).toMatchObject({ ok: false, status: 403 });
+    expect(managerSubmit).toMatchObject({ ok: false, status: 403 });
+    expect(readOthers).toMatchObject({ ok: false, status: 403 });
+    expect(hideOthers).toMatchObject({ ok: false, status: 403 });
+    expect(settingsOverride.ok).toBe(false);
+    expect(defaultsBySoldier).toMatchObject({ ok: false, status: 403 });
+  });
+});

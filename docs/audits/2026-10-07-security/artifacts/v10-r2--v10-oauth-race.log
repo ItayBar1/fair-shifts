@@ -1,0 +1,29 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90m/app[39m
+
+[90mstderr[2m | audit/v10-oauth-race.test.ts[2m > [22m[2mv10-r2: Google callback vs. committed verified email change[2m > [22m[2mcontrol: a session issued before the change is revoked, and the old sub is refused afterwards
+[22m[39m2026-10-07T13:33:41.123Z ERROR [Better Auth]: signup_disabled
+
+[90mstdout[2m | audit/v10-oauth-race.test.ts[2m > [22m[2mv10-r2: Google callback vs. committed verified email change[2m > [22m[2mcontrol: a session issued before the change is revoked, and the old sub is refused afterwards
+[22m[39mV10 CONTROL: {"revokedActor":null,"after":{"signedIn":false,"error":"signup_disabled"},"links":[]}
+
+[90mstdout[2m | audit/v10-oauth-race.test.ts[2m > [22m[2mv10-r2: Google callback vs. committed verified email change[2m > [22m[2mA (soldier): change commits after updateAccount; the disconnected sub still gets a session accepted by getActor
+[22m[39mV10 RACE A: {"fired":true,"committed":true,"signedIn":true,"actorIsMember":true,"email":"v10-next@example.invalid","epoch":2,"sessionEpochs":[2],"sessionHoursLeft":[168],"links":[]}
+
+[90mstdout[2m | audit/v10-oauth-race.test.ts[2m > [22m[2mv10-r2: Google callback vs. committed verified email change[2m > [22m[2mA (technical account): same schedule on the technical role
+[22m[39mV10 RACE A TECH: {"fired":true,"committed":true,"signedIn":true,"actorRole":"technical","email":"v10-next@example.invalid","links":[]}
+
+[90mstderr[2m | audit/v10-oauth-race.test.ts[2m > [22m[2mv10-r2: Google callback vs. committed verified email change[2m > [22m[2mB (never linked): change commits after findUserByEmail(old); a Google account for the old address gets a lasting link
+[22m[39m2026-10-07T13:33:41.466Z ERROR [Better Auth]: unable_to_link_account
+
+[90mstdout[2m | audit/v10-oauth-race.test.ts[2m > [22m[2mv10-r2: Google callback vs. committed verified email change[2m > [22m[2mB (never linked): change commits after findUserByEmail(old); a Google account for the old address gets a lasting link
+[22m[39mV10 RACE B: {"fired":true,"committed":true,"signedIn":true,"email":"v10-next@example.invalid","links":[{"accountId":"sub-old-mailbox"}],"laterActorIsMember":true,"legitNewAddress":{"signedIn":false,"error":"unable_to_link_account"}}
+
+ [32m✓[39m audit/v10-oauth-race.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 466[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 13:33:40
+[2m   Duration [22m 945ms[2m (tests 53%, import 30%, transform 17%)[22m
+
+exit=0

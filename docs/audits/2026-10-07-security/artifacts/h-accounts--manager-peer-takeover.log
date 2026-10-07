@@ -1,0 +1,31 @@
+
+ RUN  v5.0.2 /app
+
+stdout | audit/manager-peer-takeover.test.ts > manager A vs manager B account authority > control: A cannot delete or unlock B (sibling guards)
+CONTROL delete/unlock of peer manager rejected
+
+stdout | audit/manager-peer-takeover.test.ts > manager A vs manager B account authority > A moves B's login email to an A-controlled address and signs in as B
+CODE MAIL destination: a-controlled@example.invalid
+
+stdout | audit/manager-peer-takeover.test.ts > manager A vs manager B account authority > A moves B's login email to an A-controlled address and signs in as B
+B after: { email: [32m'a-controlled@example.invalid'[39m, role: [32m'manager'[39m, epoch: [33m2[39m }
+
+stdout | audit/manager-peer-takeover.test.ts > manager A vs manager B account authority > A moves B's login email to an A-controlled address and signs in as B
+login-code mails for B: [ [32m'(dest=user.email)'[39m ]
+
+stdout | audit/manager-peer-takeover.test.ts > manager A vs manager B account authority > A moves B's login email to an A-controlled address and signs in as B
+verifyCode as B via A-controlled address -> { userId: [32m'managerB.id'[39m, role: [32m'manager'[39m, epoch: [33m2[39m }
+
+stdout | audit/manager-peer-takeover.test.ts > manager A vs manager B account authority > variant: A sets B's release date in the past and B loses access
+soldier.update releaseDate on B: ok
+
+stdout | audit/manager-peer-takeover.test.ts > manager A vs manager B account authority > variant: A sets B's release date in the past and B loses access
+B accountAvailable after: [33mfalse[39m
+
+ ✓ audit/manager-peer-takeover.test.ts (3 tests) 247ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  20:08:08
+   Duration  929ms (transform 41%, import 31%, tests 28%)
+

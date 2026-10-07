@@ -1,0 +1,6 @@
+session Set-Cookie attributes: better-auth.session_token=<redacted>; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax
+cursor before cross-site request: 1
+cross-site GET status: 200; cancelled entries in response: 1
+cursor after cross-site request: 2
+victim's own next visit: cancelled entries = 0
+control cross-site POST /api/v1/actions status: 403

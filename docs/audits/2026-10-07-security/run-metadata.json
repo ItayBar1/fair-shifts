@@ -1,0 +1,49 @@
+{
+  "run_id": "run-1",
+  "repo": "fair-shifts",
+  "target": "/Users/admin/Developer/fair-shifts/.claude/worktrees/codebase-security-audit-d3dbff",
+  "source_ref": {
+    "commit": "c4a1e01daecb34a24ebf4c69e0295c615e118938",
+    "branch": "claude/codebase-security-audit-d3dbff",
+    "dirty": false
+  },
+  "profile": "standard",
+  "scope_paths": ["."],
+  "budget": null,
+  "execution_policy": "sandboxed-source-and-local-only",
+  "sandbox": "sandbox.sh: docker run --network none --read-only --cap-drop ALL --security-opt no-new-privileges --cpus 2 --memory 3g --pids-limit 512 --ulimit fsize=256MiB, user postgres, target dirs mounted read-only, only agents/<id>/scratch writable (also mounted at /app/audit), explicit env allowlist of synthetic test values, in-container timeout 540s, in-container PostgreSQL on 127.0.0.1 only, image fair-shifts-tools:latest (pre-built locally, no dependency fetch)",
+  "promotion": "promote.py: dir-fd confined O_NOFOLLOW traversal, regular file nlink==1, 1 MiB per file / 4 MiB cumulative, exclusive destination create",
+  "selected_companions": [
+    "WEB-PROTOCOL-AND-AUTH.md",
+    "DATA-ISOLATION-AND-LIFECYCLE.md",
+    "CLIENT-SIDE.md",
+    "SUPPLY-CHAIN-AND-RELEASE.md",
+    "CLOUD-AND-DEPLOYMENT.md",
+    "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md"
+  ],
+  "prior_runs": [],
+  "prompt_delivery": "Hunter/verifier prompts are assembled verbatim from skill files into agents/<id>/prompt.md by assemble.py; the Task prompt instructs the agent to read that file in full first.",
+  "shared_file_owners": {
+    "run-metadata.json": "parent",
+    "architecture.md": "parent",
+    "coverage-ledger.json": "parent",
+    "findings.json": "parent",
+    "REPORT.md": "parent",
+    "FINDINGS-DETAIL.md": "parent",
+    "NEEDS-VALIDATION.md": "parent"
+  },
+  "run_status": "complete",
+  "progress_note": "All phases complete.",
+  "process_deviations": [
+    "Phase 3 verifiers for the 11 wave-1 candidates were launched while the wave-2 hunter (h-worker) and its post-wave/final-clean critics were still pending. Verifiers receive only their own candidate, so this does not change their inputs; any wave-2 candidate gets its own fresh verifier.",
+    "Verifiers launched in batches to stay under API rate limits after wave 1 lost 7 hunters to a session limit."
+  ],
+  "agents_spent": {
+    "recon": 4,
+    "hunters": 21,
+    "critics": 3,
+    "phase3_verifiers": 16,
+    "phase5_verifiers": 12,
+    "note": "includes agents terminated by API session limits and their relaunches"
+  }
+}

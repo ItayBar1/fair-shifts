@@ -1,0 +1,234 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { db, pool } from "../src/server/db";
+import { emailOutbox } from "../src/server/auth-schema";
+import {
+  balances,
+  commandResults,
+  soldierContacts,
+  soldiers,
+} from "../src/server/schema";
+import { createInvitedAccount, type Actor } from "../src/server/auth/accounts";
+import { executeAction } from "../src/server/actions";
+import { openSecret } from "../src/server/operations/email";
+import { soldier } from "../tests/fixtures";
+
+if (
+  !process.env.TEST_DATABASE_URL ||
+  process.env.TEST_DATABASE_URL !== process.env.DATABASE_URL ||
+  !new URL(process.env.TEST_DATABASE_URL).pathname.endsWith("_test")
+)
+  throw new Error("Integration tests require a dedicated *_test database");
+
+// Verifier v6 harness: synthetic people only.
+let manager: Actor;
+
+async function invite(name: string, personalNumber: string): Promise<Actor> {
+  const soldierId = randomUUID();
+  await db.insert(soldiers).values({
+    id: soldierId,
+    name,
+    personalNumber,
+    data: soldier({ id: soldierId, name, personalNumber }),
+  });
+  await db.insert(soldierContacts).values({
+    soldierId,
+    email: `${personalNumber}@example.invalid`,
+    phone: `050${personalNumber}`,
+    address: `addr ${personalNumber}`,
+  });
+  await db.insert(balances).values({ soldierId });
+  const row = await createInvitedAccount({
+    name,
+    role: "manager",
+    email: `${personalNumber}@example.invalid`,
+    soldierId,
+  });
+  return { id: row.id, name, role: "manager", soldierId, securityEpoch: 1 };
+}
+async function command(
+  actor: Actor,
+  type: string,
+  payload: Record<string, unknown>,
+  expectedVersion?: number,
+  idempotencyKey: string = randomUUID()
+) {
+  return (await executeAction(actor, {
+    type,
+    payload,
+    expectedVersion,
+    idempotencyKey,
+  })) as { id: string; version: number } & Record<string, unknown>;
+}
+async function row(id: string) {
+  const [r] = await db.select().from(soldiers).where(eq(soldiers.id, id));
+  return r;
+}
+
+const OLD_EMAIL = "v6-imported@example.invalid";
+const OLD_PHONE = "0508880001";
+const OLD_ADDRESS = "V6-OLD-ADDRESS-9921";
+const PN = "00888";
+const previewPayload = {
+  filename: "v6-intake.xlsx",
+  rows: [
+    {
+      rowNumber: 2,
+      values: {
+        personalNumber: PN,
+        name: "v6 imported soldier",
+        email: OLD_EMAIL,
+        phone: OLD_PHONE,
+        address: OLD_ADDRESS,
+      },
+    },
+  ],
+};
+
+async function intake(previewKey: string) {
+  const preview = await command(
+    manager,
+    "import.preview",
+    previewPayload,
+    undefined,
+    previewKey
+  );
+  await command(
+    manager,
+    "import.apply",
+    { id: preview.id, confirmed: true, overwriteConfirmed: true, reason: "intake" },
+    preview.version
+  );
+  const [person] = await db
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.personalNumber, PN));
+  return person;
+}
+async function changePhoneAddress(id: string) {
+  const p = await row(id);
+  await command(
+    manager,
+    "soldier.update",
+    {
+      id,
+      name: p.name,
+      personalNumber: p.personalNumber,
+      phone: "0508880002",
+      address: "v6 new address",
+    },
+    p.version
+  );
+}
+async function changeEmail(id: string) {
+  await command(
+    manager,
+    "account.email.request",
+    { soldierId: id, email: "v6-changed@example.invalid", reason: "new mailbox" },
+    (await row(id)).version
+  );
+  const [mail] = await db
+    .select()
+    .from(emailOutbox)
+    .where(eq(emailOutbox.kind, "email-change"));
+  const code = openSecret(mail.encryptedSecret!);
+  await command(
+    manager,
+    "account.email.confirm",
+    { soldierId: id, code, disconnectGoogle: true },
+    (await row(id)).version
+  );
+}
+async function remove(id: string) {
+  const preview = (await command(
+    manager,
+    "soldier.delete.preview",
+    { id },
+    (await row(id)).version
+  )) as unknown as { previewToken: string };
+  await command(
+    manager,
+    "soldier.delete",
+    { id, previewToken: preview.previewToken, reason: "released", confirmed: true },
+    (await row(id)).version
+  );
+}
+async function stored(key: string) {
+  const [r] = await db
+    .select()
+    .from(commandResults)
+    .where(eq(commandResults.requestKey, key));
+  const text = JSON.stringify(r.result);
+  return {
+    text,
+    erased: "erasedAt" in (r.result as object),
+    oldEmail: text.includes(OLD_EMAIL),
+    oldPhone: text.includes(OLD_PHONE),
+    oldAddress: text.includes(OLD_ADDRESS),
+    personalNumber: text.includes(PN),
+  };
+}
+
+beforeEach(async () => {
+  await db.execute(
+    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+  );
+  manager = await invite("v6 manager", "00301");
+});
+afterAll(async () => pool.end());
+
+describe("v6: stored import.preview result after soldier deletion", () => {
+  it("A: all contacts superseded -> preview result keeps old contacts and replays", async () => {
+    const key = randomUUID();
+    const person = await intake(key);
+    await changePhoneAddress(person.id);
+    await changeEmail(person.id);
+    const [c] = await db
+      .select()
+      .from(soldierContacts)
+      .where(eq(soldierContacts.soldierId, person.id));
+    console.log("V6 A contact before delete:", c.email, c.phone, c.address);
+    await remove(person.id);
+    const deleted = await row(person.id);
+    const s = await stored(key);
+    console.log("V6 A soldier deletedAt set:", Boolean(deleted.deletedAt));
+    console.log("V6 A stored preview:", JSON.stringify({ ...s, text: undefined }));
+    const replay = await executeAction(manager, {
+      type: "import.preview",
+      payload: previewPayload,
+      idempotencyKey: key,
+    });
+    const rt = JSON.stringify(replay);
+    console.log(
+      "V6 A replay contains oldEmail/oldPhone/oldAddress:",
+      rt.includes(OLD_EMAIL),
+      rt.includes(OLD_PHONE),
+      rt.includes(OLD_ADDRESS)
+    );
+    expect(deleted.deletedAt).toBeTruthy();
+    expect(s.erased).toBe(false);
+    expect(s.oldPhone && s.oldAddress && s.oldEmail).toBe(true);
+    expect(rt).toContain(OLD_ADDRESS);
+  });
+
+  it("B: control, no contact change -> preview result replaced by erasure marker", async () => {
+    const key = randomUUID();
+    const person = await intake(key);
+    await remove(person.id);
+    const s = await stored(key);
+    console.log("V6 B stored preview:", JSON.stringify({ ...s, text: s.text }));
+    expect(s.erased).toBe(true);
+    expect(s.oldAddress).toBe(false);
+  });
+
+  it("C: only email changed, phone/address unchanged -> still erased", async () => {
+    const key = randomUUID();
+    const person = await intake(key);
+    await changeEmail(person.id);
+    await remove(person.id);
+    const s = await stored(key);
+    console.log("V6 C stored preview:", JSON.stringify({ ...s, text: undefined }));
+    expect(s.erased).toBe(true);
+  });
+});
