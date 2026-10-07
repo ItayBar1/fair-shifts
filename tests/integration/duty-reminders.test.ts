@@ -140,7 +140,6 @@ async function deliverAll(now: number) {
   return sent.filter((key) => key.startsWith("reminder:")).sort();
 }
 const allEmail = {
-  dutyReminder: true,
   roundOpening: true,
   roundClosing: true,
   publication: true,
@@ -271,8 +270,8 @@ describe("duty reminders", () => {
 
   it("follows current preferences on both channels and rechecks them before delivery", async () => {
     const saved = await command(member, "settings.save", {
-      reminderHours: [5],
-      email: { ...allEmail, dutyReminder: false },
+      reminders: [{ hours: 5, email: false, calendar: true }],
+      email: allEmail,
     });
     const duty = await publishedDuty(25 * HOUR);
     await refresh(Date.now());
@@ -294,7 +293,10 @@ describe("duty reminders", () => {
     await command(
       member,
       "settings.save",
-      { reminderHours: [24], email: allEmail },
+      {
+        reminders: [{ hours: 24, email: true, calendar: true }],
+        email: allEmail,
+      },
       reset.version
     );
     // Two hours were removed after scheduling: the queued email is not sent.

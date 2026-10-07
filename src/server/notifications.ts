@@ -131,11 +131,9 @@ export async function saveDefaults(
     row = await createRecord(tx, "notification_defaults", input);
   }
   await audit(tx, actor, "notification.defaults.save", row.id, {
+    // Stored forms of the older shape are shown in the current one.
     before: existing
-      ? {
-          reminderHours: existing.data.reminderHours,
-          email: existing.data.email,
-        }
+      ? resolvePreferences(null, existing.data).preferences
       : null,
     after: input,
   });

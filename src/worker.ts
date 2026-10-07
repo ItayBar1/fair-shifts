@@ -13,6 +13,8 @@ import { backupConfig, runBackupCycle } from "./server/operations/backup";
 import { refreshDrillAlert } from "./server/operations/restore";
 import { refreshDutyReminders } from "./server/duty-reminders";
 import { listenForMail, singleFlight } from "./server/operations/mail-signal";
+import { calendarSyncEnabled } from "./server/calendar/config";
+import { runCalendarSync } from "./server/calendar/sync";
 import {
   DELETION_LOG_CHANNEL,
   drainDeletionLog,
@@ -87,6 +89,19 @@ await boss.work("backup", async () => {
   if (result.status === "failed" || result.status === "retry")
     console.error("Backup run failed", result.code);
 });
+// The calendar sync (decision 195) has a queue of its own, so a slow Google never
+// delays the minute's maintenance; the link table, not the queue, says what is due.
+if (calendarSyncEnabled()) {
+  await boss.createQueue("calendar-sync", {
+    policy: "stately",
+    retryLimit: 0,
+    expireInSeconds: 3600,
+  });
+  await boss.schedule("calendar-sync", "* * * * *");
+  await boss.work("calendar-sync", async () => {
+    await runCalendarSync();
+  });
+}
 await boss.send("unit-maintenance");
 const mailSignals = listenForMail(() => {
   drainMail().catch((error: Error) =>

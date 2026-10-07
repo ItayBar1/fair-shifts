@@ -5,6 +5,7 @@ import { operationsState, user } from "./auth-schema";
 import { createRecord } from "./repository";
 import { enqueueEmail } from "./operations/email";
 import { effectivePreferences } from "./notifications";
+import { reminderHours } from "../domain/notification-preferences";
 import { ACTIVE_SEAT, hasAccess } from "./duty-reminder-checks";
 import {
   dueReminder,
@@ -90,7 +91,7 @@ export async function refreshDutyReminders(
       const published = Date.parse(String(duty.data.publishedAt ?? ""));
       const reminder = dueReminder({
         start,
-        hours: preferences.reminderHours,
+        hours: reminderHours(preferences),
         since,
         knownAt: Math.max(
           seat.createdAt.getTime(),

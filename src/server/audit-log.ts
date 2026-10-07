@@ -569,22 +569,57 @@ export function projectAudit(
         case "notification.defaults.save": {
           const before = data(envelope.before);
           const after = data(envelope.after);
-          const hours = (value: unknown) =>
-            Array.isArray(value) && value.length
-              ? value.map((hour) => `${hour} ש׳`).join(", ")
+          // Entries written before decision 195 hold plain hours and no channels.
+          const reminders = (form: Record<string, unknown>) =>
+            Array.isArray(form.reminders)
+              ? form.reminders.map(data)
+              : Array.isArray(form.reminderHours)
+                ? form.reminderHours.map((hours) => ({ hours }))
+                : [];
+          const hours = (value: Record<string, unknown>[]) =>
+            value.length
+              ? value.map((reminder) => `${reminder.hours} ש׳`).join(", ")
               : "ללא";
+          const beforeReminders = reminders(before);
+          const afterReminders = reminders(after);
           if (
-            JSON.stringify(before.reminderHours) !==
-            JSON.stringify(after.reminderHours)
+            JSON.stringify(
+              beforeReminders.map((reminder) => reminder.hours)
+            ) !==
+            JSON.stringify(afterReminders.map((reminder) => reminder.hours))
           )
             change(
               "שעות תזכורת",
-              hours(before.reminderHours),
-              hours(after.reminderHours)
+              hours(beforeReminders),
+              hours(afterReminders)
+            );
+          const channels = (value: Record<string, unknown>[]) =>
+            value
+              .filter((reminder) => "email" in reminder)
+              .map(
+                (reminder) =>
+                  `${reminder.hours} ש׳: ${[
+                    "באתר",
+                    reminder.email ? "מייל" : undefined,
+                    reminder.calendar ? "יומן Google" : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}`
+              )
+              .join("; ");
+          if (channels(beforeReminders) !== channels(afterReminders))
+            change(
+              "ערוצי תזכורת",
+              channels(beforeReminders) || "ללא שינוי ערוצים",
+              channels(afterReminders) || "ללא"
             );
           const beforeEmail = data(before.email);
           const afterEmail = data(after.email);
-          for (const [key, title] of Object.entries(emailTypeLabels))
+          // The reminder switch of entries written before decision 195.
+          for (const [key, title] of Object.entries({
+            ...emailTypeLabels,
+            dutyReminder: "תזכורת לפני תורנות",
+          }))
             if (Boolean(beforeEmail[key]) !== Boolean(afterEmail[key]))
               change(
                 `מייל: ${title}`,

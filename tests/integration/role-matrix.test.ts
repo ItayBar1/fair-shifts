@@ -120,6 +120,9 @@ const access: Record<string, Access> = {
   "swap.offer": "soldier",
   "swap.respond": "soldier",
   "swap.withdraw": "soldier",
+  // The calendar belongs to a soldier; a manager takes no seat, so has none (decisions 192 and 195).
+  "calendar.switch": "soldier",
+  "calendar.remove.future": "soldier",
   // A manager changes a soldier's address, after the new one is verified (section 7.1).
   "account.email.request": "manager",
   "account.email.confirm": "manager",
@@ -130,7 +133,6 @@ const access: Record<string, Access> = {
   "settings.reset": "everyone",
 };
 const allEmail = {
-  dutyReminder: true,
   roundOpening: true,
   roundClosing: true,
   publication: true,
@@ -529,7 +531,10 @@ describe("a version that changed", () => {
     ).toEqual({ status: 409, code: "stale_version" });
   });
   it("makes a soldier read the form again after the preferences changed", async () => {
-    const form = { reminderHours: [3], email: allEmail };
+    const form = {
+      reminders: [{ hours: 3, email: true, calendar: true }],
+      email: allEmail,
+    };
     const saved = await send(alon, "settings.save", form);
     expect(await statusOf(send(alon, "settings.save", form))).toMatchObject({
       status: 409,

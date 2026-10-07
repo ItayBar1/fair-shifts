@@ -397,9 +397,8 @@ describe("failures reach the technical screen and account", () => {
     await executeAction(technical, {
       type: "settings.save",
       payload: {
-        reminderHours: [],
+        reminders: [],
         email: {
-          dutyReminder: true,
           roundOpening: true,
           roundClosing: true,
           publication: true,
@@ -637,7 +636,12 @@ describe("a verified backup before a deployment changes the database (card #36)"
     expect((await runBackupCycle(new Date(), config())).status).toBe(
       "verified"
     );
-    await until(async () => (await runs()).length === 2);
+    await until(async () => {
+      const rows = await runs();
+      // PostgreSQL timestamps keep microseconds; a JavaScript Date read in
+      // the same millisecond can still precede the newly queued job's due time.
+      return rows.length === 2 && rows[1].nextAttemptAt.getTime() < Date.now();
+    });
     expect((await runBackupCycle(new Date(), config())).status).toBe(
       "verified"
     );

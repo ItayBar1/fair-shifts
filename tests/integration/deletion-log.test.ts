@@ -21,6 +21,8 @@ import {
 import {
   assignments,
   balances,
+  calendarEvent,
+  calendarLink,
   duties,
   records,
   soldierContacts,
@@ -853,6 +855,39 @@ describe("applying the log after a restore", () => {
     // A fresh volume got the whole log back.
     expect(await localEntries()).toHaveLength(1);
     await expect(readState(manager)).resolves.toBeTruthy();
+  });
+
+  it("purges a restored Calendar grant even when the soldier was already deleted in the backup", async () => {
+    const person = people[0]!;
+    await remove(person);
+    await drainDeletionLog(config());
+    // Simulate inconsistent restored rows. A token must not survive just because
+    // the deletion marker is already present; applying the verified log erases it.
+    await db.insert(calendarLink).values({
+      accountId: person.id,
+      refreshToken: "synthetic-restored-ciphertext",
+    });
+    await db.insert(calendarEvent).values({
+      id: randomUUID(),
+      accountId: person.id,
+      dutyId: randomUUID(),
+      googleEventId: "restored-event",
+      fingerprint: "old",
+      startsAt: new Date(),
+      endsAt: new Date(Date.now() + DAY),
+    });
+    expect(await applyLoggedDeletions(config())).toMatchObject({
+      status: "applied",
+      alreadyDeleted: 1,
+      applied: 0,
+    });
+    expect(await db.select().from(calendarLink)).toEqual([]);
+    expect(await db.select().from(calendarEvent)).toEqual([]);
+    expect(await applyLoggedDeletions(config())).toMatchObject({
+      status: "applied",
+      alreadyDeleted: 1,
+      applied: 0,
+    });
   });
 
   it("applies a deletion to an account that is a manager in the restored database", async () => {

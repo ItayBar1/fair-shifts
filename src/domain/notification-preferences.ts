@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 /**
- * Notification preferences (decision 162). Site notifications are always created;
- * the per-type switches decide only whether an email is sent. Reminder hours apply
- * to duty reminders on both channels.
+ * Notification preferences (decisions 162 and 195). Site notifications are always
+ * created; the per-type switches decide only whether an email is sent. Each duty
+ * reminder carries its own channel slots: the site (always), the email and the
+ * Google calendar of the soldier.
  */
 export const preferenceTypes = [
-  "dutyReminder",
   "roundOpening",
   "roundClosing",
   "publication",
@@ -28,19 +28,32 @@ export const staffPreferenceTypes: readonly PreferenceType[] = ["restore"];
 export const MAX_REMINDERS = 3;
 export const MAX_REMINDER_HOURS = 168;
 
+/** One reminder before a duty and where it is delivered besides the site (decision 195). */
+export const reminderSchema = z
+  .object({
+    hours: z.number().int().min(1).max(MAX_REMINDER_HOURS),
+    email: z.boolean(),
+    calendar: z.boolean(),
+  })
+  .strict();
+export type Reminder = z.infer<typeof reminderSchema>;
+
 export const preferencesSchema = z
   .object({
-    reminderHours: z
-      .array(z.number().int().min(1).max(MAX_REMINDER_HOURS))
+    reminders: z
+      .array(reminderSchema)
       .max(MAX_REMINDERS)
       .refine(
-        (hours) => new Set(hours).size === hours.length,
+        (reminders) =>
+          new Set(reminders.map((reminder) => reminder.hours)).size ===
+          reminders.length,
         "אין לחזור על אותה שעת תזכורת"
       )
-      .transform((hours) => [...hours].sort((a, b) => b - a)),
+      .transform((reminders) =>
+        [...reminders].sort((a, b) => b.hours - a.hours)
+      ),
     email: z
       .object({
-        dutyReminder: z.boolean(),
         roundOpening: z.boolean(),
         roundClosing: z.boolean(),
         publication: z.boolean(),
@@ -59,9 +72,11 @@ export const preferencesSchema = z
 export type Preferences = z.infer<typeof preferencesSchema>;
 
 export const systemDefaults: Preferences = {
-  reminderHours: [24, 2],
+  reminders: [
+    { hours: 24, email: true, calendar: true },
+    { hours: 2, email: true, calendar: true },
+  ],
   email: {
-    dutyReminder: true,
     roundOpening: true,
     roundClosing: true,
     publication: true,
@@ -72,6 +87,11 @@ export const systemDefaults: Preferences = {
     restore: true,
   },
 };
+
+/** The reminder hours of a form, closest last, as the schedule of site reminders uses them. */
+export function reminderHours(preferences: Pick<Preferences, "reminders">) {
+  return preferences.reminders.map((reminder) => reminder.hours);
+}
 
 /** Operational alerts go to the technical account only (decision 173). */
 export const technicalPreferenceTypes: readonly PreferenceType[] = [
@@ -85,7 +105,6 @@ export const mandatoryEmailKinds = [
   "email-change",
 ] as const;
 const preferenceByKind = {
-  "duty-reminder": "dutyReminder",
   "round-opening": "roundOpening",
   "round-closing": "roundClosing",
   publication: "publication",
@@ -98,7 +117,10 @@ const preferenceByKind = {
   "backup-alert": "operations",
 } as const satisfies Record<string, PreferenceType>;
 export type EmailKind =
-  (typeof mandatoryEmailKinds)[number] | keyof typeof preferenceByKind;
+  | (typeof mandatoryEmailKinds)[number]
+  | keyof typeof preferenceByKind
+  // Decided by the email slot of the reminder with the same hours (decision 195).
+  | "duty-reminder";
 
 /** Types added after preferences were first stored (decisions 163, 170, 173, 196 and 200). */
 const newTypeDefaults: Partial<Preferences["email"]> = {
@@ -126,17 +148,41 @@ export function resolvePreferences(
   return { preferences: systemDefaults, source: "system" };
 }
 
+/**
+ * A form saved before decision 195 has plain hours and one email switch for the duty
+ * reminder. It becomes one reminder per hour: the email slot follows the old switch
+ * and the calendar slot is marked, as every reminder is by default.
+ */
+function remindersOf(data: Record<string, unknown>, email: unknown) {
+  if (Array.isArray(data.reminders)) return data.reminders;
+  if (!Array.isArray(data.reminderHours)) return data.reminders;
+  const reminderEmail =
+    !email ||
+    typeof email !== "object" ||
+    (email as Record<string, unknown>).dutyReminder !== false;
+  return data.reminderHours.map((hours) => ({
+    hours,
+    email: reminderEmail,
+    calendar: true,
+  }));
+}
+
 function storedPreferences(value: unknown, requireCustom = true) {
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
   if (requireCustom && data.custom !== true) return null;
+  const stored =
+    data.email && typeof data.email === "object"
+      ? (data.email as Record<string, unknown>)
+      : undefined;
   // A form saved before a type existed keeps its choices; the new type starts from the system default (decisions 163, 170, 173, 196 and 200).
+  // The old switch of the duty reminder email is not an email type any more.
+  const merged: Record<string, unknown> = { ...newTypeDefaults, ...stored };
+  const { dutyReminder: _dutyReminder, ...email } = merged;
+  void _dutyReminder;
   const parsed = preferencesSchema.safeParse({
-    reminderHours: data.reminderHours,
-    email:
-      data.email && typeof data.email === "object"
-        ? { ...newTypeDefaults, ...data.email }
-        : data.email,
+    reminders: remindersOf(data, stored),
+    email: stored ? email : data.email,
   });
   return parsed.success ? parsed.data : null;
 }
@@ -148,12 +194,13 @@ export function emailAllowed(
   reminderHours?: number | null
 ): boolean {
   if ((mandatoryEmailKinds as readonly string[]).includes(kind)) return true;
-  const type = preferenceByKind[kind as keyof typeof preferenceByKind];
-  if (!preferences.email[type]) return false;
-  if (type === "dutyReminder")
+  if (kind === "duty-reminder")
     return (
       typeof reminderHours === "number" &&
-      preferences.reminderHours.includes(reminderHours)
+      preferences.reminders.some(
+        (reminder) => reminder.hours === reminderHours && reminder.email
+      )
     );
-  return true;
+  const type = preferenceByKind[kind as keyof typeof preferenceByKind];
+  return preferences.email[type];
 }

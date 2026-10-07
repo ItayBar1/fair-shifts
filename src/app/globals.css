@@ -786,6 +786,33 @@ select {
   gap: 12px;
   align-items: end;
 }
+.field-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 16px 16px;
+}
+.field-group legend {
+  font-size: 13px;
+  font-weight: 600;
+  padding-inline: 6px;
+}
+.field-group-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px 18px;
+  align-items: center;
+}
+/* The text or number field takes a row of its own; the checkboxes share the next one. */
+.field-group-body > .field:not(.check-field) {
+  grid-column: 1 / -1;
+}
+.field-group-body > .field:not(.check-field) input {
+  max-width: 14rem;
+}
+.calendar-switch {
+  margin: 16px 0;
+  font-size: 14px;
+}
 .check-field {
   display: flex;
   flex-direction: row;

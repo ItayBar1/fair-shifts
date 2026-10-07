@@ -12,6 +12,7 @@ import {
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { submitAuth } from "./auth-submit";
 
 const managerEmail = "deletion-manager@example.invalid";
 const phoneManagerEmail = "deletion-phone@example.invalid";
@@ -54,7 +55,11 @@ test.beforeAll(async () => {
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(email);
-  await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
+  await submitAuth(
+    page,
+    "/api/auth/request-code",
+    page.getByRole("button", { name: "שליחת קוד למייל" })
+  );
   await expect(page.getByLabel("קוד כניסה", { exact: true })).toBeVisible();
   const [account] = await db.select().from(user).where(eq(user.email, email));
   const [message] = (
@@ -66,7 +71,11 @@ async function login(page: Page, email: string) {
   await page
     .getByLabel("קוד כניסה", { exact: true })
     .fill(openSecret(message.encryptedSecret!));
-  await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
+  await submitAuth(
+    page,
+    "/api/auth/verify-code",
+    page.getByRole("button", { name: "כניסה לחשבון", exact: true })
+  );
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })
   ).toBeVisible();

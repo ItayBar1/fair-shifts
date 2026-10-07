@@ -1,7 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
+import { google } from "better-auth/social-providers";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
@@ -10,6 +12,19 @@ import { accountAvailable, type Actor, useRecoveryCode } from "./accounts";
 import { sessionLifetime, secret, type Role } from "./policy";
 import { requestCode, verifyCode } from "./otp";
 import { AppError } from "../errors";
+import { CALENDAR_SCOPE } from "../../domain/calendar-sync";
+import { calendarSyncEnabled } from "../calendar/config";
+import { recordGoogleGrant } from "../calendar/link";
+
+type GoogleProof = {
+  userId: string;
+  epoch: number;
+  subject: string;
+  scopes?: readonly string[] | null;
+  refreshToken?: string | null;
+};
+// The proof and grant belong to one callback, never to another concurrent login.
+const googleAttempt = new AsyncLocalStorage<{ proof?: GoogleProof }>();
 
 async function authOperation<T>(work: () => Promise<T>): Promise<T> {
   try {
@@ -56,22 +71,108 @@ export function createProvenSession<T>(
   );
 }
 
+/**
+ * Google as the sign-in provider. With the calendar sync on (decision 195) every
+ * request also asks for the one calendar permission and for a refresh token, and each
+ * answer records what Google granted. Better Auth keeps neither access nor refresh
+ * token (see the account hooks below): the sync holds its own sealed copy.
+ */
+export function googleProvider() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return {};
+  const base = {
+    clientId,
+    clientSecret,
+    disableSignUp: true,
+    includeGrantedScopes: false,
+  };
+  const standard = google(base);
+  return {
+    google: {
+      ...base,
+      ...(calendarSyncEnabled() && {
+        scope: [CALENDAR_SCOPE],
+        accessType: "offline" as const,
+      }),
+      // Read the identity through the provider before using it. Keep the actual
+      // response scopes: Better Auth deliberately omits scope on repeat sign-in.
+      getUserInfo: async (
+        token: Parameters<typeof standard.getUserInfo>[0]
+      ) => {
+        const result = await standard.getUserInfo(token);
+        const identity = result?.user;
+        // In 1.7.6 Google intentionally leaves user.id unset; accountSubject
+        // resolves its stable key from the provider profile's sub instead.
+        const subject = result?.data?.sub;
+        const attempt = googleAttempt.getStore();
+        if (identity && typeof subject === "string" && attempt) {
+          const [linked] = await db
+            .select({ userId: tables.account.userId })
+            .from(tables.account)
+            .where(
+              and(
+                eq(tables.account.providerId, "google"),
+                eq(tables.account.accountId, subject)
+              )
+            );
+          const [person] = await db
+            .select()
+            .from(tables.user)
+            .where(
+              linked
+                ? eq(tables.user.id, linked.userId)
+                : eq(tables.user.email, String(identity.email).toLowerCase())
+            );
+          if (person && (linked || identity.emailVerified))
+            attempt.proof = {
+              userId: person.id,
+              epoch: person.securityEpoch,
+              subject,
+              scopes: token.scopes,
+              refreshToken: token.refreshToken,
+            };
+        }
+        return result;
+      },
+    },
+  };
+}
+
+/**
+ * Tokens of the provider are never kept in the account row (decision 195). A hook's
+ * result is merged into the data, so a token is cleared by setting it to null.
+ */
+const providerTokens = [
+  "accessToken",
+  "refreshToken",
+  "accessTokenExpiresAt",
+  "refreshTokenExpiresAt",
+  "idToken",
+] as const;
+function withoutTokens<T extends Record<string, unknown>>(value: T): T {
+  return {
+    ...value,
+    ...Object.fromEntries(providerTokens.map((key) => [key, null])),
+  };
+}
+
 function configureAuth() {
   return betterAuth({
     secret: secret("BETTER_AUTH_SECRET"),
     baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
     database: drizzleAdapter(db, { provider: "pg", schema: tables }),
     emailAndPassword: { enabled: false },
-    socialProviders:
-      process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-        ? {
-            google: {
-              clientId: process.env.GOOGLE_CLIENT_ID,
-              clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-              disableSignUp: true,
-            },
-          }
-        : {},
+    socialProviders: googleProvider(),
+    logger: {
+      level: "warn",
+      // Library/provider exceptions may include OAuth request bodies or tokens.
+      // Keep the operational signal, without logging their untrusted content.
+      log: (level) => {
+        if (level === "error") console.error("Authentication operation failed");
+        else if (level === "warn") console.warn("Authentication warning");
+      },
+    },
     account: {
       // The invitation address is the local proof, so an invited person may
       // start with Google before ever using a code. Google is not trusted by
@@ -107,6 +208,22 @@ function configureAuth() {
       account: {
         create: {
           before: async (value) => {
+            const proof = googleAttempt.getStore()?.proof;
+            if (value.providerId === "google") {
+              const [person] = await db
+                .select()
+                .from(tables.user)
+                .where(eq(tables.user.id, value.userId));
+              if (
+                !proof ||
+                proof.userId !== value.userId ||
+                proof.subject !== value.accountId ||
+                !person ||
+                person.securityEpoch !== proof.epoch ||
+                !(await accountAvailable(person))
+              )
+                return false;
+            }
             const [linked] = await db
               .select({ id: tables.account.id })
               .from(tables.account)
@@ -117,7 +234,11 @@ function configureAuth() {
                 )
               );
             if (linked) return false;
+            return { data: withoutTokens(value) };
           },
+        },
+        update: {
+          before: async (value) => ({ data: withoutTokens(value) }),
         },
       },
       session: {
@@ -131,12 +252,21 @@ function configureAuth() {
                 .for("update");
               if (!person || !(await accountAvailable(person, tx)))
                 return false;
+              const googleProof = googleAttempt.getStore()?.proof;
+              if (
+                googleProof &&
+                (googleProof.userId !== person.id ||
+                  googleProof.epoch !== person.securityEpoch)
+              )
+                return false;
               // Epochs start at 1; 0 is the default of a provider sign-in, which proves nothing.
               const proofEpoch = (
                 value as typeof value & { securityEpoch?: number }
               ).securityEpoch;
               if (proofEpoch && proofEpoch !== person.securityEpoch)
                 return false;
+              if (googleProof)
+                await recordGoogleGrant(person.id, googleProof, tx);
               await tx
                 .update(tables.user)
                 .set({
@@ -213,7 +343,41 @@ function configureAuth() {
 }
 let instance: ReturnType<typeof configureAuth> | undefined;
 export function getAuth() {
-  return (instance ??= configureAuth());
+  if (!instance) {
+    instance = configureAuth();
+    const handler = instance.handler;
+    instance.handler = async (request) => {
+      if (
+        request.method === "POST" &&
+        new URL(request.url).pathname.endsWith("/sign-in/social")
+      ) {
+        const payload = (await request
+          .clone()
+          .json()
+          .catch(() => null)) as Record<string, unknown> | null;
+        if (payload?.provider === "google") {
+          const parameters = payload.additionalParams;
+          const prompt =
+            parameters &&
+            typeof parameters === "object" &&
+            "prompt" in parameters
+              ? parameters.prompt
+              : undefined;
+          // The server owns OAuth scopes and offline access. A direct caller
+          // cannot broaden access with scopes or authorization parameters.
+          request = new Request(request, {
+            body: JSON.stringify({
+              ...payload,
+              scopes: [],
+              additionalParams: typeof prompt === "string" ? { prompt } : {},
+            }),
+          });
+        }
+      }
+      return googleAttempt.run({}, () => handler(request));
+    };
+  }
+  return instance;
 }
 export async function getActor(headers: Headers): Promise<Actor | null> {
   const authSession = await getAuth().api.getSession({ headers });

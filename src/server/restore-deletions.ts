@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { unitTransaction, type Database, type DbTransaction } from "./db";
 import { soldiers } from "./schema";
 import { user } from "./auth-schema";
+import { purgeCalendarLink } from "./calendar/link";
 import { audit, createRecord, type Actor } from "./repository";
 import { invariant } from "./errors";
 import { eraseSoldier } from "./soldier-deletion";
@@ -85,8 +86,18 @@ export async function applyLoggedDeletions(
         .from(soldiers)
         .where(eq(soldiers.id, entry.soldierId));
       if (!person) notInDatabase++;
-      else if (person.deletedAt) alreadyDeleted++;
-      else {
+      else if (person.deletedAt) {
+        // A restored grant must never outlive a recorded deletion, even when the
+        // backup already marks the soldier deleted. No provider calls during restore.
+        const accounts = await tx
+          .select({ id: user.id })
+          .from(user)
+          .where(eq(user.soldierId, person.id))
+          .for("update");
+        for (const login of accounts)
+          await purgeCalendarLink(tx, login.id, { collect: false });
+        alreadyDeleted++;
+      } else {
         await eraseSoldier(tx, RESTORE_ACTOR, entry.soldierId, {
           reason: "Applied again from the deletion log after a restore",
           restored: { at: entry.at },

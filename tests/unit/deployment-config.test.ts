@@ -108,4 +108,16 @@ describe("deployment configuration check", () => {
     ).toEqual([]);
     expect(errorsFor({ RESTORE_MODE: "yes" })).toHaveLength(1);
   });
+  it("requires an explicit Calendar flag and a configured Google client before enabling sync", () => {
+    expect(errorsFor({ GOOGLE_CALENDAR_SYNC: "false" })).toEqual([]);
+    expect(errorsFor({ GOOGLE_CALENDAR_SYNC: "yes" })).toHaveLength(1);
+    expect(errorsFor({ GOOGLE_CALENDAR_SYNC: "true" })).toHaveLength(1);
+    expect(
+      errorsFor({
+        GOOGLE_CALENDAR_SYNC: "true",
+        GOOGLE_CLIENT_ID: "synthetic-id",
+        GOOGLE_CLIENT_SECRET: "synthetic-secret",
+      })
+    ).toEqual([]);
+  });
 });

@@ -106,6 +106,12 @@ import {
   saveDefaults,
   savePreferences,
 } from "./notifications";
+import {
+  requestFutureRemoval,
+  scheduleCalendarCleanup,
+  setCalendarSwitch,
+  type CalendarCleanup,
+} from "./calendar/link";
 
 export async function executeAction(actor: Actor, value: unknown) {
   const command = commandSchema.parse(value);
@@ -118,6 +124,8 @@ export async function executeAction(actor: Actor, value: unknown) {
       })
     )
     .digest("hex");
+  // What a deletion leaves to remove from Google, run only after its commit (decision 195).
+  const calendarCleanups: CalendarCleanup[] = [];
   const result = await unitTransaction(async (tx) => {
     await assertActorCurrent(actor, tx);
     const [previous] = await tx
@@ -197,7 +205,13 @@ export async function executeAction(actor: Actor, value: unknown) {
         );
         break;
       case "soldier.delete":
-        result = await deleteSoldier(tx, actor, payload, expectedVersion);
+        result = await deleteSoldier(
+          tx,
+          actor,
+          payload,
+          expectedVersion,
+          calendarCleanups
+        );
         break;
       case "soldier.timeline.preview":
         result = await previewTimelineAdd(tx, actor, payload, expectedVersion);
@@ -507,7 +521,13 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await requestEmailChange(tx, actor, payload, expectedVersion);
         break;
       case "account.email.confirm":
-        result = await confirmEmailChange(tx, actor, payload, expectedVersion);
+        result = await confirmEmailChange(
+          tx,
+          actor,
+          payload,
+          expectedVersion,
+          calendarCleanups
+        );
         break;
       case "technical.email.request":
         result = await requestTechnicalEmailChange(tx, actor, payload);
@@ -529,6 +549,12 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "notification.defaults.save":
         result = await saveDefaults(tx, actor, payload, expectedVersion);
+        break;
+      case "calendar.switch":
+        result = await setCalendarSwitch(tx, actor, payload, expectedVersion);
+        break;
+      case "calendar.remove.future":
+        result = await requestFutureRemoval(tx, actor, expectedVersion);
         break;
       case "backup.request":
         result = await requestBackup(tx, actor);
@@ -557,5 +583,6 @@ export async function executeAction(actor: Actor, value: unknown) {
     };
     throw new AppError(failure.code, failure.message, failure.status);
   }
+  for (const cleanup of calendarCleanups) void scheduleCalendarCleanup(cleanup);
   return result;
 }
