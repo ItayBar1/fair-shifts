@@ -741,6 +741,14 @@ export const stories: Record<number, Entry> = {
   ]),
   46: covered([
     ...t(
+      I.google,
+      "rejects a link inserted after the hook approved it",
+      "rejects a session inserted after its hook approved an epoch",
+      "requires a proven epoch even when no Google proof exists",
+      "requires a verified current email once for a legacy Google link",
+      "refuses direct idToken sign-in"
+    ),
+    ...t(
       I.otp,
       "burns exactly once in a race",
       "anchors the wait to burning",
@@ -1028,6 +1036,14 @@ export const stories: Record<number, Entry> = {
 export const scenarios: Record<number, Entry> = {
   1: covered(
     [
+      ...t(
+        I.google,
+        "rejects a link inserted after the hook approved it",
+        "rejects a session inserted after its hook approved an epoch",
+        "requires a proven epoch even when no Google proof exists",
+        "requires a verified current email once for a legacy Google link",
+        "refuses direct idToken sign-in"
+      ),
       ...t(
         I.google,
         "lets an invited person start with Google and then use either Google or an email code",
@@ -1855,7 +1871,7 @@ export const scenarios: Record<number, Entry> = {
   56: covered([
     ...t(
       I.access,
-      "resets earlier failures on a provider sign-in before a lock, but not on a resend"
+      "keeps failures on resend and refuses an unproven provider session instead of resetting them"
     ),
     ...t(
       I.google,

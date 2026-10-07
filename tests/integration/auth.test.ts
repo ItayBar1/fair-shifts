@@ -587,6 +587,9 @@ describe("first duty vertical slice", () => {
       id: "synthetic-google",
       userId: memberId,
       providerId: "google",
+      proofEpoch: 1,
+      googleLinkGeneration: 1,
+      needsEmailVerification: false,
       accountId: "synthetic-sub",
     });
     await db.insert(session).values({

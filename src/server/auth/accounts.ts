@@ -291,6 +291,7 @@ export async function deleteAccountAuth(targetId: string, tx?: DbTransaction) {
         image: null,
         deletedAt: new Date(),
         securityEpoch: target.securityEpoch + 1,
+        googleLinkGeneration: target.googleLinkGeneration + 1,
         updatedAt: new Date(),
       })
       .where(eq(user.id, targetId));
@@ -442,6 +443,7 @@ export async function applyVerifiedEmailChange(
       email: normalizeEmail(newEmail),
       emailVerified: true,
       securityEpoch: target.securityEpoch + 1,
+      googleLinkGeneration: target.googleLinkGeneration + 1,
       updatedAt: new Date(),
     })
     .where(eq(user.id, target.id));

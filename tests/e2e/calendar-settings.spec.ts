@@ -84,6 +84,9 @@ test.beforeAll(async ({ browser }) => {
       userId: ids[email],
       accountId: `sub-${ids[email]}`,
       providerId: "google",
+      proofEpoch: 1,
+      googleLinkGeneration: 1,
+      needsEmailVerification: false,
     });
   await db.insert(calendarLink).values({
     accountId: ids[people[2][1]],

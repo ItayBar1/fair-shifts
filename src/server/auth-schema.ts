@@ -37,6 +37,10 @@ export const user = pgTable(
       .notNull()
       .default(1),
     securityEpoch: integer("security_epoch").notNull().default(1),
+    // Changes only when Google is disconnected, independently of role revocations.
+    googleLinkGeneration: integer("google_link_generation")
+      .notNull()
+      .default(1),
     failedAttempts: integer("failed_attempts").notNull().default(0),
     nextCodeAllowedAt: timestamp("next_code_allowed_at", {
       withTimezone: true,
@@ -79,6 +83,8 @@ export const session = pgTable(
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
     securityEpoch: integer("security_epoch").notNull(),
+    googleSubject: text("google_subject"),
+    googleLinkGeneration: integer("google_link_generation"),
     ...dates(),
   },
   (t) => [index("auth_session_user").on(t.userId)]
@@ -92,6 +98,13 @@ export const account = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
+    googleLinkGeneration: integer("google_link_generation")
+      .notNull()
+      .default(1),
+    proofEpoch: integer("proof_epoch"),
+    needsEmailVerification: boolean("needs_email_verification")
+      .notNull()
+      .default(true),
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),

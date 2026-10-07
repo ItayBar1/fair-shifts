@@ -429,3 +429,163 @@ describe("Google sign-in after the technical account changes its address (decisi
     expect(intruder).toMatchObject({ signedIn: false, cookie: "" });
   });
 });
+
+describe("security #125: Google authority at the actual database write", () => {
+  it("rejects a link inserted after the hook approved it and the email changed, including the next old-sub login", async () => {
+    const hook = getAuth().options.databaseHooks!.account!.create!;
+    const original = hook.before!;
+    const race = vi
+      .spyOn(hook, "before")
+      .mockImplementationOnce(async (...args) => {
+        const result = await original(...args);
+        await db.transaction((tx) =>
+          applyVerifiedEmailChange(tx, memberId, emails.other)
+        );
+        return result;
+      });
+    const old = {
+      sub: "sub-after-hook",
+      email: emails.member,
+      email_verified: true,
+    };
+    try {
+      expect(await googleSignIn(old)).toMatchObject({
+        signedIn: false,
+        cookie: "",
+      });
+    } finally {
+      race.mockRestore();
+    }
+    expect(await googleLinks(memberId)).toHaveLength(0);
+    expect(await googleSignIn(old)).toMatchObject({
+      signedIn: false,
+      cookie: "",
+    });
+    expect(await googleLinks(memberId)).toHaveLength(0);
+    expect((await person(memberId)).googleLinkGeneration).toBe(2);
+    expect(
+      await googleSignIn({
+        sub: "sub-current-owner",
+        email: emails.other,
+        email_verified: true,
+      })
+    ).toMatchObject({ signedIn: true });
+  });
+
+  it("rejects a session inserted after its hook approved an epoch that a role change revoked", async () => {
+    const profile = {
+      sub: "sub-session-race",
+      email: emails.member,
+      email_verified: true,
+    };
+    const hook = getAuth().options.databaseHooks!.session!.create!;
+    const original = hook.before!;
+    const race = vi
+      .spyOn(hook, "before")
+      .mockImplementationOnce(async (...args) => {
+        const result = await original(...args);
+        await db
+          .update(user)
+          .set({ role: "manager", securityEpoch: 2 })
+          .where(eq(user.id, memberId));
+        return result;
+      });
+    try {
+      expect(await googleSignIn(profile)).toMatchObject({
+        signedIn: false,
+        cookie: "",
+      });
+    } finally {
+      race.mockRestore();
+    }
+    expect(
+      await db.select().from(session).where(eq(session.userId, memberId))
+    ).toHaveLength(0);
+    // A role change invalidates sessions, not the independently versioned Google link.
+    expect((await person(memberId)).googleLinkGeneration).toBe(1);
+    expect(await googleLinks(memberId)).toHaveLength(1);
+    expect(await googleSignIn(profile)).toMatchObject({ signedIn: true });
+  });
+
+  it("requires a proven epoch even when no Google proof exists", async () => {
+    const context = await getAuth().$context;
+    expect(await context.internalAdapter.createSession(memberId)).toBeNull();
+    expect(
+      await db.select().from(session).where(eq(session.userId, memberId))
+    ).toHaveLength(0);
+    expect((await person(memberId)).firstSignInAt).toBeNull();
+  });
+
+  it("requires a verified current email once for a legacy Google link, then preserves its stable sub", async () => {
+    const profile = {
+      sub: "sub-legacy",
+      email: emails.member,
+      email_verified: true,
+    };
+    await googleSignIn(profile);
+    await db
+      .update(account)
+      .set({ needsEmailVerification: true, proofEpoch: null })
+      .where(eq(account.userId, memberId));
+    for (const candidate of [
+      { ...profile, email: emails.other },
+      { ...profile, email_verified: false },
+    ])
+      expect(await googleSignIn(candidate)).toMatchObject({
+        signedIn: false,
+        cookie: "",
+      });
+    expect(
+      (await db.select().from(account).where(eq(account.userId, memberId)))[0]
+        .needsEmailVerification
+    ).toBe(true);
+    expect(await googleSignIn(profile)).toMatchObject({ signedIn: true });
+    expect(
+      (await db.select().from(account).where(eq(account.userId, memberId)))[0]
+        .needsEmailVerification
+    ).toBe(false);
+    expect(
+      await googleSignIn({ ...profile, email: emails.other })
+    ).toMatchObject({ signedIn: true });
+  });
+
+  it("refuses direct idToken sign-in and still requires state and PKCE for redirects", async () => {
+    const direct = await getAuth().handler(
+      new Request(`${base}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { origin: base, "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: "google",
+          idToken: { token: "synthetic-token" },
+        }),
+      })
+    );
+    expect(direct.status).toBe(404);
+    const start = await getAuth().handler(
+      new Request(`${base}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { origin: base, "content-type": "application/json" },
+        body: JSON.stringify({ provider: "google", callbackURL: "/" }),
+      })
+    );
+    const authorization = new URL(
+      ((await start.json()) as { url: string }).url
+    );
+    expect(authorization.searchParams.get("state")).toBeTruthy();
+    expect(authorization.searchParams.get("code_challenge")).toBeTruthy();
+    expect(authorization.searchParams.get("code_challenge_method")).toBe(
+      "S256"
+    );
+    const code = randomUUID();
+    profiles.set(code, {
+      sub: "sub-no-state",
+      email: emails.member,
+      email_verified: true,
+    });
+    const callback = await getAuth().handler(
+      new Request(`${base}/api/auth/callback/google?code=${code}&state=invalid`)
+    );
+    expect(cookiesOf(callback)).not.toContain("session_token");
+    expect(await googleLinks(memberId)).toHaveLength(0);
+  });
+});

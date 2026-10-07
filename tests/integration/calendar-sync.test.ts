@@ -210,6 +210,9 @@ async function connect(
     userId: actor.id,
     accountId: `sub-${actor.id}`,
     providerId: "google",
+    proofEpoch: actor.securityEpoch,
+    googleLinkGeneration: 1,
+    needsEmailVerification: false,
   });
   google.grant(token);
   await recordGoogleGrant(actor.id, {
@@ -738,6 +741,9 @@ describe("the switch and the button that removes the future duties", () => {
       userId: member.id,
       accountId: "sub-member",
       providerId: "google",
+      proofEpoch: member.securityEpoch,
+      googleLinkGeneration: 1,
+      needsEmailVerification: false,
     });
     expect((await readState(member)).calendar).toMatchObject({
       state: "needs_permission",

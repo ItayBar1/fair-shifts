@@ -19,6 +19,7 @@ import { recordGoogleGrant } from "../calendar/link";
 type GoogleProof = {
   userId: string;
   epoch: number;
+  generation: number;
   subject: string;
   scopes?: readonly string[] | null;
   refreshToken?: string | null;
@@ -86,6 +87,7 @@ export function googleProvider() {
     clientSecret,
     disableSignUp: true,
     includeGrantedScopes: false,
+    disableIdTokenSignIn: true,
   };
   const standard = google(base);
   return {
@@ -107,31 +109,68 @@ export function googleProvider() {
         const subject = result?.data?.sub;
         const attempt = googleAttempt.getStore();
         if (identity && typeof subject === "string" && attempt) {
-          const [linked] = await db
-            .select({ userId: tables.account.userId })
-            .from(tables.account)
-            .where(
-              and(
-                eq(tables.account.providerId, "google"),
-                eq(tables.account.accountId, subject)
+          attempt.proof = await db.transaction(async (tx) => {
+            const [candidate] = await tx
+              .select()
+              .from(tables.account)
+              .where(
+                and(
+                  eq(tables.account.providerId, "google"),
+                  eq(tables.account.accountId, subject)
+                )
+              );
+            const [person] = await tx
+              .select()
+              .from(tables.user)
+              .where(
+                candidate
+                  ? eq(tables.user.id, candidate.userId)
+                  : eq(
+                      tables.user.email,
+                      String(identity.email).trim().toLowerCase()
+                    )
               )
-            );
-          const [person] = await db
-            .select()
-            .from(tables.user)
-            .where(
-              linked
-                ? eq(tables.user.id, linked.userId)
-                : eq(tables.user.email, String(identity.email).toLowerCase())
-            );
-          if (person && (linked || identity.emailVerified))
-            attempt.proof = {
+              .for("update");
+            if (!person || !(await accountAvailable(person, tx))) return;
+            // Re-read after locking: a disconnect may have committed during the lookup.
+            const [linked] = await tx
+              .select()
+              .from(tables.account)
+              .where(
+                and(
+                  eq(tables.account.providerId, "google"),
+                  eq(tables.account.accountId, subject)
+                )
+              );
+            if (candidate && (!linked || linked.userId !== person.id)) return;
+            if (linked) {
+              if (linked.googleLinkGeneration !== person.googleLinkGeneration)
+                return;
+              if (linked.needsEmailVerification) {
+                if (
+                  !identity.emailVerified ||
+                  String(identity.email).trim().toLowerCase() !== person.email
+                )
+                  return;
+                await tx
+                  .update(tables.account)
+                  .set({ needsEmailVerification: false })
+                  .where(eq(tables.account.id, linked.id));
+              }
+            } else if (
+              !identity.emailVerified ||
+              String(identity.email).trim().toLowerCase() !== person.email
+            )
+              return;
+            return {
               userId: person.id,
               epoch: person.securityEpoch,
+              generation: person.googleLinkGeneration,
               subject,
               scopes: token.scopes,
               refreshToken: token.refreshToken,
             };
+          });
         }
         return result;
       },
@@ -176,6 +215,15 @@ function configureAuth() {
       },
     },
     account: {
+      additionalFields: {
+        googleLinkGeneration: { type: "number", input: false, required: false },
+        proofEpoch: { type: "number", input: false, required: false },
+        needsEmailVerification: {
+          type: "boolean",
+          input: false,
+          required: false,
+        },
+      },
       // The invitation address is the local proof, so an invited person may
       // start with Google before ever using a code. Google is not trusted by
       // name: the first link needs Google's own email_verified claim.
@@ -186,6 +234,8 @@ function configureAuth() {
       disableSessionRefresh: true,
       cookieCache: { enabled: false },
       additionalFields: {
+        googleSubject: { type: "string", input: false, required: false },
+        googleLinkGeneration: { type: "number", input: false, required: false },
         securityEpoch: {
           type: "number",
           required: true,
@@ -222,6 +272,7 @@ function configureAuth() {
                 proof.subject !== value.accountId ||
                 !person ||
                 person.securityEpoch !== proof.epoch ||
+                person.googleLinkGeneration !== proof.generation ||
                 !(await accountAvailable(person))
               )
                 return false;
@@ -236,7 +287,17 @@ function configureAuth() {
                 )
               );
             if (linked) return false;
-            return { data: withoutTokens(value) };
+            return {
+              data: {
+                ...withoutTokens(value),
+                ...(value.providerId === "google" &&
+                  proof && {
+                    googleLinkGeneration: proof.generation,
+                    proofEpoch: proof.epoch,
+                    needsEmailVerification: false,
+                  }),
+              },
+            };
           },
         },
         update: {
@@ -265,6 +326,26 @@ function configureAuth() {
               const proofEpoch = (
                 value as typeof value & { securityEpoch?: number }
               ).securityEpoch;
+              if (!googleProof && !proofEpoch) return false;
+              if (googleProof) {
+                const [linked] = await tx
+                  .select()
+                  .from(tables.account)
+                  .where(
+                    and(
+                      eq(tables.account.userId, person.id),
+                      eq(tables.account.providerId, "google"),
+                      eq(tables.account.accountId, googleProof.subject)
+                    )
+                  );
+                if (
+                  googleProof.generation !== person.googleLinkGeneration ||
+                  !linked ||
+                  linked.googleLinkGeneration !== googleProof.generation ||
+                  linked.needsEmailVerification
+                )
+                  return false;
+              }
               if (proofEpoch && proofEpoch !== person.securityEpoch)
                 return false;
               if (googleProof)
@@ -281,6 +362,8 @@ function configureAuth() {
                 data: {
                   ...value,
                   securityEpoch: proofEpoch || person.securityEpoch,
+                  googleSubject: googleProof?.subject ?? null,
+                  googleLinkGeneration: googleProof?.generation ?? null,
                   expiresAt: new Date(
                     Date.now() + sessionLifetime(person.role as Role)
                   ),

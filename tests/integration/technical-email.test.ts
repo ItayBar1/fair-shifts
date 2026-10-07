@@ -244,6 +244,9 @@ describe("security #123: manager email authority", () => {
       userId: ids.manager,
       providerId: "google",
       accountId: "manager-old-sub",
+      proofEpoch: before.securityEpoch,
+      googleLinkGeneration: before.googleLinkGeneration,
+      needsEmailVerification: false,
     });
     await askManager();
     const codes = await codesSent(ids.manager);
@@ -584,6 +587,9 @@ describe("confirming with both codes", () => {
       userId: ids.technical,
       providerId: "google",
       accountId: "technical-sub",
+      proofEpoch: 1,
+      googleLinkGeneration: 1,
+      needsEmailVerification: false,
     });
     await db.insert(session).values({
       id: "technical-session",
@@ -794,6 +800,9 @@ describe("the server route", () => {
       userId: ids.technical,
       providerId: "google",
       accountId: "technical-sub-server",
+      proofEpoch: 1,
+      googleLinkGeneration: 1,
+      needsEmailVerification: false,
     });
     await requestServerEmailChange(emails.technical, emails.next, reason);
     const code = await newAddressCode();

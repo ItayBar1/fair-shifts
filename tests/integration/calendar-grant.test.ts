@@ -382,10 +382,11 @@ describe("the Google sign-in and the calendar permission (decision 195)", () => 
     "refuses a callback whose proof loses authority before session creation: %s",
     async (change) => {
       await googleSignIn(profile("sub-member", "member"));
-      const transaction = db.transaction.bind(db);
+      const sessionHook = getAuth().options.databaseHooks!.session!.create!;
+      const original = sessionHook.before!;
       const hook = vi
-        .spyOn(db, "transaction")
-        .mockImplementationOnce(async (work, options) => {
+        .spyOn(sessionHook, "before")
+        .mockImplementationOnce(async (...args) => {
           await db
             .update(user)
             .set({
@@ -395,7 +396,7 @@ describe("the Google sign-in and the calendar permission (decision 195)", () => 
               ...(change === "deletion" && { deletedAt: new Date() }),
             })
             .where(eq(user.id, memberId));
-          return transaction(work, options);
+          return original(...args);
         });
       try {
         const result = await googleSignIn(profile("sub-member", "member"), {
