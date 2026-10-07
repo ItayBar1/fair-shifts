@@ -263,6 +263,7 @@
 
 ### 46. כחייל, אני רוצה להציע החלפה של שתי תורנויות כדי ששתי ההעברות יושלמו יחד או לא יושלמו כלל. — מכוסה
 
+- [google-sign-in.test.ts](../tests/integration/google-sign-in.test.ts): `rejects a link inserted after the hook approved it`; `rejects a session inserted after its hook approved an epoch`; `requires a proven epoch even when no Google proof exists`; `requires a verified current email once for a legacy Google link`; `refuses direct idToken sign-in`
 - [otp-protection.test.ts](../tests/integration/otp-protection.test.ts): `burns exactly once in a race`; `anchors the wait to burning`; `doubles each burn delay to 24 hours`; `gives the same code-request response`; `returns an identical recovery error`; `does not trust client-provided proxy headers`; `enforces 60 requests, 300 verifications and 10 recoveries`; `applies the rate limit at the public authentication route`
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `swaps both seats together with their full value, without a score check, and completes once when two acceptances race`; `rechecks both sides at acceptance and keeps both seats when one side no longer fits, without revealing the offerer's reason`
 - [swaps.spec.ts](../tests/e2e/swaps.spec.ts): `two soldiers swap seats by consent, and a manager approves a swap that needs an exception`
@@ -386,7 +387,7 @@
 
 ### 1. כניסה לחשבון קיים — חיילים וחשבונות — מכוסה
 
-- [google-sign-in.test.ts](../tests/integration/google-sign-in.test.ts): `lets an invited person start with Google and then use either Google or an email code`; `refuses an uninvited address and an address Google has not verified, creating nothing`
+- [google-sign-in.test.ts](../tests/integration/google-sign-in.test.ts): `rejects a link inserted after the hook approved it`; `rejects a session inserted after its hook approved an epoch`; `requires a proven epoch even when no Google proof exists`; `requires a verified current email once for a legacy Google link`; `refuses direct idToken sign-in`; `lets an invited person start with Google and then use either Google or an email code`; `refuses an uninvited address and an address Google has not verified, creating nothing`
 - [auth.test.ts](../tests/integration/auth.test.ts): `does not create an account or send mail for an unknown address`; `expires a code at ten minutes`; `consumes a code only once`
 - ספקים, שרת ופיילוט:
   - נבדק: כניסה אמיתית ב־Google ב־staging (#25)
@@ -719,7 +720,7 @@
 
 ### 56. איפוס טעויות — חשבונות — מכוסה
 
-- [access.test.ts](../tests/integration/access.test.ts): `resets earlier failures on a provider sign-in before a lock, but not on a resend`
+- [access.test.ts](../tests/integration/access.test.ts): `keeps failures on resend and refuses an unproven provider session instead of resetting them`
 - [google-sign-in.test.ts](../tests/integration/google-sign-in.test.ts): `resets earlier code failures on a Google success, and a lock blocks Google and its sessions`
 - [auth.test.ts](../tests/integration/auth.test.ts): `retains failures on resend, resets on success, and consumes a code only once`
 

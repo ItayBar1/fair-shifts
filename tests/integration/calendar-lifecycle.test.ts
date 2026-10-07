@@ -77,6 +77,9 @@ beforeEach(async () => {
   await db.insert(account).values({
     id: randomUUID(),
     providerId: "google",
+    proofEpoch: invited.securityEpoch,
+    googleLinkGeneration: invited.googleLinkGeneration,
+    needsEmailVerification: false,
     accountId: "synthetic-calendar-subject",
     userId: accountId,
   });

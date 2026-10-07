@@ -490,14 +490,14 @@ describe("failed codes, lock and release", () => {
     );
   });
 
-  it("resets earlier failures on a provider sign-in before a lock, but not on a resend", async () => {
+  it("keeps failures on resend and refuses an unproven provider session instead of resetting them", async () => {
     await requestCode(emails.member);
     for (let attempt = 0; attempt < 4; attempt++) await fail(emails.member);
     await allowResend(ids.member);
     await requestCode(emails.member);
     expect((await account(ids.member)).failedAttempts).toBe(4);
-    expect(await providerSession(ids.member)).not.toBeNull();
-    expect((await account(ids.member)).failedAttempts).toBe(0);
+    expect(await providerSession(ids.member)).toBeNull();
+    expect((await account(ids.member)).failedAttempts).toBe(4);
   });
 });
 

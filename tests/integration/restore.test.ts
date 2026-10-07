@@ -565,6 +565,19 @@ describe("a restore drill", () => {
     const client = await pool.connect();
     try {
       await client.query("begin");
+      await client.query("drop trigger google_account_proof on auth_account");
+      await client.query("drop trigger session_proof on auth_session");
+      await client.query("drop function fs_google_account_guard()");
+      await client.query("drop function fs_session_proof_guard()");
+      await client.query(
+        "alter table auth_account drop column google_link_generation, drop column proof_epoch, drop column needs_email_verification"
+      );
+      await client.query(
+        "alter table auth_session drop column google_subject, drop column google_link_generation"
+      );
+      await client.query(
+        "alter table auth_user drop column google_link_generation"
+      );
       await client.query("drop table auth_budget, auth_rate_limit");
       await client.query(
         "alter table auth_user drop column next_code_allowed_at"
@@ -596,15 +609,11 @@ describe("a restore drill", () => {
       client.release();
     }
     try {
-      await db.insert(account).values({
-        id: randomUUID(),
-        providerId: "google",
-        accountId: "synthetic-legacy-subject",
-        userId: people[0]!.id,
-        accessToken: "synthetic-legacy-access",
-        refreshToken: "synthetic-legacy-refresh",
-        idToken: "synthetic-legacy-identity",
-      });
+      // The current ORM knows columns absent from this deliberately old schema.
+      await pool.query(
+        "insert into auth_account (id, provider_id, account_id, user_id, access_token, refresh_token, id_token) values ($1, 'google', 'synthetic-legacy-subject', $2, 'synthetic-legacy-access', 'synthetic-legacy-refresh', 'synthetic-legacy-identity')",
+        [randomUUID(), people[0]!.id]
+      );
       await takeBackup();
     } finally {
       await migrate(db, { migrationsFolder: migrationsFolder() });
