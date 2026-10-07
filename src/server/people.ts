@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { profileInput } from "./validation";
+import { profileInput, technicalUserInput } from "./validation";
 import {
   audit,
   currentVersion,
@@ -36,6 +36,31 @@ export async function saveSoldier(
   options: { populationReviewed?: boolean } = {}
 ) {
   manager(actor);
+  return persistSoldier(tx, actor, payload, expectedVersion, options);
+}
+
+/** Technical-only identity intake shares the ordinary atomic creation path. */
+export async function createTechnicalUser(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown
+) {
+  invariant(
+    actor.role === "technical",
+    "FORBIDDEN",
+    "רק מנהל טכני מוסיף משתמש במסך זה",
+    403
+  );
+  return persistSoldier(tx, actor, technicalUserInput.parse(payload));
+}
+
+async function persistSoldier(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number,
+  options: { populationReviewed?: boolean } = {}
+) {
   const input = profileInput.parse(payload);
   const [existing] = input.id
     ? await tx.select().from(soldiers).where(eq(soldiers.id, input.id))
@@ -181,6 +206,8 @@ export async function saveSoldier(
       },
       tx
     );
+    if (actor.role === "technical")
+      await audit(tx, actor, "account.create", account.id, {}, id);
     await enqueueEmail(tx, {
       recipientAccountId: account.id,
       eventKey: `invitation:${account.id}`,
@@ -216,7 +243,8 @@ export async function saveSoldier(
       id,
       { changes }
     );
-  } else await audit(tx, actor, "soldier.create", id, {}, id);
+  } else if (actor.role !== "technical")
+    await audit(tx, actor, "soldier.create", id, {}, id);
   if (existing) await reassessAssignments(tx, id);
   await refreshRankReminders(tx);
   return { id, version: data.version };

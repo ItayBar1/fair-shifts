@@ -341,11 +341,15 @@
 - [domain.test.ts](../tests/unit/domain.test.ts): `routes a volunteer's exemption or rank exception to a manager instead of blocking`
 - [rank-conditions.test.ts](../tests/unit/rank-conditions.test.ts): `leaves a manual selection to an explicit exception instead of blocking`
 
-### 60. כמנהל טכני, אני רוצה להעניק ולהסיר הרשאת אחראי, כדי לשלוט בגישת הניהול מחשבון נפרד. — מכוסה
+### 60. כמנהל טכני, אני רוצה להוסיף משתמש בודד ולהעניק ולהסיר הרשאת אחראי, כדי שתמיד אוכל למנות אחראי חדש ולשלוט בגישת הניהול מ… — מכוסה
 
+- [technical-user-create.test.ts](../tests/integration/technical-user-create.test.ts): `creates an invited identity with zero balance without any manager`; `grants the existing manager role, revokes old access`; `refuses soldier and manager actors before validating payload`; `rejects duplicate identity and normalized email`; `replays one idempotent result`; `serializes competing creations`; `rolls back person, contact, balance and account`
+- [technical-user-create.spec.ts](../tests/e2e/technical-user-create.spec.ts): `technical intake without managers, validation, keyboard and promotion`
 - [access.test.ts](../tests/integration/access.test.ts): `rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both`; `keeps the technical account out of soldier records, rankings and role changes`
 - [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `makes the technical account read the account again before changing a role`
 - [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `the technical account grants and removes manager permission, ending the open connection each time`
+- ספקים, שרת ופיילוט:
+  - טרם נבדק: קליטת משתמש ומינוי אחראי חדש בממשק הטכני ב־staging סינתטי (#114)
 
 ### 61. כאחראי, אני רוצה לשחרר חשבון חייל שננעל; כמנהל טכני, אני רוצה לשחרר חשבון אחראי, כדי לאפשר חזרה מבוקרת למערכת. — מכוסה
 
@@ -635,12 +639,16 @@
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `sends a swap whose duty started to a manager, who needs a handover time to approve it and may reject it with a visible reason`
 - [execution-periods.test.ts](../tests/integration/execution-periods.test.ts): `swaps a started seat at a handover for a whole seat that has not started`; `goes to a manager, who sets the handover, and the original seat binds until then`
 
-### 45. מנהל טכני והסרת הרשאה — הרשאות — מכוסה
+### 45. מנהל טכני, קליטת משתמש והרשאות — הרשאות; מקביליות; עברית ונייד — מכוסה
 
+- [technical-user-create.test.ts](../tests/integration/technical-user-create.test.ts): `creates an invited identity with zero balance without any manager`; `grants the existing manager role, revokes old access`; `refuses soldier and manager actors before validating payload`; `rejects invalid or out-of-scope identity fields`; `rejects duplicate identity and normalized email`; `replays one idempotent result`; `serializes competing creations`; `rolls back person, contact, balance and account`
+- [technical-user-create.spec.ts](../tests/e2e/technical-user-create.spec.ts): `technical intake without managers, validation, keyboard and promotion`
 - [access.test.ts](../tests/integration/access.test.ts): `rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both`; `keeps the technical account out of soldier records, rankings and role changes`
 - [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `makes the technical account read the account again before changing a role`; `gives the technical account accounts and operations but no soldiers or scores`
 - [manager-exclusion.test.ts](../tests/integration/manager-exclusion.test.ts): `changes the role only for the technical account, and only from a current version`
 - [access-lifecycle.spec.ts](../tests/e2e/access-lifecycle.spec.ts): `the technical account grants and removes manager permission, ending the open connection each time`
+- ספקים, שרת ופיילוט:
+  - טרם נבדק: קליטת משתמש ומינוי אחראי חדש בממשק הטכני ב־staging סינתטי (#114)
 
 ### 46. קודים, נעילה ושחזור — חשבונות — מכוסה
 

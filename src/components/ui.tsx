@@ -421,9 +421,16 @@ export function ActionDialog({
   submitLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) trigger.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   return (
     <>
       <button
+        ref={trigger}
         className={`btn ${danger ? "danger" : "secondary"}`}
         onClick={() => setOpen(true)}
       >

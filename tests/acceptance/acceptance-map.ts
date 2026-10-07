@@ -87,6 +87,7 @@ const I = {
   staging: "tests/integration/staging-soldiers.test.ts",
   swaps: "tests/integration/swaps.test.ts",
   techEmail: "tests/integration/technical-email.test.ts",
+  techIntake: "tests/integration/technical-user-create.test.ts",
 } as const;
 const E = {
   mine: "tests/e2e/my-assignments.spec.ts",
@@ -164,6 +165,11 @@ const stagingTechnicalAddress: External = {
   what: "החלפת כתובת החשבון הטכני ב־staging לחשבון הייעודי, ומשלוח קוד אמיתי לשתי הכתובות",
   state: "pending",
   ref: "#90",
+};
+const stagingTechnicalIntake: External = {
+  what: "קליטת משתמש ומינוי אחראי חדש בממשק הטכני ב־staging סינתטי",
+  state: "pending",
+  ref: "#114",
 };
 const pilot: External = {
   what: "פיילוט עם שני האחראים ונתוני אמת",
@@ -898,21 +904,38 @@ export const stories: Record<number, Entry> = {
       "leaves a manual selection to an explicit exception instead of blocking"
     ),
   ]),
-  60: covered([
-    ...t(
-      I.access,
-      "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
-      "keeps the technical account out of soldier records, rankings and role changes"
-    ),
-    ...t(
-      I.roles,
-      "makes the technical account read the account again before changing a role"
-    ),
-    ...t(
-      E.access,
-      "the technical account grants and removes manager permission, ending the open connection each time"
-    ),
-  ]),
+  60: covered(
+    [
+      ...t(
+        I.techIntake,
+        "creates an invited identity with zero balance without any manager",
+        "grants the existing manager role, revokes old access",
+        "refuses soldier and manager actors before validating payload",
+        "rejects duplicate identity and normalized email",
+        "replays one idempotent result",
+        "serializes competing creations",
+        "rolls back person, contact, balance and account"
+      ),
+      ...t(
+        "tests/e2e/technical-user-create.spec.ts",
+        "technical intake without managers, validation, keyboard and promotion"
+      ),
+      ...t(
+        I.access,
+        "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
+        "keeps the technical account out of soldier records, rankings and role changes"
+      ),
+      ...t(
+        I.roles,
+        "makes the technical account read the account again before changing a role"
+      ),
+      ...t(
+        E.access,
+        "the technical account grants and removes manager permission, ending the open connection each time"
+      ),
+    ],
+    [stagingTechnicalIntake]
+  ),
   61: covered([
     ...t(
       I.access,
@@ -1596,26 +1619,44 @@ export const scenarios: Record<number, Entry> = {
       "goes to a manager, who sets the handover, and the original seat binds until then"
     ),
   ]),
-  45: covered([
-    ...t(
-      I.access,
-      "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
-      "keeps the technical account out of soldier records, rankings and role changes"
-    ),
-    ...t(
-      I.roles,
-      "makes the technical account read the account again before changing a role",
-      "gives the technical account accounts and operations but no soldiers or scores"
-    ),
-    ...t(
-      I.mgrEx,
-      "changes the role only for the technical account, and only from a current version"
-    ),
-    ...t(
-      E.access,
-      "the technical account grants and removes manager permission, ending the open connection each time"
-    ),
-  ]),
+  45: covered(
+    [
+      ...t(
+        I.techIntake,
+        "creates an invited identity with zero balance without any manager",
+        "grants the existing manager role, revokes old access",
+        "refuses soldier and manager actors before validating payload",
+        "rejects invalid or out-of-scope identity fields",
+        "rejects duplicate identity and normalized email",
+        "replays one idempotent result",
+        "serializes competing creations",
+        "rolls back person, contact, balance and account"
+      ),
+      ...t(
+        "tests/e2e/technical-user-create.spec.ts",
+        "technical intake without managers, validation, keyboard and promotion"
+      ),
+      ...t(
+        I.access,
+        "rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both",
+        "keeps the technical account out of soldier records, rankings and role changes"
+      ),
+      ...t(
+        I.roles,
+        "makes the technical account read the account again before changing a role",
+        "gives the technical account accounts and operations but no soldiers or scores"
+      ),
+      ...t(
+        I.mgrEx,
+        "changes the role only for the technical account, and only from a current version"
+      ),
+      ...t(
+        E.access,
+        "the technical account grants and removes manager permission, ending the open connection each time"
+      ),
+    ],
+    [stagingTechnicalIntake]
+  ),
   46: covered([
     ...t(
       I.access,

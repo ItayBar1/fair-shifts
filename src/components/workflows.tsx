@@ -26,6 +26,7 @@ import {
   QuickAction,
   Notice,
   type Field,
+  ActionDialog,
 } from "./ui";
 import { TransferRequests } from "./transfers";
 import { SwapRequests } from "./swaps";
@@ -547,7 +548,33 @@ function AccountsPanel({
   action: Action;
 }) {
   return (
-    <Panel title="חשבונות והרשאות">
+    <Panel
+      title="חשבונות והרשאות"
+      actions={
+        <ActionDialog
+          title="הוספת משתמש"
+          type="technical.user.create"
+          action={action}
+          submitLabel="יצירת משתמש מוזמן"
+          description="המשתמש יוכל להתחבר במייל המאושר. לאחר היצירה אפשר להעניק לו הרשאת אחראי ברשימת החשבונות. נתוני השירות מנוהלים בידי אחראי התורנויות."
+          fields={[
+            { name: "name", label: "שם מלא", required: true },
+            {
+              name: "personalNumber",
+              label: "מספר אישי",
+              required: true,
+              hint: "ספרות בלבד; אפסים מובילים נשמרים",
+            },
+            {
+              name: "email",
+              label: "מייל מאושר",
+              type: "email",
+              required: true,
+            },
+          ]}
+        />
+      }
+    >
       <Notice>
         החשבון הטכני נפרד מרשימת החיילים ומנהל את הרשאות האחראים. אחראי אינו
         משובץ לתורנויות: מינוי חייל מסמן את שיבוציו הקיימים לטיפול האחראים,

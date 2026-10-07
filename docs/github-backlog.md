@@ -1,5 +1,7 @@
 # לוח המשימות ב־GitHub
 
+07.10.2026 — [#114: הוספת משתמש בודד בידי המנהל הטכני](https://github.com/ItayBar1/fair-shifts/issues/114): נלקח בידי `ItayBar1`, ענף `codex/itaybar1/issue-114-technical-user-create`, על בסיס main ‏`8b5c452`. טופס זהות בלבד ומינוי דרך ההרשאות הקיימות; בלי תלות ב־Calendar #92. דרישות בהכרעה 206, בסיפור 60 ובתרחיש 45. הכרטיס נשאר פתוח עד סקירת PR והדגמה סינתטית ב־staging.
+
 28.09.2026 · [כרטיס המעקב #2](https://github.com/ItayBar1/fair-shifts/issues/2) · בסיס: PR #1 מוזג ב־main ב־commit `2ccf4f2`.
 
 המשתמש אישר ליצור את כרטיסי יתר העבודה. נוצרו 37 Stories וכרטיס מעקב אחד. זו מפת הפניות בעת המסירה; מצב ובעלות שוטפים מתעדכנים ב־GitHub. מפת ההקשר והשלבים ב[מפת הדרך לצוות](team-roadmap.md), ומקורות הדרישות ב[אפיון](duty-management-prd.md) וב[תוכנית](../plans/fair-shifts-implementation.md).
