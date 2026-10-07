@@ -141,7 +141,7 @@ async function invite(email: string, personalNumber: string) {
 }
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, auth_verification, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, auth_verification, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   profiles.clear();
   memberId = await invite(emails.member, "4000001");
@@ -294,8 +294,14 @@ describe("Google sign-in for invited accounts, bound to Google's sub", () => {
     expect(before.signedIn).toBe(true);
     expect((await person(memberId)).failedAttempts).toBe(0);
 
-    for (let attempt = 0; attempt < 5; attempt++)
-      await expect(verifyCode(emails.member, "000000")).rejects.toThrow();
+    // A pre-decision-207 lock still blocks Google; new OTP failures do not lock.
+    await db
+      .update(user)
+      .set({
+        lockedAt: new Date(),
+        securityEpoch: sql`${user.securityEpoch} + 1`,
+      })
+      .where(eq(user.id, memberId));
     expect((await person(memberId)).lockedAt).not.toBeNull();
     expect(await getActor(new Headers({ cookie: before.cookie }))).toBeNull();
 

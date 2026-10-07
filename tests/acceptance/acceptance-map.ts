@@ -69,6 +69,7 @@ const I = {
   publish: "tests/integration/publish-drafts.test.ts",
   audit: "tests/integration/audit-log.test.ts",
   auth: "tests/integration/auth.test.ts",
+  otp: "tests/integration/otp-protection.test.ts",
   backup: "tests/integration/backup.test.ts",
   cancel: "tests/integration/cancellation-requests.test.ts",
   delExec: "tests/integration/deletion-in-execution.test.ts",
@@ -740,6 +741,17 @@ export const stories: Record<number, Entry> = {
   ]),
   46: covered([
     ...t(
+      I.otp,
+      "burns exactly once in a race",
+      "anchors the wait to burning",
+      "doubles each burn delay to 24 hours",
+      "gives the same code-request response",
+      "returns an identical recovery error",
+      "does not trust client-provided proxy headers",
+      "enforces 60 requests, 300 verifications and 10 recoveries",
+      "applies the rate limit at the public authentication route"
+    ),
+    ...t(
       I.swaps,
       "swaps both seats together with their full value, without a score check, and completes once when two acceptances race",
       "rechecks both sides at acceptance and keeps both seats when one side no longer fits, without revealing the offerer's reason"
@@ -957,7 +969,7 @@ export const stories: Record<number, Entry> = {
     ),
     ...t(
       E.access,
-      "a soldier is warned, locked across a resend and released only by a manager",
+      "a soldier is warned, its code burns without revoking access, and a legacy lock is released by a manager",
       "a locked manager is sent to the technical account, which releases it; a recovery code works once"
     ),
   ]),
@@ -1673,7 +1685,7 @@ export const scenarios: Record<number, Entry> = {
   46: covered([
     ...t(
       I.access,
-      "warns after the third and fourth failure, keeps counting across a resend and locks on the fifth",
+      "warns after the third and fourth failure, keeps counting across a resend and burns on the fifth failure without locking",
       "blocks an existing connection, a provider sign-in and new codes until a manager releases the soldier",
       "sends a locked manager to the technical account, which alone releases it",
       "keeps a soldier seven days and managers and the technical account 24 hours, without extending on use"
@@ -1681,7 +1693,7 @@ export const scenarios: Record<number, Entry> = {
     ...t(I.auth, "expires a code at ten minutes"),
     ...t(
       E.access,
-      "a soldier is warned, locked across a resend and released only by a manager"
+      "a soldier is warned, its code burns without revoking access, and a legacy lock is released by a manager"
     ),
   ]),
   47: covered([
@@ -1720,6 +1732,16 @@ export const scenarios: Record<number, Entry> = {
   ]),
   49: covered(
     [
+      ...t(
+        I.otp,
+        "limits the whole unit to 200 issued login codes",
+        "resets failures on success while retaining the ten-code issuance budget",
+        "allocates a pair atomically at both account and unit boundaries",
+        "uses the configured quota-day boundary",
+        "lets only one competing pair take the final two unit slots",
+        "charges actual retry attempts atomically",
+        "retains issuance budgets when a new service connection replaces the old one"
+      ),
       ...t(
         I.mail,
         "sends 290 of three waves of 120, keeps the rest for the next day and never counts 360",

@@ -262,6 +262,7 @@ export async function unlockAccount(
       .set({
         lockedAt: null,
         failedAttempts: 0,
+        nextCodeAllowedAt: null,
         securityEpoch: target.securityEpoch + 1,
         updatedAt: new Date(),
       })
@@ -341,7 +342,7 @@ export async function useRecoveryCode(email: string, code: string) {
     invariant(
       target?.role === "technical" && !target.deletedAt,
       "INVALID_CODE",
-      "קוד שחזור לא תקין",
+      "קוד שחזור לא תקין או נוצל",
       401
     );
     const [recovery] = await tx
@@ -365,6 +366,7 @@ export async function useRecoveryCode(email: string, code: string) {
       .set({
         lockedAt: null,
         failedAttempts: 0,
+        nextCodeAllowedAt: null,
         securityEpoch: target.securityEpoch + 1,
         updatedAt: new Date(),
       })
@@ -395,6 +397,7 @@ export async function recoverTechnicalAccess(email: string, reason: string) {
       .update(user)
       .set({
         failedAttempts: 0,
+        nextCodeAllowedAt: null,
         lockedAt: null,
         securityEpoch: target.securityEpoch + 1,
         updatedAt: new Date(),

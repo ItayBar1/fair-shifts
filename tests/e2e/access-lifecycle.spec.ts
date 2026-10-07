@@ -43,7 +43,7 @@ test.beforeAll(async () => {
   )
     throw new Error("E2E requires a dedicated test database");
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   await invite("גישה אחראית", "4000001", emails.manager, "manager");
   await invite("גישה אחראי שני", "4000002", emails.secondManager, "manager");
@@ -112,7 +112,7 @@ async function failFiveTimes(page: Page, email: string) {
   await expect(alert).toHaveText("קוד לא תקין");
   await submitCode(page, "333333");
   await expect(alert).toHaveText(
-    "קוד לא תקין. נותרו שני ניסיונות לפני נעילת החשבון"
+    "קוד לא תקין. נותרו שני ניסיונות לפני ביטול הקוד"
   );
   // A fresh code does not clear the count.
   await allowResend(email);
@@ -120,12 +120,12 @@ async function failFiveTimes(page: Page, email: string) {
   await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
   await submitCode(page, "444444");
   await expect(alert).toHaveText(
-    "קוד לא תקין. נותר ניסיון אחד לפני נעילת החשבון"
+    "קוד לא תקין. נותר ניסיון אחד לפני ביטול הקוד"
   );
   await submitCode(page, "555555");
 }
 
-test("a soldier is warned, locked across a resend and released only by a manager", async ({
+test("a soldier is warned, its code burns without revoking access, and a legacy lock is released by a manager", async ({
   page,
   browser,
 }) => {
@@ -135,12 +135,23 @@ test("a soldier is warned, locked across a resend and released only by a manager
 
   await failFiveTimes(page, emails.member);
   await expect(loginError(page)).toHaveText(
-    "החשבון ננעל. יש לפנות לאחראי התורנויות לשחרור"
+    "הקוד בוטל לאחר חמש טעויות. יש להמתין לפני בקשת קוד חדש"
   );
   await page.screenshot({
     path: "test-results/access-locked-soldier.png",
     fullPage: true,
   });
+  await memberPage.reload();
+  await expect(
+    memberPage.getByRole("heading", { name: "לוח התורנויות", exact: true })
+  ).toBeVisible();
+  await db
+    .update(user)
+    .set({
+      lockedAt: new Date(),
+      securityEpoch: sql`${user.securityEpoch} + 1`,
+    })
+    .where(eq(user.email, emails.member));
   await expectSignedOut(memberPage);
 
   await login(page, emails.manager);
@@ -214,9 +225,19 @@ test("a locked manager is sent to the technical account, which releases it; a re
   page,
   browser,
 }) => {
-  await failFiveTimes(page, emails.secondManager);
+  await db
+    .update(user)
+    .set({
+      lockedAt: new Date(),
+      securityEpoch: sql`${user.securityEpoch} + 1`,
+    })
+    .where(eq(user.email, emails.secondManager));
+  await page.goto("/login");
+  await page.getByLabel("כתובת המייל המאושרת").fill(emails.secondManager);
+  await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
+  await submitCode(page, "000000");
   await expect(loginError(page)).toHaveText(
-    "החשבון ננעל. יש לפנות למנהל הטכני לשחרור"
+    "החשבון נעול. יש לפנות למנהל הטכני לשחרור"
   );
 
   const technicalContext = await browser.newContext();

@@ -28,7 +28,7 @@ if (
 let manager: Actor;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   const id = randomUUID();
   await db.insert(soldiers).values({

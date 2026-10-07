@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import { db, pool, unitTransaction } from "../../src/server/db";
 import {
   user,
+  loginCode,
   session,
   account,
   emailOutbox,
@@ -95,7 +96,7 @@ async function invite(
 }
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   const tech = await createInvitedAccount({
     name: "טכני לבדיקה",
@@ -132,7 +133,7 @@ describe("invitation-only OTP and lock policy against PostgreSQL", () => {
     expect(await db.select().from(emailOutbox)).toHaveLength(0);
     expect(await db.select().from(user)).toHaveLength(3);
   });
-  it("commits all five concurrent failures, locks, and revokes sessions", async () => {
+  it("commits five concurrent failures and burns the code while preserving sessions and epoch", async () => {
     await requestCode(memberEmail);
     await db.insert(session).values({
       id: "old",
@@ -147,24 +148,23 @@ describe("invitation-only OTP and lock policy against PostgreSQL", () => {
     expect(results.every((result) => result.status === "rejected")).toBe(true);
     const [person] = await db.select().from(user).where(eq(user.id, memberId));
     expect(person.failedAttempts).toBe(5);
-    expect(person.lockedAt).not.toBeNull();
-    expect(person.securityEpoch).toBe(2);
-    expect(await db.select().from(session)).toHaveLength(0);
-    await expect(unlockAccount(technical, memberId)).rejects.toThrow();
-    await unlockAccount(manager, memberId);
-    await expect(verifyCode(memberEmail, "wrong")).rejects.toThrow();
-    const [unlocked] = await db
-      .select()
-      .from(user)
-      .where(eq(user.id, memberId));
-    expect(unlocked.failedAttempts).toBe(0);
-    expect(unlocked.securityEpoch).toBe(3);
+    expect(person.lockedAt).toBeNull();
+    expect(person.securityEpoch).toBe(1);
+    expect(person.nextCodeAllowedAt).not.toBeNull();
+    expect(await db.select().from(session)).toHaveLength(1);
+    expect(
+      (
+        await db.select().from(loginCode).where(eq(loginCode.userId, memberId))
+      )[0].usedAt
+    ).not.toBeNull();
   });
   it("retains failures on resend, resets on success, and consumes a code only once", async () => {
     const start = new Date();
     await requestCode(memberEmail, start);
     await expect(verifyCode(memberEmail, "wrong", start)).rejects.toThrow();
-    await expect(requestCode(memberEmail, start)).rejects.toThrow("דקה");
+    await expect(requestCode(memberEmail, start)).resolves.toEqual({
+      success: true,
+    });
     const later = new Date(start.getTime() + 60_001);
     await requestCode(memberEmail, later);
     expect(

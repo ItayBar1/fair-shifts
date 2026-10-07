@@ -432,7 +432,7 @@ beforeEach(async () => {
   for (const name of scratchNames) await dropDatabase(LIVE, name);
   await dropKeptDatabases();
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results, backup_run cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results, backup_run cascade`
   );
   store = join(work, `store-${randomUUID()}`);
   logDirectory = join(work, `log-${randomUUID()}`);
@@ -565,6 +565,10 @@ describe("a restore drill", () => {
     const client = await pool.connect();
     try {
       await client.query("begin");
+      await client.query("drop table auth_budget, auth_rate_limit");
+      await client.query(
+        "alter table auth_user drop column next_code_allowed_at"
+      );
       await client.query("drop table calendar_event, calendar_link");
       await client.query("drop trigger duty_feed_change on duties");
       await client.query("drop trigger assignment_feed_change on assignments");

@@ -35,7 +35,7 @@ test.beforeAll(async () => {
   )
     throw new Error("E2E requires a dedicated test database");
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   for (const [key, [name, personalNumber, email]] of Object.entries(people)) {
     const id = randomUUID();

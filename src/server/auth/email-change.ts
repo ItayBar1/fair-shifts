@@ -23,6 +23,7 @@ import {
 } from "./policy";
 import { applyVerifiedEmailChange, type Actor } from "./accounts";
 import type { CalendarCleanup } from "../calendar/link";
+import { reserveCodeBudget } from "./budgets";
 
 export async function requestEmailChange(
   tx: DbTransaction,
@@ -77,6 +78,12 @@ export async function requestEmailChange(
     ),
     "rate_limit",
     "יש להמתין דקה בין בקשות אימות",
+    429
+  );
+  invariant(
+    await reserveCodeBudget(tx, "email-change", target.id, 1, "issue", now),
+    "rate_limit",
+    "מכסת הודעות האימות היומית מוצתה",
     429
   );
   for (const row of pending)

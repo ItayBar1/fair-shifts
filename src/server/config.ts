@@ -107,6 +107,18 @@ export function validateDeploymentConfig(env: Env): string[] {
   const zone = value("MAIL_QUOTA_TIME_ZONE") || "UTC";
   if (!DateTime.now().setZone(zone).isValid)
     errors.push("MAIL_QUOTA_TIME_ZONE: unknown time zone");
+  if (
+    value("TRUST_CLOUDFLARE_IP") &&
+    !["true", "false"].includes(value("TRUST_CLOUDFLARE_IP"))
+  )
+    errors.push("TRUST_CLOUDFLARE_IP: allowed values are true or false");
+  if (
+    value("TRUST_CLOUDFLARE_IP") === "true" &&
+    !deploymentEnvironments.includes(environment as DeploymentEnvironment)
+  )
+    errors.push(
+      "TRUST_CLOUDFLARE_IP: trust requires the staging or production Tunnel deployment"
+    );
 
   if (
     Boolean(value("GOOGLE_CLIENT_ID")) !==

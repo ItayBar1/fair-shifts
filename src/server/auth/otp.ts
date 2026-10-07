@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { user, loginCode } from "../auth-schema";
+import { user, loginCode, emailOutbox } from "../auth-schema";
 import { AppError } from "../errors";
-import { accountAvailable, revokeAccess } from "./accounts";
+import { accountAvailable } from "./accounts";
+import { reserveCodeBudget } from "./budgets";
 import {
   digestCode,
   failureResult,
@@ -22,8 +23,8 @@ function releaseGuidance(role: string) {
   return `יש לפנות ${role === "soldier" ? "לאחראי התורנויות" : "למנהל הטכני"} לשחרור`;
 }
 function remainingWarning(remaining: number | undefined) {
-  if (remaining === 2) return ". נותרו שני ניסיונות לפני נעילת החשבון";
-  if (remaining === 1) return ". נותר ניסיון אחד לפני נעילת החשבון";
+  if (remaining === 2) return ". נותרו שני ניסיונות לפני ביטול הקוד";
+  if (remaining === 1) return ". נותר ניסיון אחד לפני ביטול הקוד";
   return "";
 }
 
@@ -44,8 +45,15 @@ export async function requestCode(email: string, now = new Date()) {
       .select()
       .from(loginCode)
       .where(eq(loginCode.userId, person.id));
-    if (old && now.getTime() - old.sentAt.getTime() < OTP_RESEND_MS)
-      throw new AppError("rate_limit", "יש להמתין דקה בין שליחות קוד", 429);
+    if (
+      (old && now.getTime() - old.sentAt.getTime() < OTP_RESEND_MS) ||
+      (person.nextCodeAllowedAt && person.nextCodeAllowedAt > now)
+    )
+      return result;
+    if (
+      !(await reserveCodeBudget(tx, "login-code", person.id, 1, "issue", now))
+    )
+      return result;
     const code = newCode();
     const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
     const values = {
@@ -110,16 +118,37 @@ export async function verifyCode(
         .update(user)
         .set({
           failedAttempts: failure.count,
-          lockedAt: failure.locked ? now : null,
-          securityEpoch: person.securityEpoch + (failure.locked ? 1 : 0),
+          ...(failure.burned && {
+            nextCodeAllowedAt: new Date(now.getTime() + failure.delayMs),
+          }),
         })
         .where(eq(user.id, person.id));
-      if (failure.locked) await revokeAccess(tx, person.id);
+      if (failure.burned) {
+        await tx
+          .update(loginCode)
+          .set({ usedAt: now, digest: "" })
+          .where(eq(loginCode.userId, person.id));
+        await tx
+          .update(emailOutbox)
+          .set({
+            status: "cancelled",
+            encryptedSecret: null,
+            destination: null,
+            body: "",
+          })
+          .where(
+            and(
+              eq(emailOutbox.recipientAccountId, person.id),
+              eq(emailOutbox.kind, "login-code"),
+              inArray(emailOutbox.status, ["pending", "sending"])
+            )
+          );
+      }
       return {
-        error: failure.locked
-          ? `החשבון ננעל. ${releaseGuidance(person.role)}`
+        error: failure.burned
+          ? "הקוד בוטל לאחר חמש טעויות. יש להמתין לפני בקשת קוד חדש"
           : `קוד לא תקין${remainingWarning(failure.remaining)}`,
-        locked: failure.locked,
+        locked: false,
       };
     }
     await tx
@@ -128,7 +157,7 @@ export async function verifyCode(
       .where(eq(loginCode.userId, person.id));
     await tx
       .update(user)
-      .set({ failedAttempts: 0, emailVerified: true })
+      .set({ failedAttempts: 0, nextCodeAllowedAt: null, emailVerified: true })
       .where(eq(user.id, person.id));
     return {
       user: { ...person, emailVerified: true },

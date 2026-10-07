@@ -144,7 +144,7 @@ const googleRow = async (id: string) =>
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, auth_verification, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, auth_verification, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   google.reset();
   process.env.GOOGLE_CALENDAR_SYNC = "true";

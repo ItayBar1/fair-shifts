@@ -168,7 +168,7 @@ async function publishedDuty() {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+    sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   const tech = await createInvitedAccount({
     name: "טכני לבדיקה",
