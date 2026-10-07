@@ -6243,6 +6243,15 @@ describe("first duty vertical slice", () => {
             version
           )
         ).toMatchObject({ status: "manager_rejected" });
+        const rejectionMail = (await db.select().from(emailOutbox)).filter(
+          (mail) =>
+            mail.requestId === offer.id && mail.requestEvent === "rejected"
+        );
+        expect(rejectionMail).toHaveLength(2);
+        for (const mail of rejectionMail) {
+          expect(mail.body).not.toContain("המחליף משובץ לתורנות חופפת");
+          expect(mail.body).toContain("פרטי ההחלטה באתר");
+        }
         expect(
           (await reservedIn(row.id)).map((item) => item.soldierId)
         ).toEqual([actor.soldierId]);

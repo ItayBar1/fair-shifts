@@ -58,6 +58,7 @@ const U = {
   weekend: "tests/unit/weekend-surcharge.test.ts",
 } as const;
 const I = {
+  securityErasure: "tests/integration/security-erasure.test.ts",
   securityMail: "tests/integration/security-mail.test.ts",
   mine: "tests/integration/my-assignments.test.ts",
   access: "tests/integration/access.test.ts",
@@ -1431,6 +1432,10 @@ export const scenarios: Record<number, Entry> = {
       "refuses every request from the local midnight after the release day, before any worker run"
     ),
     ...t(
+      I.securityErasure,
+      "erases an opaque result by its explicit subject and keeps its replay key and fingerprint"
+    ),
+    ...t(
       I.soldierDel,
       "vacates future seats, keeps seats of a duty that started, and warns the managers",
       "removes contact details and conditions, and keeps name, number and history"
@@ -1730,6 +1735,10 @@ export const scenarios: Record<number, Entry> = {
       "shows each kind of activity as a conflict, including an edit that was reverted, and closes the batch only when every row is handled"
     ),
     ...t(
+      I.securityErasure,
+      "completes the subject links of an import preview after the new soldier is created, then erases its replay content"
+    ),
+    ...t(
       E.importCreate,
       "cancels a new soldier without activity and waits for a decision on one who signed in"
     ),
@@ -1739,6 +1748,13 @@ export const scenarios: Record<number, Entry> = {
       I.soldierDel,
       "removes contact details and conditions, and keeps name, number and history",
       "is removed, while the event and the history stay"
+    ),
+    ...t(
+      I.securityErasure,
+      "scrubs historical contact-only results before erasing contact revisions and conservatively scrubs unlinked legacy results",
+      "refuses a claimed copy when deletion commits before dispatch begins",
+      "serializes erasure with an already-started dispatch and removes the local copy after delivery",
+      "detects deleted subjects and counterpart mail in a restored copy, and applies the same erasure rules"
     ),
     ...t(
       I.delExec,
@@ -2019,6 +2035,11 @@ export const scenarios: Record<number, Entry> = {
   ]),
   60: covered([
     ...t(
+      I.securityErasure,
+      "expires content at 30 days and never reexecutes an old key, including conflict checks",
+      "prunes content at the exact 30-day boundary while retaining newer results"
+    ),
+    ...t(
       I.delLog,
       "queues a deletion in its own commit and appends it once, with ids and a time only",
       "leaves nothing in the log for a deletion that rolled back",
@@ -2095,6 +2116,10 @@ export const scenarios: Record<number, Entry> = {
   ]),
   63: covered(
     [
+      ...t(
+        I.securityErasure,
+        "detects expired unpruned results and false tombstones in restore checks even without a deleted soldier"
+      ),
       ...t(
         I.restore,
         "restores the newest backup into a scratch database, passes every check and leaves the live system as it was",

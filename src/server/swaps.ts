@@ -1583,6 +1583,7 @@ export async function decideSwap(
         requestId: row.id,
         title: "האחראי דחה את ההחלפה",
         body: `החלפת התורנויות ${data.dutyName} ו${entry.dutyName} נדחתה: ${input.reason}. השיבוץ שלך נשאר בתוקף.`,
+        mailBody: `האחראי דחה את החלפת התורנויות ${data.dutyName} ו${entry.dutyName}. פרטי ההחלטה באתר. השיבוץ שלך נשאר בתוקף.`,
         email: true,
         expiresAt,
       });

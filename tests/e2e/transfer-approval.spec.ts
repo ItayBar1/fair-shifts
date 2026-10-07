@@ -225,6 +225,14 @@ test("a manager approves an exemption transfer per exception, rejects another wi
   await expect(reject).not.toBeVisible();
   await expect(rejectRow).toContainText("נדחתה בידי אחראי");
   await expect(rejectRow).toContainText("נדרש מחליף ללא פטור");
+  const rejectionMail = (await db.select().from(emailOutbox)).filter(
+    (mail) => mail.requestEvent === "rejected"
+  );
+  expect(rejectionMail).toHaveLength(2);
+  for (const mail of rejectionMail) {
+    expect(mail.body).not.toContain("נדרש מחליף ללא פטור");
+    expect(mail.body).toContain("פרטי ההחלטה באתר");
+  }
   await page.screenshot({
     path: "test-results/transfer-approval-manager.png",
     fullPage: true,

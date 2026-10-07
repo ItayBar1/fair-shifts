@@ -543,6 +543,14 @@ describe("mutual swap by consent before the start", () => {
       row.version
     );
     expect((await requestRow(swap.id)).data.status).toBe("manager_rejected");
+    const rejectionMail = (await db.select().from(emailOutbox)).filter(
+      (mail) => mail.requestId === swap.id && mail.requestEvent === "rejected"
+    );
+    expect(rejectionMail).toHaveLength(2);
+    for (const mail of rejectionMail) {
+      expect(mail.body).not.toContain("יש לתאם בתקופות ביצוע");
+      expect(mail.body).toContain("פרטי ההחלטה באתר");
+    }
     for (const person of [alon, bar]) {
       const view = (await readState(person)).requests.find(
         (item) => item.id === swap.id

@@ -579,7 +579,24 @@ export async function verifyRestoredData(
       )
     )
   );
-  results.push(await deletedSoldierResidue(database));
+  results.push(await deletedSoldierResidue(database, now));
+  results.push(
+    checked(
+      "command_result_retention",
+      await found(
+        database,
+        sql`
+    select c.id::text as id, count(*) over () as total from command_results c
+    where (c.content_expired_at is null and
+      (not c.linkage_complete or c.created_at <= ${now}::timestamptz - interval '30 days'))
+      or (c.content_expired_at is not null and not (case when jsonb_typeof(c.result) = 'object' then
+        (c.result ? 'expiredAt' or c.result ? 'erasedAt') and
+        (c.result - 'expiredAt' - 'erasedAt' - 'reason') = '{}'::jsonb and
+        (not (c.result ? 'reason') or c.result->>'reason' = 'legacy_unlinked') else false end))
+    limit 100`
+      )
+    )
+  );
   return results;
 }
 
@@ -589,7 +606,10 @@ export async function verifyRestoredData(
  * that were made before the deletion, its sign-in material and its queued mail.
  * Records made after the deletion are new history, not residue.
  */
-async function deletedSoldierResidue(database: Executor): Promise<CheckResult> {
+async function deletedSoldierResidue(
+  database: Executor,
+  now: Date
+): Promise<CheckResult> {
   const deleted = await database
     .select({ id: soldiers.id, data: soldiers.data })
     .from(soldiers)
@@ -651,6 +671,24 @@ async function deletedSoldierResidue(database: Executor): Promise<CheckResult> {
     join soldiers s on s.id = u.soldier_id
     where s.deleted_at is not null and m.status in ('pending', 'sending')
       and m.created_at < s.deleted_at`);
+  await query(sql`
+    select s.id::text as id, 1 as total
+    from command_results c
+    join command_result_subjects l on l.command_id = c.id
+    join soldiers s on s.id = l.soldier_id
+    where s.deleted_at is not null and c.created_at < s.deleted_at
+      and c.content_expired_at is null`);
+  await query(sql`
+    select c.id::text as id, 1 as total from command_results c
+    where c.content_expired_at is null and
+      (not c.linkage_complete or c.created_at <= ${now}::timestamptz - interval '30 days')`);
+  await query(sql`
+    select s.id::text as id, 1 as total from email_outbox m
+    join records r on r.id = m.request_id
+    join soldiers s on r.subject_id = s.id or position(s.id::text in r.data::text) > 0
+    where s.deleted_at is not null and m.created_at < s.deleted_at
+      and (m.status in ('pending', 'sending') or m.body <> '' or m.title <> ''
+        or m.destination is not null or m.encrypted_secret is not null or m.href is not null)`);
   const ids = [...residue].sort();
   return {
     id: "deleted_soldier_residue",

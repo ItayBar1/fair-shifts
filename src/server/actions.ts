@@ -3,6 +3,11 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { unitTransaction } from "./db";
 import { commandResults } from "./schema";
+import {
+  expireCommandResults,
+  linkCommandResult,
+  RESULT_RETENTION_MS,
+} from "./command-results";
 import { commandSchema, id } from "./validation";
 import {
   assertActorCurrent,
@@ -146,6 +151,14 @@ export async function executeAction(actor: Actor, value: unknown) {
         "מפתח הפעולה כבר שימש לבקשה אחרת",
         409
       );
+      const now = new Date();
+      if (
+        !previous.contentExpiredAt &&
+        previous.createdAt.getTime() <= now.getTime() - RESULT_RETENTION_MS
+      ) {
+        await expireCommandResults(tx, now, previous.id);
+        return { expiredAt: now.toISOString() };
+      }
       return previous.result;
     }
     const { payload, expectedVersion } = command;
@@ -592,13 +605,16 @@ export async function executeAction(actor: Actor, value: unknown) {
           501
         );
     }
+    const resultId = randomUUID();
     await tx.insert(commandResults).values({
-      id: randomUUID(),
+      id: resultId,
       actorId: actor.id,
       requestKey: command.idempotencyKey,
       payloadHash: hash,
       result,
+      linkageComplete: true,
     });
+    await linkCommandResult(tx, resultId, command.type, payload, result);
     return result;
   });
   if (result && typeof result === "object" && "committedError" in result) {

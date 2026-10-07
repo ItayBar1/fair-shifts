@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db } from "../../src/server/db";
+import { eraseRelatedCopies } from "../../src/server/soldier-deletion";
 import { user, emailOutbox } from "../../src/server/auth-schema";
 import {
   assignments,
@@ -16,6 +17,7 @@ import {
   duties,
   dutyTypes,
   soldiers,
+  commandResultSubjects,
 } from "../../src/server/schema";
 import {
   createInvitedAccount,
@@ -699,6 +701,18 @@ test("a duty type with every gender is no gender condition: the form says so and
       )
     ).toHaveLength(1);
   } finally {
+    await db.transaction((tx) =>
+      eraseRelatedCopies(
+        tx,
+        unknownId,
+        undefined,
+        [unknownId],
+        new Date().toISOString()
+      )
+    );
+    await db
+      .delete(commandResultSubjects)
+      .where(eq(commandResultSubjects.soldierId, unknownId));
     await db.delete(assignments).where(eq(assignments.soldierId, unknownId));
     await db.delete(balances).where(eq(balances.soldierId, unknownId));
     await db.delete(soldiers).where(eq(soldiers.id, unknownId));

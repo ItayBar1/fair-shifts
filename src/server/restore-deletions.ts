@@ -6,7 +6,9 @@ import { user } from "./auth-schema";
 import { purgeCalendarLink } from "./calendar/link";
 import { audit, createRecord, type Actor } from "./repository";
 import { invariant } from "./errors";
-import { eraseSoldier } from "./soldier-deletion";
+import { eraseSoldier, eraseRelatedCopies } from "./soldier-deletion";
+import { expireCommandResults } from "./command-results";
+import { deleteAccountAuth } from "./auth/accounts";
 import {
   deletionLogConfig,
   mergeState,
@@ -95,8 +97,17 @@ export async function applyLoggedDeletions(
           .from(user)
           .where(eq(user.soldierId, person.id))
           .for("update");
-        for (const login of accounts)
+        await eraseRelatedCopies(
+          tx,
+          person.id,
+          accounts[0]?.id,
+          [],
+          now.toISOString()
+        );
+        for (const login of accounts) {
           await purgeCalendarLink(tx, login.id, { collect: false });
+          await deleteAccountAuth(login.id, tx);
+        }
         alreadyDeleted++;
       } else {
         await eraseSoldier(tx, RESTORE_ACTOR, entry.soldierId, {
@@ -107,6 +118,7 @@ export async function applyLoggedDeletions(
       }
     }
     const head = verification.entries.at(-1);
+    await expireCommandResults(tx, now);
     // A fresh volume, or a copy that was behind, gets the whole verified log.
     if (
       options.restoreLocal !== false &&
