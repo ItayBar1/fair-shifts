@@ -1,0 +1,25 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90m/app[39m
+
+[90mstderr[2m | audit/obvious.test.ts[2m > [22m[2mh-obvious basic exposures[2m > [22m[2mgeneric errors do not echo message, stack or SQL
+[22m[39mRequest failed Error
+
+[90mstdout[2m | audit/obvious.test.ts[2m > [22m[2mh-obvious basic exposures[2m > [22m[2mgeneric errors do not echo message, stack or SQL
+[22m[39mgeneric-error [33m500[39m {"error":{"code":"internal_error","message":"הפעולה לא הושלמה. נסו שוב או פנו לאחראי"}}
+
+[90mstdout[2m | audit/obvious.test.ts[2m > [22m[2mh-obvious basic exposures[2m > [22m[2mverifyOrigin rejects missing and foreign origins
+[22m[39mverifyOrigin missing+foreign rejected, same accepted
+
+[90mstdout[2m | audit/obvious.test.ts[2m > [22m[2mh-obvious basic exposures[2m > [22m[2mauth catch-all refuses non-allowlisted better-auth endpoints
+[22m[39mauth-allowlist {"get-session":404404,"list-sessions":404404,"update-user":404404,"delete-user":404404,"change-email":404404,"link-social":404404,"list-accounts":404404,"unlink-account":404404,"revoke-sessions":404404,"ok":404404,"error":404404,"request-code/":404404,"REQUEST-CODE":404404,"callback/github":404404,"sign-in/email":404404,"sign-up/email":404404}
+
+[90mstdout[2m | audit/obvious.test.ts[2m > [22m[2mh-obvious basic exposures[2m > [22m[2mdeployment config rejects development secrets and http auth URL
+[22m[39mconfig-errors ["DATABASE_URL: the database password is short or taken from development","BETTER_AUTH_URL: an https URL of the site root is required","BETTER_AUTH_SECRET: a random secret of at least 32 characters is required","OTP_SECRET: a random secret of at least 32 characters is required","MAIL_ENCRYPTION_KEY: the key is taken from development"]
+
+ [32m✓[39m audit/obvious.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 20:08:44
+[2m   Duration [22m 499ms[2m (import 63%, transform 33%, tests 4%)[22m
+

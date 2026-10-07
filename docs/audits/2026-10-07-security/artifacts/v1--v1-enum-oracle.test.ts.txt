@@ -1,0 +1,130 @@
+import { randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
+import { afterAll, beforeEach, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { db, pool } from "../src/server/db";
+import { user } from "../src/server/auth-schema";
+import { soldiers, soldierContacts, balances } from "../src/server/schema";
+import { createInvitedAccount } from "../src/server/auth/accounts";
+import { soldier } from "../tests/fixtures";
+import { POST } from "../src/app/api/auth/[...all]/route";
+
+const log: string[] = [];
+async function call(path: string, body: Record<string, unknown>) {
+  const res = await POST(
+    new Request(`http://localhost:3000/api/auth/${path}`, {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+  );
+  const text = await res.text();
+  log.push(`${path} ${JSON.stringify(body)} -> ${res.status} ${text}`);
+  return { status: res.status, text };
+}
+async function invite(
+  name: string,
+  role: "soldier" | "manager",
+  email: string,
+  pn: string
+) {
+  const id = randomUUID();
+  await db.insert(soldiers).values({
+    id,
+    name,
+    personalNumber: pn,
+    data: soldier({ id, name, personalNumber: pn }),
+  });
+  await db.insert(soldierContacts).values({ soldierId: id, email });
+  await db.insert(balances).values({ soldierId: id });
+  return createInvitedAccount({ name, role, email, soldierId: id });
+}
+beforeEach(async () => {
+  await db.execute(
+    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+  );
+  await createInvitedAccount({
+    name: "tech",
+    role: "technical",
+    email: "technical@example.invalid",
+  });
+  await invite("mgr", "manager", "manager@example.invalid", "00002");
+  await invite("sol", "soldier", "soldier@example.invalid", "00001");
+});
+afterAll(async () => {
+  writeFileSync("/scratch/v1-enum-oracle.log", log.join("\n") + "\n");
+  await pool.end();
+});
+
+it("request-code: 429 only for registered address on second call", async () => {
+  const unk1 = await call("request-code", { email: "nobody@example.invalid" });
+  const unk2 = await call("request-code", { email: "nobody@example.invalid" });
+  const reg1 = await call("request-code", { email: "soldier@example.invalid" });
+  const reg2 = await call("request-code", { email: "soldier@example.invalid" });
+  expect([unk1.status, unk2.status, reg1.status]).toEqual([200, 200, 200]);
+  expect(reg2.status).toBe(429);
+});
+
+it("verify-code: unknown vs registered-with-challenge vs locked differ", async () => {
+  const unk = await call("verify-code", {
+    email: "nobody@example.invalid",
+    code: "000000",
+  });
+  const regNoChallenge = await call("verify-code", {
+    email: "soldier@example.invalid",
+    code: "000000",
+  });
+  await call("request-code", { email: "soldier@example.invalid" });
+  const regChallenge = await call("verify-code", {
+    email: "soldier@example.invalid",
+    code: "000000",
+  });
+  expect(unk.text).toBe(regNoChallenge.text);
+  expect(regChallenge.text).not.toBe(unk.text);
+  await db
+    .update(user)
+    .set({ lockedAt: new Date() })
+    .where(eq(user.email, "manager@example.invalid"));
+  await db
+    .update(user)
+    .set({ lockedAt: new Date() })
+    .where(eq(user.email, "technical@example.invalid"));
+  await db
+    .update(user)
+    .set({ lockedAt: new Date() })
+    .where(eq(user.email, "soldier@example.invalid"));
+  const lm = await call("verify-code", {
+    email: "manager@example.invalid",
+    code: "000000",
+  });
+  const lt = await call("verify-code", {
+    email: "technical@example.invalid",
+    code: "000000",
+  });
+  const ls = await call("verify-code", {
+    email: "soldier@example.invalid",
+    code: "000000",
+  });
+  expect(new Set([unk.text, lm.text, lt.text, ls.text]).size).toBe(4);
+});
+
+it("recovery: technical address answers differently", async () => {
+  const unk = await call("recovery", {
+    email: "nobody@example.invalid",
+    code: "x".repeat(20),
+  });
+  const sol = await call("recovery", {
+    email: "soldier@example.invalid",
+    code: "x".repeat(20),
+  });
+  const tech = await call("recovery", {
+    email: "technical@example.invalid",
+    code: "x".repeat(20),
+  });
+  expect(unk.text).toBe(sol.text);
+  expect(tech.status).toBe(unk.status);
+  expect(tech.text).not.toBe(unk.text);
+});

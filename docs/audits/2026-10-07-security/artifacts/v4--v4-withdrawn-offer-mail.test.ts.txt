@@ -1,0 +1,268 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { db, pool } from "../src/server/db";
+import { emailOutbox, emailQuota } from "../src/server/auth-schema";
+import {
+  assignments,
+  balances,
+  duties,
+  records,
+  soldierContacts,
+  soldiers,
+} from "../src/server/schema";
+import { createInvitedAccount, type Actor } from "../src/server/auth/accounts";
+import { executeAction } from "../src/server/actions";
+import { deliverNextEmail, quotaDay } from "../src/server/operations/email";
+import {
+  CODE_RESERVE,
+  DAILY_QUOTA,
+} from "../src/domain/mail-delivery";
+import { DIGEST_WINDOW_MS } from "../src/domain/assignment-digest";
+import { soldier } from "../tests/fixtures";
+
+if (
+  !process.env.TEST_DATABASE_URL ||
+  process.env.TEST_DATABASE_URL !== process.env.DATABASE_URL ||
+  !new URL(process.env.TEST_DATABASE_URL).pathname.endsWith("_test")
+)
+  throw new Error("Integration tests require a dedicated *_test database");
+
+// Verifier v4: independent check that withdrawn transfer AND swap offers still deliver
+// mail and charge the shared quota, and that a real publication digest is then held.
+const DAY = 86_400_000;
+let mgr: Actor;
+let alon: Actor;
+let others: Actor[];
+
+async function invite(name: string, role: "soldier" | "manager", pn: string) {
+  const soldierId = randomUUID();
+  await db.insert(soldiers).values({
+    id: soldierId,
+    name,
+    personalNumber: pn,
+    data: soldier({ id: soldierId, name, personalNumber: pn }),
+  });
+  await db
+    .insert(soldierContacts)
+    .values({ soldierId, email: `${pn}@example.invalid` });
+  await db.insert(balances).values({ soldierId });
+  const row = await createInvitedAccount({
+    name,
+    role,
+    email: `${pn}@example.invalid`,
+    soldierId,
+  });
+  return { id: row.id, name, role, soldierId, securityEpoch: 1 } as Actor;
+}
+async function command(
+  actor: Actor,
+  type: string,
+  payload: Record<string, unknown>,
+  expectedVersion?: number
+) {
+  return (await executeAction(actor, {
+    type,
+    payload,
+    expectedVersion,
+    idempotencyKey: randomUUID(),
+  })) as { id: string; version: number } & Record<string, unknown>;
+}
+async function recordVersion(id: string) {
+  const [row] = await db.select().from(records).where(eq(records.id, id));
+  return row;
+}
+async function publishedSeat(
+  typeId: string,
+  name: string,
+  startIn: number,
+  holder: Actor
+) {
+  const duty = await command(mgr, "duty.create", {
+    typeId,
+    name,
+    start: new Date(Date.now() + startIn).toISOString(),
+    end: new Date(Date.now() + startIn + DAY).toISOString(),
+  });
+  const [created] = await db.select().from(duties).where(eq(duties.id, duty.id));
+  await command(
+    mgr,
+    "duty.assign",
+    {
+      dutyId: duty.id,
+      slotId: created.data.slots[0].id,
+      soldierId: holder.soldierId,
+      callUpBonus: 0,
+    },
+    1
+  );
+  await command(mgr, "duty.publish", { id: duty.id, confirmed: true }, 2);
+  const [seat] = await db
+    .select()
+    .from(assignments)
+    .where(eq(assignments.dutyId, duty.id));
+  return seat;
+}
+
+beforeEach(async () => {
+  await db.execute(
+    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+  );
+  await db.execute(sql`delete from email_outbox`);
+  await db.execute(sql`truncate table assignment_mail_window cascade`);
+  mgr = await invite("manager", "manager", "50002");
+  alon = await invite("alon", "soldier", "50001");
+  others = [];
+  for (let i = 1; i <= 5; i++)
+    others.push(await invite(`s${i}`, "soldier", `5001${i}`));
+});
+afterAll(async () => pool.end());
+
+describe("v4 withdrawn offer mail", () => {
+  it("withdrawn transfer and swap offers are delivered and charged; later publication digest is held", async () => {
+    const type = await command(mgr, "dutyType.save", {
+      name: "type v4",
+      pricing: { mode: "fixed", base: 4 },
+      roles: [{ name: "role", count: 1 }],
+    });
+    const seatX = await publishedSeat(type.id, "duty X", 3 * DAY, alon);
+    const seatY = await publishedSeat(type.id, "duty Y", 10 * DAY, others[0]);
+    // Clear the publication digests of the setup duties so only offer mail remains.
+    await db.execute(sql`delete from email_outbox`);
+    await db.execute(sql`truncate table assignment_mail_window cascade`);
+
+    const transport = (sent: string[]) => async (m: { eventKey: string }) => {
+      sent.push(m.eventKey);
+      return `fake-${sent.length}`;
+    };
+
+    // Phase A (fresh quota): one transfer offer to 3 candidates and one swap offer, both withdrawn.
+    const tOffer = await command(
+      alon,
+      "transfer.offer",
+      {
+        assignmentId: seatX.id,
+        candidateIds: [others[1], others[2], others[3]].map((c) => c.soldierId),
+      },
+      seatX.version
+    );
+    await command(
+      alon,
+      "transfer.withdraw",
+      { id: tOffer.id },
+      (await recordVersion(tOffer.id)).version
+    );
+    const sOffer = await command(
+      alon,
+      "swap.offer",
+      { assignmentId: seatX.id, targetAssignmentIds: [seatY.id] },
+      seatX.version
+    );
+    await command(
+      alon,
+      "swap.withdraw",
+      { id: sOffer.id },
+      (await recordVersion(sOffer.id)).version
+    );
+    const phaseAStatuses = [
+      (await recordVersion(tOffer.id)).data.status,
+      (await recordVersion(sOffer.id)).data.status,
+    ];
+    const sentA: string[] = [];
+    const resultsA: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const r = await deliverNextEmail(transport(sentA));
+      resultsA.push(r.status);
+      if (r.status === "idle") break;
+    }
+    const dayA = quotaDay(new Date());
+    const [quotaA] = await db
+      .select()
+      .from(emailQuota)
+      .where(eq(emailQuota.day, dayA));
+
+    // Phase B: quota at 2 non-code sends left; two more withdrawn transfer cycles, then a real publish.
+    await db.execute(sql`delete from email_outbox`);
+    const later = new Date(Date.now() + DIGEST_WINDOW_MS + 60_000);
+    const dayB = quotaDay(later);
+    await db
+      .insert(emailQuota)
+      .values({ day: dayB, used: DAILY_QUOTA - CODE_RESERVE - 2 })
+      .onConflictDoUpdate({
+        target: emailQuota.day,
+        set: { used: DAILY_QUOTA - CODE_RESERVE - 2 },
+      });
+    const phaseBIds: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const [seatNow] = await db
+        .select()
+        .from(assignments)
+        .where(eq(assignments.id, seatX.id));
+      const offer = await command(
+        alon,
+        "transfer.offer",
+        {
+          assignmentId: seatX.id,
+          candidateIds: [others[1], others[2], others[3]].map((c) => c.soldierId),
+        },
+        seatNow.version
+      );
+      phaseBIds.push(offer.id);
+      await command(
+        alon,
+        "transfer.withdraw",
+        { id: offer.id },
+        (await recordVersion(offer.id)).version
+      );
+    }
+    // A real publication by the manager after the cycles; its digest mail goes to s5.
+    await publishedSeat(type.id, "duty Z", 20 * DAY, others[4]);
+    const queuedB = await db.select().from(emailOutbox);
+    const sentB: string[] = [];
+    const resultsB: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const r = await deliverNextEmail(transport(sentB), later);
+      resultsB.push(r.status);
+      if (r.status === "idle") break;
+    }
+    const outboxB = await db.select().from(emailOutbox);
+    const [quotaB] = await db
+      .select()
+      .from(emailQuota)
+      .where(eq(emailQuota.day, dayB));
+    const digest = outboxB.find((m) => m.kind === "publication-digest");
+    const summary = {
+      phaseA: {
+        requestStatuses: phaseAStatuses,
+        sentEventKeys: sentA,
+        deliveryResults: resultsA,
+        quotaUsed: quotaA?.used,
+      },
+      phaseB: {
+        requestStatuses: await Promise.all(
+          phaseBIds.map(async (id) => (await recordVersion(id)).data.status)
+        ),
+        queuedKinds: queuedB.map((m) => m.kind),
+        sentEventKeys: sentB,
+        deliveryResults: resultsB,
+        quotaUsed: quotaB?.used,
+        nonCodeLimit: DAILY_QUOTA - CODE_RESERVE,
+        digestStatus: digest?.status,
+        digestError: digest?.error,
+        withdrawnOfferMailStillPending: outboxB.filter(
+          (m) => m.kind === "transfer" && m.status === "pending"
+        ).length,
+      },
+    };
+    console.log("V4_WITHDRAWN_OFFER_MAIL " + JSON.stringify(summary));
+    expect(phaseAStatuses).toEqual(["cancelled", "cancelled"]);
+    expect(sentA.filter((k) => k.startsWith("transfer:")).length).toBe(3);
+    expect(sentA.filter((k) => k.startsWith("swap:")).length).toBe(1);
+    expect(quotaA?.used).toBe(4);
+    expect(sentB.length).toBe(2);
+    expect(sentB.every((k) => k.startsWith("transfer:"))).toBe(true);
+    expect(quotaB?.used).toBe(DAILY_QUOTA - CODE_RESERVE);
+    expect(digest?.status).toBe("pending");
+    expect(digest?.error).toBe("quota_waiting");
+  });
+});

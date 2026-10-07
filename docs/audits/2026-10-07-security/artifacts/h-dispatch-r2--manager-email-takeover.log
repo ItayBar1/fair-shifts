@@ -1,0 +1,31 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90m/app[39m
+
+[90mstdout[2m | audit/manager-email-takeover.test.ts[2m > [22m[2mmanager-to-manager account controls[2m > [22m[2mcontrol: manager A cannot unlock or set responsibility of manager B, nor delete B
+[22m[39mCONTROL unlock/responsibility of other manager rejected for manager A
+
+[90mstdout[2m | audit/manager-email-takeover.test.ts[2m > [22m[2mmanager-to-manager account controls[2m > [22m[2mmanager A moves manager B's sign-in email to an A-controlled address and signs in as B
+[22m[39mOUTBOX destination = attacker-controlled@example.invalid recipientAccountId is B = [33mtrue[39m
+
+[90mstdout[2m | audit/manager-email-takeover.test.ts[2m > [22m[2mmanager-to-manager account controls[2m > [22m[2mmanager A moves manager B's sign-in email to an A-controlled address and signs in as B
+[22m[39mB after confirm: role = manager email = attacker-controlled@example.invalid securityEpoch = [33m2[39m
+
+[90mstdout[2m | audit/manager-email-takeover.test.ts[2m > [22m[2mmanager-to-manager account controls[2m > [22m[2mmanager A moves manager B's sign-in email to an A-controlled address and signs in as B
+[22m[39mB sessions remaining = [33m0[39m
+
+[90mstdout[2m | audit/manager-email-takeover.test.ts[2m > [22m[2mmanager-to-manager account controls[2m > [22m[2mmanager A moves manager B's sign-in email to an A-controlled address and signs in as B
+[22m[39mlogin-code mails for B = [33m1[39m destination(s) = [ [1mnull[22m ]
+
+[90mstdout[2m | audit/manager-email-takeover.test.ts[2m > [22m[2mmanager-to-manager account controls[2m > [22m[2mmanager A moves manager B's sign-in email to an A-controlled address and signs in as B
+[22m[39mverifyCode(attacker mailbox) -> user.id is B = [33mtrue[39m role = manager
+
+[90mstdout[2m | audit/manager-email-takeover.test.ts[2m > [22m[2mmanager-to-manager account controls[2m > [22m[2mcontrol: the same request against a plain soldier is the intended path
+[22m[39mCONTROL soldier email request accepted (intended per section 7.1)
+
+ [32m✓[39m audit/manager-email-takeover.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 244[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 07:53:58
+[2m   Duration [22m 953ms[2m (transform 42%, import 31%, tests 27%)[22m
+

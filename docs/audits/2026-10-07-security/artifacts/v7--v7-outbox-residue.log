@@ -1,0 +1,36 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90m/app[39m
+
+[90mstdout[2m | audit/v7-outbox-residue.test.ts[2m > [22m[2mv7: counterpart outbox residue after soldier erasure[2m > [22m[2mkeeps the manager's reject reason in the counterpart's queued mail and delivers it after deletion
+[22m[39mV7 before deletion: [
+  {
+    toMember: [33mfalse[39m,
+    toOther: [33mtrue[39m,
+    status: [32m'pending'[39m,
+    eventKey: [32m'transfer:<req>:rejected:<other>'[39m
+  },
+  {
+    toMember: [33mtrue[39m,
+    toOther: [33mfalse[39m,
+    status: [32m'pending'[39m,
+    eventKey: [32m'transfer:<req>:rejected:<member>'[39m
+  }
+]
+
+[90mstdout[2m | audit/v7-outbox-residue.test.ts[2m > [22m[2mv7: counterpart outbox residue after soldier erasure[2m > [22m[2mkeeps the manager's reject reason in the counterpart's queued mail and delivers it after deletion
+[22m[39mV7 after deletion: records quoting reason = [33m0[39m other's site notice bodies erased = [ [33mtrue[39m, [33mtrue[39m ]
+V7 after deletion outbox: [ { toMember: [33mfalse[39m, toOther: [33mtrue[39m, status: [32m'pending'[39m } ]
+
+[90mstdout[2m | audit/v7-outbox-residue.test.ts[2m > [22m[2mv7: counterpart outbox residue after soldier erasure[2m > [22m[2mkeeps the manager's reject reason in the counterpart's queued mail and delivers it after deletion
+[22m[39mV7 delivered after deletion: [33m2[39m messages; quoting reason: [33m1[39m to other: [ [33mtrue[39m ]
+
+[90mstdout[2m | audit/v7-outbox-residue.test.ts[2m > [22m[2mv7: counterpart outbox residue after soldier erasure[2m > [22m[2mkeeps the manager's reject reason in the counterpart's queued mail and delivers it after deletion
+[22m[39mV7 final outbox rows quoting reason: [ { toOther: [33mtrue[39m, status: [32m'sent'[39m } ]
+
+ [32m✓[39m audit/v7-outbox-residue.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 137[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 13:46:52
+[2m   Duration [22m 802ms[2m (transform 48%, import 34%, tests 18%)[22m
+

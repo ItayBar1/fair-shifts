@@ -1,0 +1,132 @@
+// Deterministic race schedule: a verified email change (which disconnects
+// Google) commits while a Google callback is between its account lookup and
+// session/link creation. Synthetic data only; Google's token endpoint is stubbed.
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { and, eq, sql } from "drizzle-orm";
+import { db, pool } from "../src/server/db";
+import { user, account } from "../src/server/auth-schema";
+import { soldiers, soldierContacts, balances } from "../src/server/schema";
+import {
+  applyVerifiedEmailChange,
+  createInvitedAccount,
+} from "../src/server/auth/accounts";
+import { getActor, getAuth } from "../src/server/auth";
+import { soldier } from "../tests/fixtures";
+
+const clientId = "synthetic-client.apps.googleusercontent.com";
+process.env.GOOGLE_CLIENT_ID = clientId;
+process.env.GOOGLE_CLIENT_SECRET = "synthetic-google-client-secret";
+const base = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+
+type GoogleProfile = { sub: string; email: string; email_verified: boolean };
+const profiles = new Map<string, GoogleProfile>();
+const segment = (value: object) =>
+  Buffer.from(JSON.stringify(value)).toString("base64url");
+function idToken(profile: GoogleProfile) {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    segment({ alg: "RS256", typ: "JWT", kid: "synthetic" }),
+    segment({ iss: "https://accounts.google.com", aud: clientId, iat: now, exp: now + 3600, name: "synthetic", ...profile }),
+    "synthetic-signature",
+  ].join(".");
+}
+const realFetch = globalThis.fetch;
+vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  if (url.startsWith("https://oauth2.googleapis.com/token")) {
+    const body = new URLSearchParams(String(init?.body ?? ""));
+    const profile = profiles.get(body.get("code") ?? "");
+    if (!profile) return Response.json({ error: "invalid_grant" }, { status: 400 });
+    return Response.json({ access_token: "synthetic-access-token", token_type: "Bearer", expires_in: 3600, scope: "openid email profile", id_token: idToken(profile) });
+  }
+  if (url.startsWith("https://")) throw new Error(`Unexpected request: ${url}`);
+  return realFetch(input, init);
+});
+const cookiesOf = (r: Response) => r.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+async function googleSignIn(profile: GoogleProfile) {
+  const start = await getAuth().handler(new Request(`${base}/api/auth/sign-in/social`, {
+    method: "POST",
+    headers: { origin: base, "content-type": "application/json" },
+    body: JSON.stringify({ provider: "google", callbackURL: "/", errorCallbackURL: "/login" }),
+  }));
+  const { url } = (await start.json()) as { url: string };
+  const state = new URL(url).searchParams.get("state")!;
+  const code = randomUUID();
+  profiles.set(code, profile);
+  const callback = await getAuth().handler(new Request(
+    `${base}/api/auth/callback/google?code=${code}&state=${encodeURIComponent(state)}`,
+    { headers: { cookie: cookiesOf(start) } }));
+  const location = new URL(callback.headers.get("location") ?? "", base);
+  const cookie = cookiesOf(callback);
+  return { signedIn: callback.status === 302 && location.pathname === "/", error: location.searchParams.get("error"), cookie: cookie.includes("session_token") ? cookie : "" };
+}
+const emails = { old: "race-old@example.invalid", next: "race-next@example.invalid" };
+let memberId: string;
+beforeEach(async () => {
+  await db.execute(sql`truncate table auth_user, auth_verification, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`);
+  profiles.clear();
+  vi.restoreAllMocks();
+  const id = randomUUID();
+  await db.insert(soldiers).values({ id, name: "race", personalNumber: "4100001", data: soldier({ id, name: "race", personalNumber: "4100001" }) });
+  await db.insert(soldierContacts).values({ soldierId: id, email: emails.old });
+  await db.insert(balances).values({ soldierId: id });
+  memberId = (await createInvitedAccount({ name: "race", email: emails.old, soldierId: id })).id;
+});
+afterAll(async () => { vi.unstubAllGlobals(); await pool.end(); });
+const googleLinks = () => db.select({ accountId: account.accountId }).from(account).where(and(eq(account.userId, memberId), eq(account.providerId, "google")));
+const disconnect = () => db.transaction((tx) => applyVerifiedEmailChange(tx, memberId, emails.next));
+
+describe("Google sign-in vs. concurrent verified email change (Google disconnect)", () => {
+  it("baseline: sequential disconnect refuses the old Google sub", async () => {
+    expect((await googleSignIn({ sub: "sub-old", email: emails.old, email_verified: true })).signedIn).toBe(true);
+    await disconnect();
+    const after = await googleSignIn({ sub: "sub-old", email: emails.old, email_verified: true });
+    console.log("BASELINE after disconnect:", JSON.stringify({ signedIn: after.signedIn, error: after.error, links: await googleLinks() }));
+    expect(after.signedIn).toBe(false);
+  });
+
+  it("race A: disconnect commits after the linked-account update, before session creation", async () => {
+    await googleSignIn({ sub: "sub-old", email: emails.old, email_verified: true });
+    const ctx = await getAuth().$context;
+    const original = ctx.internalAdapter.updateAccount.bind(ctx.internalAdapter);
+    let fired = false;
+    vi.spyOn(ctx.internalAdapter, "updateAccount").mockImplementation(async (...args: Parameters<typeof original>) => {
+      const result = await original(...args);
+      if (!fired) { fired = true; await disconnect(); }
+      return result;
+    });
+    const raced = await googleSignIn({ sub: "sub-old", email: emails.old, email_verified: true });
+    vi.restoreAllMocks();
+    const actor = raced.cookie ? await getActor(new Headers({ cookie: raced.cookie })) : null;
+    const [row] = await db.select().from(user).where(eq(user.id, memberId));
+    console.log("RACE A:", JSON.stringify({ fired, signedIn: raced.signedIn, error: raced.error, actorId: actor?.id ?? null, memberId, email: row.email, epoch: row.securityEpoch, links: await googleLinks() }));
+    expect(fired).toBe(true);
+    expect(actor?.id).toBe(memberId);
+  });
+
+  it("race B: disconnect commits after the email lookup, before a second Google sub is linked", async () => {
+    await googleSignIn({ sub: "sub-first", email: emails.old, email_verified: true });
+    // A different Google account showing the old address is refused while the first link exists.
+    expect((await googleSignIn({ sub: "sub-second", email: emails.old, email_verified: true })).signedIn).toBe(false);
+    const ctx = await getAuth().$context;
+    const original = ctx.internalAdapter.findUserByEmail.bind(ctx.internalAdapter);
+    let fired = false;
+    vi.spyOn(ctx.internalAdapter, "findUserByEmail").mockImplementation(async (...args: Parameters<typeof original>) => {
+      const result = await original(...args);
+      if (!fired) { fired = true; await disconnect(); }
+      return result;
+    });
+    const raced = await googleSignIn({ sub: "sub-second", email: emails.old, email_verified: true });
+    vi.restoreAllMocks();
+    const [row] = await db.select().from(user).where(eq(user.id, memberId));
+    const linksAfter = await googleLinks();
+    // Durability: a later, ordinary sign-in with the second sub still works.
+    const later = await googleSignIn({ sub: "sub-second", email: emails.old, email_verified: true });
+    const laterActor = later.cookie ? await getActor(new Headers({ cookie: later.cookie })) : null;
+    console.log("RACE B:", JSON.stringify({ fired, signedIn: raced.signedIn, error: raced.error, email: row.email, links: linksAfter, laterSignedIn: later.signedIn, laterActorId: laterActor?.id ?? null, memberId }));
+    expect(fired).toBe(true);
+    expect(linksAfter).toEqual([{ accountId: "sub-second" }]);
+    expect(laterActor?.id).toBe(memberId);
+  });
+});

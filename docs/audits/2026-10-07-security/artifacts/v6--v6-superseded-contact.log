@@ -1,0 +1,26 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90m/app[39m
+
+[90mstdout[2m | audit/v6-superseded-contact.test.ts[2m > [22m[2mv6: stored import.preview result after soldier deletion[2m > [22m[2mA: all contacts superseded -> preview result keeps old contacts and replays
+[22m[39mV6 A contact before delete: v6-changed@example.invalid 0508880002 v6 new address
+
+[90mstdout[2m | audit/v6-superseded-contact.test.ts[2m > [22m[2mv6: stored import.preview result after soldier deletion[2m > [22m[2mA: all contacts superseded -> preview result keeps old contacts and replays
+[22m[39mV6 A soldier deletedAt set: [33mtrue[39m
+V6 A stored preview: {"erased":false,"oldEmail":true,"oldPhone":true,"oldAddress":true,"personalNumber":true}
+
+[90mstdout[2m | audit/v6-superseded-contact.test.ts[2m > [22m[2mv6: stored import.preview result after soldier deletion[2m > [22m[2mA: all contacts superseded -> preview result keeps old contacts and replays
+[22m[39mV6 A replay contains oldEmail/oldPhone/oldAddress: [33mtrue[39m [33mtrue[39m [33mtrue[39m
+
+[90mstdout[2m | audit/v6-superseded-contact.test.ts[2m > [22m[2mv6: stored import.preview result after soldier deletion[2m > [22m[2mB: control, no contact change -> preview result replaced by erasure marker
+[22m[39mV6 B stored preview: {"text":"{\"erasedAt\":\"2026-10-07T13:46:33.665Z\"}","erased":true,"oldEmail":false,"oldPhone":false,"oldAddress":false,"personalNumber":false}
+
+[90mstdout[2m | audit/v6-superseded-contact.test.ts[2m > [22m[2mv6: stored import.preview result after soldier deletion[2m > [22m[2mC: only email changed, phone/address unchanged -> still erased
+[22m[39mV6 C stored preview: {"erased":true,"oldEmail":false,"oldPhone":false,"oldAddress":false,"personalNumber":false}
+
+ [32m✓[39m audit/v6-superseded-contact.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 355[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 13:46:32
+[2m   Duration [22m 1.15s[2m (transform 38%, tests 33%, import 29%)[22m
+

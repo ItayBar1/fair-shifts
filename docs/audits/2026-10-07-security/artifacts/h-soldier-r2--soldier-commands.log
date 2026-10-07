@@ -1,0 +1,22 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90m/app[39m
+
+[90mstdout[2m | audit/soldier-commands.test.ts[2m > [22m[2mh-soldier-r2 transfer ownership and state[2m > [22m[2mrejects non-owner offers, non-candidate responses and replays
+[22m[39mTRANSFER_RESULT {"foreignOffer":{"ok":false,"code":"forbidden","status":403},"outsider":{"ok":false,"code":"forbidden","status":403},"outsiderWithdraw":{"ok":false,"code":"forbidden","status":403},"managerDecideBySoldier":{"ok":false,"code":"forbidden","status":403},"acceptedStatus":"completed","replay":{"ok":false,"code":"transfer_closed","status":409},"withdrawAfter":{"ok":false,"code":"transfer_closed","status":409},"reofferOld":{"ok":false,"code":"not_transferable","status":422}}
+
+[90mstdout[2m | audit/soldier-commands.test.ts[2m > [22m[2mh-soldier-r2 transfer ownership and state[2m > [22m[2ma candidate promoted to manager after the offer cannot take the seat
+[22m[39mPROMOTED_TRANSFER_RESULT {"accept":{"ok":false,"code":"candidate_ineligible","status":422},"seatOwnerUnchanged":true}
+
+[90mstdout[2m | audit/soldier-commands.test.ts[2m > [22m[2mh-soldier-r2 swap ownership and state[2m > [22m[2mrejects responses from non-entries and with another soldier's seat id
+[22m[39mSWAP_RESULT {"withBarsSeat":{"ok":false,"code":"forbidden","status":403},"withOwnSeat":{"ok":false,"code":"forbidden","status":403},"foreignSwapOffer":{"ok":false,"code":"forbidden","status":403},"promotedAccept":{"ok":false,"code":"candidate_ineligible","status":422}}
+
+[90mstdout[2m | audit/soldier-commands.test.ts[2m > [22m[2mh-soldier-r2 cancellation, constraint and notification ownership[2m > [22m[2mkeeps each soldier to their own requests, constraints and notifications
+[22m[39mOWNERSHIP_RESULT {"foreignSubmit":{"ok":false,"code":"forbidden","status":403},"foreignWithdraw":{"ok":false,"code":"forbidden","status":403},"soldierReject":{"ok":false,"code":"forbidden","status":403},"forOther":{"ok":false,"code":"forbidden","status":403},"editOther":{"ok":false,"code":"invalid_submission","status":403},"managerSubmit":{"ok":false,"code":"forbidden","status":403},"readOthers":{"ok":false,"code":"forbidden","status":403},"hideOthers":{"ok":false,"code":"forbidden","status":403},"settingsOverride":{"ok":false},"defaultsBySoldier":{"ok":false,"code":"forbidden","status":403}}
+
+ [32m✓[39m audit/soldier-commands.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 453[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 07:55:14
+[2m   Duration [22m 1.19s[2m (tests 40%, transform 35%, import 24%)[22m
+

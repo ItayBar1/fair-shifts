@@ -1,0 +1,83 @@
+// v9-r2 independent check: drive the real POST /api/v1/actions route handler with
+// growing JSON bodies from a soldier-role actor and measure live heap at the moment
+// executeAction reaches unitTransaction (after request.json, commandSchema.parse and
+// the idempotency hash). No fatal path, bounded sizes only.
+import { randomUUID } from "node:crypto";
+import v8 from "node:v8";
+import vm from "node:vm";
+import { describe, expect, it, vi } from "vitest";
+
+v8.setFlagsFromString("--expose-gc");
+const gc = vm.runInNewContext("gc") as () => void;
+
+const probe: { heapAtTx: number; reached: boolean } = {
+  heapAtTx: 0,
+  reached: false,
+};
+
+vi.mock("../src/server/auth", () => ({
+  getActor: async () => ({
+    id: "00000000-0000-4000-8000-000000000001",
+    name: "synthetic soldier",
+    role: "soldier",
+    soldierId: "00000000-0000-4000-8000-000000000002",
+    securityEpoch: 0,
+  }),
+}));
+
+vi.mock("../src/server/db", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/server/db")>();
+  return {
+    ...original,
+    unitTransaction: async () => {
+      gc();
+      probe.heapAtTx = process.memoryUsage().heapUsed;
+      probe.reached = true;
+      const { AppError } = await import("../src/server/errors");
+      throw new AppError("probe_stop", "probe stop", 418);
+    },
+  };
+});
+
+function body(targetBytes: number) {
+  const item = { a: 1, b: "x" };
+  const one = JSON.stringify(item).length + 1;
+  const count = Math.floor((targetBytes - 120) / one);
+  const items = new Array(count).fill(item);
+  return Buffer.from(
+    JSON.stringify({
+      type: "notification.read",
+      payload: { items },
+      idempotencyKey: randomUUID(),
+    })
+  );
+}
+
+describe("v9-r2 unbounded action body", () => {
+  it("accepts and amplifies large bodies before any handler runs", async () => {
+    const { POST } = await import("../src/app/api/v1/actions/route");
+    for (const mib of [1, 4, 8]) {
+      const buf = body(mib * 1024 * 1024);
+      probe.reached = false;
+      gc();
+      const before = process.memoryUsage().heapUsed;
+      const response = await POST(
+        new Request("http://localhost:3000/api/v1/actions", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+          },
+          body: buf,
+        })
+      );
+      const status = response.status;
+      const delta = probe.heapAtTx - before;
+      console.log(
+        `body=${buf.length}B status=${status} reachedTransaction=${probe.reached} liveHeapDeltaAtTx=${delta}B ratio=${(delta / buf.length).toFixed(1)}x`
+      );
+      expect(probe.reached).toBe(true);
+      expect(status).toBe(418);
+    }
+  });
+});

@@ -1,0 +1,181 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { db, pool } from "../src/server/db";
+import { emailOutbox } from "../src/server/auth-schema";
+import {
+  balances,
+  commandResults,
+  duties,
+  records,
+  soldierContacts,
+  soldiers,
+  assignments,
+} from "../src/server/schema";
+import { createInvitedAccount, type Actor } from "../src/server/auth/accounts";
+import { executeAction } from "../src/server/actions";
+import { deliverNextEmail, type MailMessage } from "../src/server/operations/email";
+import { ERASED_NOTE } from "../src/domain/erasure";
+import { soldier } from "../tests/fixtures";
+
+if (
+  !process.env.TEST_DATABASE_URL ||
+  process.env.TEST_DATABASE_URL !== process.env.DATABASE_URL ||
+  !new URL(process.env.TEST_DATABASE_URL).pathname.endsWith("_test")
+)
+  throw new Error("Integration tests require a dedicated *_test database");
+
+// Audit harness (v7): synthetic people only.
+const DAY = 86_400_000;
+let manager: Actor;
+let member: Actor;
+let other: Actor;
+
+async function invite(
+  name: string,
+  role: "soldier" | "manager",
+  personalNumber: string
+): Promise<Actor> {
+  const soldierId = randomUUID();
+  await db.insert(soldiers).values({
+    id: soldierId,
+    name,
+    personalNumber,
+    data: soldier({ id: soldierId, name, personalNumber }),
+  });
+  await db.insert(soldierContacts).values({
+    soldierId,
+    email: `${personalNumber}@example.invalid`,
+    phone: `050${personalNumber}`,
+    address: `addr ${personalNumber}`,
+  });
+  await db.insert(balances).values({ soldierId });
+  const row = await createInvitedAccount({
+    name,
+    role,
+    email: `${personalNumber}@example.invalid`,
+    soldierId,
+  });
+  return { id: row.id, name, role, soldierId, securityEpoch: 1 };
+}
+async function command(
+  actor: Actor,
+  type: string,
+  payload: Record<string, unknown>,
+  expectedVersion?: number,
+  idempotencyKey: string = randomUUID()
+) {
+  return (await executeAction(actor, {
+    type,
+    payload,
+    expectedVersion,
+    idempotencyKey,
+  })) as { id: string; version: number } & Record<string, unknown>;
+}
+async function soldierRowById(id: string) {
+  const [row] = await db.select().from(soldiers).where(eq(soldiers.id, id));
+  return row;
+}
+async function dutyRow(id: string) {
+  const [row] = await db.select().from(duties).where(eq(duties.id, id));
+  return row;
+}
+async function publishedDuty(seats: Actor[], startInDays = 2) {
+  const type = await command(manager, "dutyType.save", {
+    name: `type ${randomUUID().slice(0, 6)}`,
+    pricing: { mode: "fixed", base: 4 },
+    roles: [{ name: "תורן", count: seats.length }],
+  });
+  const duty = await command(manager, "duty.create", {
+    typeId: type.id,
+    name: "duty",
+    start: new Date(Date.now() + startInDays * DAY).toISOString(),
+    end: new Date(Date.now() + (startInDays + 1) * DAY).toISOString(),
+  });
+  const created = await dutyRow(duty.id);
+  let version = 1;
+  for (const [index, person] of seats.entries())
+    await command(
+      manager,
+      "duty.assign",
+      {
+        dutyId: duty.id,
+        slotId: created.data.slots[index].id,
+        soldierId: person.soldierId,
+      },
+      version++
+    );
+  await command(manager, "duty.publish", { id: duty.id, confirmed: true }, version);
+  return dutyRow(duty.id);
+}
+async function remove(actor: Actor, soldierId: string) {
+  const row = await soldierRowById(soldierId);
+  const preview = (await command(
+    actor,
+    "soldier.delete.preview",
+    { id: soldierId },
+    row.version
+  )) as unknown as { previewToken: string };
+  const now = await soldierRowById(soldierId);
+  return command(
+    actor,
+    "soldier.delete",
+    {
+      id: soldierId,
+      previewToken: preview.previewToken,
+      reason: "released",
+      confirmed: true,
+    },
+    now.version
+  );
+}
+
+beforeEach(async () => {
+  await db.execute(
+    sql`truncate table auth_user, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
+  );
+  manager = await invite("manager one", "manager", "00201");
+  member = await invite("member to delete", "soldier", "00203");
+  other = await invite("other soldier", "soldier", "00204");
+});
+afterAll(async () => pool.end());
+
+describe("v7: counterpart outbox residue after soldier erasure", () => {
+  it("keeps the manager's reject reason in the counterpart's queued mail and delivers it after deletion", async () => {
+    const REASON = "V7-MARKER-REJECT-REASON-5519";
+    const duty = await publishedDuty([other], 2);
+    const [seat] = await db.select().from(assignments).where(eq(assignments.soldierId, other.soldierId!));
+    const offer = await command(other, "transfer.offer", { assignmentId: seat.id, candidateIds: [member.soldierId] }, seat.version);
+    const row = await dutyRow(duty.id);
+    await db.update(duties).set({ data: { ...row.data, start: new Date(Date.now() - 3_600_000).toISOString(), end: new Date(Date.now() + DAY).toISOString() } }).where(eq(duties.id, duty.id));
+    const accepted = await command(member, "transfer.respond", { id: offer.id, decision: "accept", confirmed: true }, offer.version);
+    expect(accepted.status).toBe("awaiting_manager");
+    await command(manager, "transfer.decide", { id: offer.id, decision: "reject", reason: REASON }, accepted.version);
+    // Drain any mail queued before the rejection so only reject mail is left to deliver.
+    const hits = () => db.select().from(emailOutbox).where(sql`position(${REASON} in ${emailOutbox.body}) > 0`);
+    const before = await hits();
+    console.log("V7 before deletion:", before.map((m) => ({ toMember: m.recipientAccountId === member.id, toOther: m.recipientAccountId === other.id, status: m.status, eventKey: m.eventKey.replace(offer.id, "<req>").replace(other.id, "<other>").replace(member.id, "<member>") })));
+
+    await remove(manager, member.soldierId!);
+
+    const recordHits = await db.select().from(records).where(sql`position(${REASON} in ${records.data}::text) > 0`);
+    const otherNotices = await db.select().from(records).where(sql`${records.kind} = 'notification' and ${records.data}->>'requestId' = ${offer.id} and ${records.data}->>'accountId' = ${other.id}`);
+    const after = await hits();
+    console.log("V7 after deletion: records quoting reason =", recordHits.length, "other's site notice bodies erased =", otherNotices.map((n) => (n.data as { body: string }).body === ERASED_NOTE));
+    console.log("V7 after deletion outbox:", after.map((m) => ({ toMember: m.recipientAccountId === member.id, toOther: m.recipientAccountId === other.id, status: m.status })));
+    expect(recordHits).toHaveLength(0);
+    expect(after.some((m) => m.recipientAccountId === other.id && m.status === "pending")).toBe(true);
+
+    const sent: MailMessage[] = [];
+    const transport = async (message: MailMessage) => { sent.push(message); return `fake-${sent.length}`; };
+    for (let i = 0; i < 20; i++) {
+      const result = await deliverNextEmail(transport);
+      if (result.status === "idle") break;
+    }
+    const leaked = sent.filter((m) => m.text.includes(REASON));
+    console.log("V7 delivered after deletion:", sent.length, "messages; quoting reason:", leaked.length, "to other:", leaked.map((m) => m.to === "00204@example.invalid"));
+    const final = await hits();
+    console.log("V7 final outbox rows quoting reason:", final.map((m) => ({ toOther: m.recipientAccountId === other.id, status: m.status })));
+    expect(leaked.length).toBeGreaterThan(0);
+  });
+});

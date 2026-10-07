@@ -1,0 +1,28 @@
+
+ RUN  v5.0.2 /app
+
+stderr | audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > baseline: sequential disconnect refuses the old Google sub
+2026-10-07T07:56:15.033Z ERROR [Better Auth]: signup_disabled
+
+stdout | audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > baseline: sequential disconnect refuses the old Google sub
+BASELINE after disconnect: {"signedIn":false,"error":"signup_disabled","links":[]}
+
+ ✓ audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > baseline: sequential disconnect refuses the old Google sub 112ms
+stdout | audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > race A: disconnect commits after the linked-account update, before session creation
+RACE A: {"fired":true,"signedIn":true,"error":null,"actorId":"094dd27f-ef86-48a5-b99d-0377c467b573","memberId":"094dd27f-ef86-48a5-b99d-0377c467b573","email":"race-next@example.invalid","epoch":2,"links":[]}
+
+ ✓ audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > race A: disconnect commits after the linked-account update, before session creation 89ms
+stderr | audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > race B: disconnect commits after the email lookup, before a second Google sub is linked
+2026-10-07T07:56:15.211Z ERROR [Better Auth]: unable_to_link_account
+
+stdout | audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > race B: disconnect commits after the email lookup, before a second Google sub is linked
+RACE B: {"fired":true,"signedIn":true,"error":null,"email":"race-next@example.invalid","links":[{"accountId":"sub-second"}],"laterSignedIn":true,"laterActorId":"cb94cc13-0b72-482b-9435-eb2faf37b71c","memberId":"cb94cc13-0b72-482b-9435-eb2faf37b71c"}
+
+ ✓ audit/oauth-disconnect-race.test.ts > Google sign-in vs. concurrent verified email change (Google disconnect) > race B: disconnect commits after the email lookup, before a second Google sub is linked 101ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  07:56:14
+   Duration  765ms (tests 43%, import 37%, transform 20%)
+
+exit=0
