@@ -143,6 +143,23 @@ test("personal assignments on desktop and mobile, private mail highlight and vis
   browser,
 }) => {
   await login(page, memberEmail);
+  // The real HTTP paths reject oversized/deep input before command processing.
+  const origin = new URL(page.url()).origin;
+  const large = await page.request.post("/api/v1/actions", {
+    headers: { origin, "content-type": "application/json" },
+    data: JSON.stringify({ padding: "x".repeat(2 * 1024 * 1024) }),
+  });
+  expect(large.status()).toBe(413);
+  const deep = await page.request.post("/api/v1/actions", {
+    headers: { origin, "content-type": "application/json" },
+    data: "[".repeat(33) + "0" + "]".repeat(33),
+  });
+  expect(deep.status()).toBe(413);
+  const authLarge = await page.request.post("/api/auth/request-code", {
+    headers: { origin, "content-type": "application/json" },
+    data: JSON.stringify({ email: "x".repeat(16 * 1024) }),
+  });
+  expect(authLarge.status()).toBe(413);
   await page.getByRole("link", { name: "השיבוצים שלי" }).click();
   await expect(
     page.getByRole("heading", { name: "השיבוצים שלי", exact: true })

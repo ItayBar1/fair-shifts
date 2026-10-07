@@ -1,6 +1,7 @@
 import { getAuth } from "@/server/auth";
 import { errorResponse, verifyOrigin } from "@/server/http";
 import { enforceAuthRateLimit } from "@/server/auth/rate-limit";
+import { boundedAuthRequest } from "@/server/bounded-body";
 
 const publicPaths = new Set([
   "request-code",
@@ -15,6 +16,7 @@ async function handler(request: Request) {
     const path = new URL(request.url).pathname.replace(/^\/api\/auth\//, "");
     if (!publicPaths.has(path)) return new Response(null, { status: 404 });
     if (request.method === "POST") verifyOrigin(request);
+    request = await boundedAuthRequest(request);
     await enforceAuthRateLimit(request, path);
     return await getAuth().handler(request);
   } catch (error) {
