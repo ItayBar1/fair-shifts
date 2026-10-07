@@ -38,6 +38,8 @@ import { requestEmailChange, confirmEmailChange } from "./auth/email-change";
 import {
   confirmTechnicalEmailChange,
   requestTechnicalEmailChange,
+  requestManagerEmailChange,
+  confirmManagerEmailChange,
 } from "./auth/technical-email";
 import { user } from "./auth-schema";
 import {
@@ -533,7 +535,31 @@ export async function executeAction(actor: Actor, value: unknown) {
         result = await requestTechnicalEmailChange(tx, actor, payload);
         break;
       case "technical.email.confirm":
-        result = await confirmTechnicalEmailChange(tx, actor, payload);
+        result = await confirmTechnicalEmailChange(
+          tx,
+          actor,
+          payload,
+          calendarCleanups
+        );
+        break;
+      case "manager.email.request":
+      case "technical.manager-email.request":
+        result = await requestManagerEmailChange(
+          tx,
+          actor,
+          payload,
+          command.type === "technical.manager-email.request"
+        );
+        break;
+      case "manager.email.confirm":
+      case "technical.manager-email.confirm":
+        result = await confirmManagerEmailChange(
+          tx,
+          actor,
+          payload,
+          command.type === "technical.manager-email.confirm",
+          calendarCleanups
+        );
         break;
       case "notification.read":
         result = await markNotification(tx, actor, payload, "readAt");

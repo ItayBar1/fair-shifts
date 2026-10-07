@@ -118,13 +118,13 @@ const ask = (email: string, reason = "מעבר לחשבון הייעודי") =>
   asTechnical("technical.email.request", { email, reason });
 
 /** The codes the mail queue holds, by the address each one goes to. */
-async function codesSent() {
+async function codesSent(accountId = ids.technical) {
   const rows = await db
     .select()
     .from(emailOutbox)
     .where(
       and(
-        eq(emailOutbox.recipientAccountId, ids.technical),
+        eq(emailOutbox.recipientAccountId, accountId),
         eq(emailOutbox.kind, "email-change"),
         eq(emailOutbox.status, "pending")
       )
@@ -157,6 +157,236 @@ const audit = async () =>
   (await db.select().from(records).where(eq(records.kind, "audit")))
     .filter((row) => row.data.targetId === ids.technical)
     .map((row) => row.data);
+
+describe("security #123: manager email authority", () => {
+  const askManager = () =>
+    command(ids.manager, "manager.email.request", {
+      email: emails.next,
+      reason: "החלפת תיבה אישית",
+    });
+  const confirmManager = (codes: Record<string, string>) =>
+    command(ids.manager, "manager.email.confirm", {
+      currentCode: codes[emails.manager],
+      newCode: codes[emails.next],
+    });
+
+  it("blocks the original peer takeover, including self through the soldier route", async () => {
+    const other = await invite(
+      "אחראי שני",
+      "manager",
+      "second@example.invalid",
+      "6000003"
+    );
+    for (const targetId of [ids.manager, other]) {
+      const target = await account_(targetId);
+      for (const type of ["account.email.request", "account.email.confirm"])
+        await expect(
+          command(
+            ids.manager,
+            type,
+            {
+              soldierId: target.soldierId,
+              email: emails.next,
+              reason: "בדיקה",
+              code: "123456",
+              disconnectGoogle: true,
+            },
+            1
+          )
+        ).rejects.toMatchObject({ status: 403 });
+      expect((await account_(targetId)).email).toBe(target.email);
+    }
+    expect(await db.select().from(emailOutbox)).toHaveLength(0);
+  });
+
+  it("rechecks the role under lock after a soldier is promoted between request and confirmation", async () => {
+    const member = await account_(ids.member);
+    await command(
+      ids.manager,
+      "account.email.request",
+      { soldierId: member.soldierId, email: emails.next, reason: "החלפה" },
+      1
+    );
+    const codes = await codesSent(ids.member);
+    await command(
+      ids.technical,
+      "account.role",
+      { id: ids.member, role: "manager" },
+      member.securityEpoch
+    );
+    await expect(
+      command(
+        ids.manager,
+        "account.email.confirm",
+        {
+          soldierId: member.soldierId,
+          code: codes[emails.next],
+          disconnectGoogle: true,
+        },
+        1
+      )
+    ).rejects.toMatchObject({ status: 403 });
+    expect((await account_(ids.member)).email).toBe(emails.member);
+  });
+
+  it("requires both mailboxes for a manager and revokes prior access on success", async () => {
+    const before = await account_(ids.manager);
+    await requestCode(emails.manager);
+    await db.insert(session).values({
+      id: randomUUID(),
+      token: randomUUID(),
+      userId: ids.manager,
+      expiresAt: new Date(Date.now() + 60_000),
+      securityEpoch: before.securityEpoch,
+    });
+    await db.insert(account).values({
+      id: randomUUID(),
+      userId: ids.manager,
+      providerId: "google",
+      accountId: "manager-old-sub",
+    });
+    await askManager();
+    const codes = await codesSent(ids.manager);
+    expect(Object.keys(codes).sort()).toEqual(
+      [emails.manager, emails.next].sort()
+    );
+    await expect(
+      confirmManager({ ...codes, [emails.manager]: "not-the-code" })
+    ).rejects.toMatchObject({ code: "invalid_code" });
+    expect((await account_(ids.manager)).email).toBe(emails.manager);
+    const result = await readState(await actorOf(ids.manager));
+    expect(result.ownAccount).toMatchObject({
+      email: emails.manager,
+      pendingEmailChange: { email: emails.next },
+    });
+    await confirmManager(codes);
+    expect(await account_(ids.manager)).toMatchObject({
+      email: emails.next,
+      securityEpoch: before.securityEpoch + 1,
+    });
+    expect(
+      await db.select().from(session).where(eq(session.userId, ids.manager))
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(account).where(eq(account.userId, ids.manager))
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(loginCode).where(eq(loginCode.userId, ids.manager))
+    ).toHaveLength(0);
+    const [contact] = await db
+      .select()
+      .from(soldierContacts)
+      .where(eq(soldierContacts.soldierId, before.soldierId!));
+    expect(contact.email).toBe(emails.next);
+  });
+
+  it("rejects unauthorized roles before parsing and never lets a self request choose another target", async () => {
+    for (const actorId of [ids.technical, ids.member])
+      for (const type of ["manager.email.request", "manager.email.confirm"])
+        await expect(command(actorId, type, {})).rejects.toMatchObject({
+          status: 403,
+        });
+    for (const actorId of [ids.manager, ids.member])
+      for (const type of [
+        "technical.manager-email.request",
+        "technical.manager-email.confirm",
+      ])
+        await expect(command(actorId, type, {})).rejects.toMatchObject({
+          status: 403,
+        });
+    await command(ids.manager, "manager.email.request", {
+      accountId: ids.technical,
+      email: emails.next,
+      reason: "בדיקה",
+    });
+    expect(await codesSent()).toEqual({});
+    expect(Object.keys(await codesSent(ids.manager))).toHaveLength(2);
+  });
+
+  it("allows technical recovery with a reason and only the new mailbox code, and records erasable reasons", async () => {
+    await expect(
+      asTechnical("technical.manager-email.request", {
+        accountId: ids.manager,
+        email: emails.next,
+        reason: "",
+      })
+    ).rejects.toThrow();
+    for (const accountId of [ids.member, ids.technical])
+      await expect(
+        asTechnical("technical.manager-email.request", {
+          accountId,
+          email: emails.next,
+          reason: "תיבה אבדה",
+        })
+      ).rejects.toMatchObject({ status: 403 });
+    await asTechnical("technical.manager-email.request", {
+      accountId: ids.manager,
+      email: emails.next,
+      reason: "תיבה אבדה",
+    });
+    const codes = await codesSent(ids.manager);
+    expect(Object.keys(codes)).toEqual([emails.next]);
+    await expect(
+      confirmManager({ [emails.manager]: "123456", ...codes })
+    ).rejects.toMatchObject({ code: "expired_verification" });
+    await asTechnical("technical.manager-email.confirm", {
+      accountId: ids.manager,
+      newCode: codes[emails.next],
+    });
+    expect((await account_(ids.manager)).email).toBe(emails.next);
+    const logs = await db
+      .select()
+      .from(records)
+      .where(eq(records.kind, "audit"));
+    const entry = logs.find(
+      (row) => row.data.action === "technical.manager-email.confirm"
+    )!;
+    expect(entry.data.reason).toBeUndefined();
+    const [detail] = await db
+      .select()
+      .from(records)
+      .where(eq(records.id, String(entry.data.detailId)));
+    expect(detail).toMatchObject({
+      subjectId: (await account_(ids.manager)).soldierId,
+      data: { reason: "תיבה אבדה" },
+    });
+  });
+
+  it("rejects recovery confirmation after demotion", async () => {
+    await asTechnical("technical.manager-email.request", {
+      accountId: ids.manager,
+      email: emails.next,
+      reason: "תיבה אבדה",
+    });
+    const codes = await codesSent(ids.manager);
+    await command(
+      ids.technical,
+      "account.role",
+      { id: ids.manager, role: "soldier" },
+      (await account_(ids.manager)).securityEpoch
+    );
+    await expect(
+      asTechnical("technical.manager-email.confirm", {
+        accountId: ids.manager,
+        newCode: codes[emails.next],
+      })
+    ).rejects.toMatchObject({ status: 403 });
+    expect((await account_(ids.manager)).email).toBe(emails.manager);
+  });
+
+  it("serializes competing confirmations so only one applies", async () => {
+    await askManager();
+    const codes = await codesSent(ids.manager);
+    const results = await Promise.allSettled([
+      confirmManager(codes),
+      confirmManager(codes),
+    ]);
+    expect(
+      results.filter((result) => result.status === "fulfilled")
+    ).toHaveLength(1);
+    expect((await account_(ids.manager)).email).toBe(emails.next);
+  });
+});
 
 describe("who can use the route", () => {
   it("is refused to a manager and a soldier, also when called directly", async () => {

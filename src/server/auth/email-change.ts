@@ -46,6 +46,12 @@ export async function requestEmailChange(
     .where(eq(user.soldierId, person.id))
     .for("update");
   invariant(target && !target.deletedAt, "not_found", "חשבון לא נמצא", 404);
+  invariant(
+    target.role === "soldier",
+    "forbidden",
+    "שינוי זה זמין לחשבון חייל בלבד",
+    403
+  );
   const email = normalizeEmail(input.email);
   invariant(
     email !== target.email,
@@ -147,6 +153,12 @@ export async function confirmEmailChange(
     .where(eq(user.soldierId, person.id))
     .for("update");
   invariant(target && !target.deletedAt, "not_found", "חשבון לא נמצא", 404);
+  invariant(
+    target.role === "soldier",
+    "forbidden",
+    "שינוי זה זמין לחשבון חייל בלבד",
+    403
+  );
   const candidates = await tx
     .select()
     .from(records)

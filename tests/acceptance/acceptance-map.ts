@@ -2081,7 +2081,14 @@ export const scenarios: Record<number, Entry> = {
         "works only on the technical account, and its errors are in English",
         "moves the account with the code from the new address, ends access and replaces the recovery codes",
         "counts wrong codes and cancels after five",
-        "keeps the two routes apart: a request of one is not confirmed by the other"
+        "keeps the two routes apart: a request of one is not confirmed by the other",
+        "blocks the original peer takeover, including self through the soldier route",
+        "rechecks the role under lock after a soldier is promoted between request and confirmation",
+        "requires both mailboxes for a manager and revokes prior access on success",
+        "rejects unauthorized roles before parsing and never lets a self request choose another target",
+        "allows technical recovery with a reason and only the new mailbox code, and records erasable reasons",
+        "rejects recovery confirmation after demotion",
+        "serializes competing confirmations so only one applies"
       ),
       ...t(
         I.google,
@@ -2090,7 +2097,9 @@ export const scenarios: Record<number, Entry> = {
       ...t(
         E.techEmail,
         "the technical account moves itself to a new address with a code from each mailbox",
-        "a manager has no such screen and the server refuses the route"
+        "a manager uses its own screen and the server refuses the technical route",
+        "a manager changes its own email using two codes on desktop and mobile",
+        "the technical account recovers a manager email using a reason and the new code"
       ),
     ],
     [stagingTechnicalAddress]

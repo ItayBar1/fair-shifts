@@ -21,6 +21,8 @@ export function TechnicalAccount({
   action: Action;
 }) {
   const own = obj(state.ownAccount);
+  const isManager = state.actor.role === "manager";
+  const actionPrefix = isManager ? "manager.email" : "technical.email";
   const pending = obj(own.pendingEmailChange);
   const open = Boolean(pending.expiresAt);
   return (
@@ -28,7 +30,7 @@ export function TechnicalAccount({
       <Panel title="החשבון שלי">
         <div className="task-item">
           <strong className="grow">{state.actor.name}</strong>
-          <span>מנהל טכני</span>
+          <span>{isManager ? "אחראי תורנויות" : "מנהל טכני"}</span>
         </div>
         <div className="task-item">
           <strong className="grow">כתובת המייל</strong>
@@ -42,8 +44,15 @@ export function TechnicalAccount({
         <p>
           אחרי ההחלפה כל החיבורים של החשבון מתבטלים, קישור Google הקודם מוסר
           והכניסה הבאה היא עם הכתובת החדשה, בקוד או ב־Google. אם הכתובת הנוכחית
-          אינה זמינה, מפעיל השרת מבצע את ההחלפה דרך השרת (
-          <code dir="ltr">pnpm technical-email</code>).
+          אינה זמינה,{" "}
+          {isManager ? (
+            "יש לפנות למנהל הטכני לחילוץ החשבון."
+          ) : (
+            <>
+              מפעיל השרת מבצע את ההחלפה דרך השרת (
+              <code dir="ltr">pnpm technical-email</code>).
+            </>
+          )}
         </p>
         {open && (
           <Notice>
@@ -67,7 +76,7 @@ export function TechnicalAccount({
             ]}
             action={action}
             submitLabel="שליחת הקודים"
-            type="technical.email.request"
+            type={`${actionPrefix}.request`}
             description="הקודים נשלחים מיד. בקשה חדשה מבטלת את הקודמת, ומותרת בקשה אחת בדקה."
           />
           {open && (
@@ -88,7 +97,7 @@ export function TechnicalAccount({
               ]}
               action={action}
               submitLabel="אימות והחלפה"
-              type="technical.email.confirm"
+              type={`${actionPrefix}.confirm`}
               description="אחרי האימות תתבקשו להתחבר מחדש עם הכתובת החדשה."
             />
           )}

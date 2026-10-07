@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { projectAudit, technicalScope, type AuditAccount } from "./audit-log";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
@@ -108,6 +108,37 @@ export async function readState(actor: Actor) {
       managerReturns: [],
       names: {},
     };
+    if (actor.role === "manager" || actor.role === "technical") {
+      const [pending] = (
+        await tx
+          .select()
+          .from(records)
+          .where(
+            and(
+              eq(
+                records.kind,
+                actor.role === "manager"
+                  ? "manager_email_change"
+                  : "technical_email_change"
+              ),
+              sql`${records.data}->>'accountId' = ${actor.id}`,
+              sql`${records.data}->>'mode' = ${actor.role === "manager" ? "manager-self" : "web"}`,
+              sql`${records.data}->>'status' = 'pending'`
+            )
+          )
+      ).filter(
+        (row) =>
+          row.data.securityEpoch === current.securityEpoch &&
+          new Date(String(row.data.expiresAt)) > new Date() &&
+          Number(row.data.attempts) < MAX_FAILURES
+      );
+      base.ownAccount = {
+        email: current.email,
+        pendingEmailChange: pending
+          ? { email: pending.data.email, expiresAt: pending.data.expiresAt }
+          : null,
+      };
+    }
     if (actor.role === "technical") {
       const accounts = await tx
         .select({
@@ -123,6 +154,28 @@ export async function readState(actor: Actor) {
         .where(isNull(user.deletedAt));
       const operations = await tx.select().from(operationsState);
       const auditAccounts = await auditAccountsOf(tx);
+      const auditRows = await tx
+        .select()
+        .from(records)
+        .where(eq(records.kind, "audit"));
+      const emailDetailIds = auditRows
+        .filter(
+          (row) =>
+            String(row.data.action).startsWith("manager.email.") ||
+            String(row.data.action).startsWith("technical.manager-email.")
+        )
+        .map((row) => String(row.data.detailId));
+      const emailDetails = emailDetailIds.length
+        ? await tx
+            .select()
+            .from(records)
+            .where(
+              and(
+                eq(records.kind, "audit_detail"),
+                inArray(records.id, emailDetailIds)
+              )
+            )
+        : [];
       // Operational alerts are addressed to each technical account (decision 173).
       const notices = await tx
         .select()
@@ -133,36 +186,8 @@ export async function readState(actor: Actor) {
             sql`${records.data}->>'accountId' = ${actor.id}`
           )
         );
-      // The request this account made to move itself to another address, if one is still open.
-      const [pendingChange] = (
-        await tx
-          .select()
-          .from(records)
-          .where(
-            and(
-              eq(records.kind, "technical_email_change"),
-              sql`${records.data}->>'accountId' = ${actor.id}`,
-              sql`${records.data}->>'mode' = 'web'`,
-              sql`${records.data}->>'status' = 'pending'`
-            )
-          )
-      ).filter(
-        (row) =>
-          row.data.securityEpoch === current.securityEpoch &&
-          new Date(String(row.data.expiresAt)) > new Date() &&
-          Number(row.data.attempts) < MAX_FAILURES
-      );
       return {
         ...base,
-        ownAccount: {
-          email: current.email,
-          pendingEmailChange: pendingChange
-            ? {
-                email: pendingChange.data.email,
-                expiresAt: pendingChange.data.expiresAt,
-              }
-            : null,
-        },
         notifications: notices
           .filter((row) => !row.data.hiddenAt)
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -174,10 +199,7 @@ export async function readState(actor: Actor) {
         // Account operations within technical authority; no soldier data is resolved.
         audit: projectAudit(
           {
-            workflows: await tx
-              .select()
-              .from(records)
-              .where(eq(records.kind, "audit")),
+            workflows: [...auditRows, ...emailDetails],
             soldiers: [],
             duties: [],
             dutyTypes: [],

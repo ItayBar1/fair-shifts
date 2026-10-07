@@ -100,6 +100,10 @@ export const recordPolicies: Record<string, ErasurePolicy> = {
     action: "keep",
     why: "בקשה להחלפת כתובת של החשבון הטכני, שאינו חייל ואינו נמחק; אחרי הטיפול נשארים סטטוס וסיבה בלבד",
   },
+  manager_email_change: {
+    action: "delete",
+    why: "כתובות וקודי אימות של אחראי שנמחק",
+  },
 };
 
 const object = (value: unknown): Json | undefined =>

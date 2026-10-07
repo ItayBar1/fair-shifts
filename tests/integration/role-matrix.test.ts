@@ -107,6 +107,10 @@ const access: Record<string, Access> = {
   // The technical account moves its own address with a code from each mailbox (decision 204).
   "technical.email.request": "technical",
   "technical.email.confirm": "technical",
+  "manager.email.request": "manager",
+  "manager.email.confirm": "manager",
+  "technical.manager-email.request": "technical",
+  "technical.manager-email.confirm": "technical",
   // A manager releases a soldier and the technical account a manager.
   "account.unlock": "staff",
   "account.responsibility": "staff",
@@ -145,7 +149,7 @@ const permitted = (kind: Access, role: Role) =>
   (kind === "staff" && role !== "soldier");
 const commands = [
   ...readFileSync("src/server/actions.ts", "utf8").matchAll(
-    /case "([a-zA-Z.]+)":/g
+    /case "([a-zA-Z.-]+)":/g
   ),
 ].map((match) => match[1]);
 
