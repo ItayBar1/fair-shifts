@@ -4,12 +4,26 @@ on:
   pull_request:
 permissions:
   contents: read
+  pull-requests: read
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Dependency and production image security gate
+        run: sh scripts/security-scan.sh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SECURITY_REVIEW_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Preserve security scan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: security-reports
+          path: security-reports/
+          if-no-files-found: error
+          retention-days: 30
       - name: Types, lint, domain, PostgreSQL and production build
         run: sh scripts/docker.sh --profile test run --build --rm tests
       - name: Browser flow and mobile layout

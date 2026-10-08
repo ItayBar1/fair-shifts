@@ -1518,9 +1518,26 @@ export const scenarios: Record<number, Entry> = {
     [
       ...t(
         "tests/unit/deployment-preflight.test.ts",
+        "rejects an existing legacy database before building",
+        "continues a fresh deployment",
         "rejects missing runtime or operations env files",
         "rejects invalid configuration for each service",
         "checks all three service configurations"
+      ),
+      ...t(
+        "tests/unit/supply-chain.test.ts",
+        "blocks high and critical findings",
+        "requires actual approval",
+        "fails closed for empty"
+      ),
+      ...t(
+        "tests/unit/repository-rules.test.ts",
+        "verifies effective GitHub rules",
+        "pins external Docker images"
+      ),
+      ...t(
+        "tests/unit/braces-depth.test.ts",
+        "rejects the published stack-exhaustion input"
       ),
       ...t(
         "tests/integration/database-permissions.test.ts",
