@@ -209,7 +209,7 @@ test("several publications reach the soldier as one notice that counts them and 
     .getByRole("link", { name: "פתיחת הפרטים" })
     .click();
   await expect(
-    member.getByRole("heading", { name: "השיבוצים הקרובים שלי" })
+    member.getByRole("heading", { name: /^(התורנות הבאה שלך|מתבצעת עכשיו)/ })
   ).toBeVisible();
   await expect(member.getByText("חדש", { exact: true })).toHaveCount(4);
   await member.reload();

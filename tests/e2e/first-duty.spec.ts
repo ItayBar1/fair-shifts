@@ -1304,6 +1304,14 @@ test("multi-day duties appear on every Israeli day and month, independent of the
   await member.goto("/calendar");
   await next.click();
   await next.click();
+  // A phone opens the calendar as a list (decision 218).
+  await expect(
+    member
+      .locator(".duty-row")
+      .filter({ hasText: "לילה חוצה חודש" })
+      .locator(".duty-row-when")
+  ).toBeVisible();
+  await member.getByRole("button", { name: "תצוגת חודש" }).click();
   await expect(startLink).toBeVisible();
   expect(
     await member.evaluate(
@@ -1314,13 +1322,6 @@ test("multi-day duties appear on every Israeli day and month, independent of the
     path: "test-results/calendar-multiday-mobile.png",
     fullPage: true,
   });
-  await member.getByRole("button", { name: "תצוגת רשימה" }).click();
-  await expect(
-    member
-      .locator(".duty-row")
-      .filter({ hasText: "לילה חוצה חודש" })
-      .locator(".mobile-only")
-  ).toBeVisible();
   await member.setViewportSize({ width: 1280, height: 900 });
   await member.getByRole("button", { name: "תצוגת חודש" }).click();
   await member.screenshot({

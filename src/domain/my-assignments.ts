@@ -25,17 +25,58 @@ export type CancelledItem = AssignmentSnapshot & {
   highlighted: boolean;
 };
 
-const israelDate = new Intl.DateTimeFormat("he-IL", {
-  timeZone: "Asia/Jerusalem",
+const timeZone = "Asia/Jerusalem";
+const israelDay = new Intl.DateTimeFormat("he-IL", {
+  timeZone,
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
+});
+const israelTime = new Intl.DateTimeFormat("he-IL", {
+  timeZone,
   hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
+});
+const israelOffset = new Intl.DateTimeFormat("en-US", {
+  timeZone,
   timeZoneName: "shortOffset",
 });
-// Show the offset so the repeated hour on the autumn clock change is unambiguous.
-export const assignmentDate = (iso: string) => israelDate.format(new Date(iso));
+const HOUR = 3_600_000;
+const wallTime = (date: Date) =>
+  `${israelDay.format(date)}, ${israelTime.format(date)}`;
+/** The same wall time also occurs an hour away: the autumn clock change. */
+const repeatedHour = (date: Date) => {
+  const wall = wallTime(date);
+  return (
+    wallTime(new Date(date.getTime() - HOUR)) === wall ||
+    wallTime(new Date(date.getTime() + HOUR)) === wall
+  );
+};
+/**
+ * Israel date and time. The offset is shown only in the hour that repeats on
+ * the autumn clock change, where the wall time alone is ambiguous.
+ */
+export const assignmentDate = (iso: string) => {
+  const date = new Date(iso);
+  if (!repeatedHour(date)) return wallTime(date);
+  const offset = israelOffset
+    .formatToParts(date)
+    .find((part) => part.type === "timeZoneName")?.value;
+  return `${wallTime(date)} (${offset})`;
+};
+/** A duty that starts and ends on one day names the day once. */
+export const assignmentRange = (start: string, end: string) => {
+  const from = new Date(start);
+  const to = new Date(end);
+  if (
+    israelDay.format(from) === israelDay.format(to) &&
+    !repeatedHour(from) &&
+    !repeatedHour(to)
+  )
+    return `${israelDay.format(from)}, ${israelTime.format(from)}–${israelTime.format(to)}`;
+  return `${assignmentDate(start)} – ${assignmentDate(end)}`;
+};
 
 /** Pure projection: the first event after the previous visit keeps a newly
  * published assignment "new" even if its details changed in the same visit. */
