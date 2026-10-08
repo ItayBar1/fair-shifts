@@ -1517,6 +1517,11 @@ export const scenarios: Record<number, Entry> = {
   34: covered(
     [
       ...t(
+        "tests/unit/deployment-preflight.test.ts",
+        "rejects an existing legacy database before building",
+        "continues a fresh deployment"
+      ),
+      ...t(
         "tests/unit/supply-chain.test.ts",
         "blocks high and critical findings",
         "requires actual approval",

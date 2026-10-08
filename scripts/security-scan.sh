@@ -10,6 +10,7 @@ mkdir -p security-reports
 report_dir="$PWD/security-reports"
 cache_dir="${FAIR_SHIFTS_SCAN_CACHE:-$work/cache}"
 mkdir -p "$cache_dir"
+scan_user="$(id -u):$(id -g)"
 image="fair-shifts-security:$(git rev-parse --short=12 HEAD)"
 audit_image="$image-tools"
 "$docker_bin" build --target tooling -t "$audit_image" .
@@ -23,9 +24,9 @@ tunnel_image="$image-tunnel"
   -v "$PWD:/source:ro" -w /source "$audit_image" pnpm audit --json >"$report_dir/audit.json" || audit_status=$?
 [ "${audit_status:-0}" -le 1 ] || exit 1
 scan() {
-  "$docker_bin" run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp \
+  "$docker_bin" run --rm --user "$scan_user" --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp \
     -v "$PWD:/source:ro" -v "$work:/input:ro" -v "$report_dir:/reports" \
-    -v "$cache_dir:/root/.cache/trivy" "$scanner" "$@" \
+    -v "$cache_dir:/cache" "$scanner" "$@" --cache-dir /cache \
     --scanners vuln --ignorefile /dev/null --list-all-pkgs --no-progress --format json
 }
 scan fs --include-dev-deps --output /reports/dependencies.json /source

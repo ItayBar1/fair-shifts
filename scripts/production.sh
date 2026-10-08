@@ -38,6 +38,16 @@ case "${1:-}" in
       echo "TUNNEL_TOKEN is missing in $FAIR_SHIFTS_CONFIG_DIR/tunnel.env" >&2
       exit 1
     fi
+    # Reject a libc image cutover before Compose can stop the existing database.
+    database_container=$(compose ps -a -q db)
+    if [ -n "$database_container" ]; then
+      . scripts/docker-env.sh
+      database_runtime=$("$docker_bin" inspect --format '{{ index .Config.Labels "org.fair-shifts.database-runtime" }}' "$database_container")
+      if [ "$database_runtime" != alpine-pg18-v1 ]; then
+        echo 'Database image migration required before deployment: preserve the running services and original volume; restore a verified logical backup into a new Alpine deployment.' >&2
+        exit 1
+      fi
+    fi
     compose build app db cloudflared
     compose up -d --wait db
     compose stop worker app
