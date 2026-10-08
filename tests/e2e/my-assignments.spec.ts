@@ -129,9 +129,12 @@ async function login(page: Page, email: string) {
   const code = messages
     .filter((row) => row.kind === "login-code")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-  await page
-    .getByLabel("קוד כניסה", { exact: true })
-    .fill(openSecret(code.encryptedSecret!));
+  await page.getByLabel("קוד כניסה", { exact: true }).fill(
+    openSecret(code.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: code.id,
+    })
+  );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })

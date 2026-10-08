@@ -24,7 +24,10 @@ import {
   serializeEntry,
   type LogEntry,
   type LogProblem,
+  type LogSigner,
+  type LogPublicKeys,
 } from "../../domain/deletion-log";
+import { logPublicKeys, logSigner, matchingLogKeys } from "./deletion-log-keys";
 
 /**
  * The independent deletion log (decision 196, ticket #34). A deletion commits
@@ -51,12 +54,18 @@ export type DeletionLogConfig = {
   directory?: string;
   /** The same storage as the backups; the log is a separate file in it. */
   storage?: BackupStorage;
+  publicKeys?: LogPublicKeys;
+  signer?: LogSigner;
 };
 
 export function deletionLogConfig(env: Env = process.env): DeletionLogConfig {
   return {
     directory: env.DELETION_LOG_DIRECTORY?.trim() || undefined,
     storage: backupConfig(env).storage,
+    publicKeys: logPublicKeys(
+      env.DELETION_LOG_PUBLIC_KEYS_FILE,
+      env.DELETION_LOG_PUBLIC_KEYS
+    ),
   };
 }
 
@@ -96,7 +105,10 @@ type LocalCopy = {
 export const logPath = (directory: string) =>
   join(directory, DELETION_LOG_FILE);
 
-async function readLocal(directory?: string): Promise<LocalCopy> {
+async function readLocal(
+  directory?: string,
+  publicKeys: LogPublicKeys = {}
+): Promise<LocalCopy> {
   const empty = { entries: [], problems: [], intactBytes: 0, torn: false };
   if (!directory) return { ...empty, status: "unconfigured" };
   let text: string;
@@ -107,7 +119,7 @@ async function readLocal(directory?: string): Promise<LocalCopy> {
       return { ...empty, status: "missing" };
     throw error;
   }
-  const { entries, problems } = parseLog(text);
+  const { entries, problems } = parseLog(text, publicKeys);
   const intactBytes = Buffer.byteLength(entries.map(serializeEntry).join(""));
   // Only a last line without its newline, cut short by a crash, is repairable.
   const torn =
@@ -154,7 +166,10 @@ type RemoteCopy = {
   conflict: boolean;
 };
 
-async function readRemote(storage?: BackupStorage): Promise<RemoteCopy> {
+async function readRemote(
+  storage?: BackupStorage,
+  publicKeys: LogPublicKeys = {}
+): Promise<RemoteCopy> {
   const base = { entries: [], problems: [], files: [], conflict: false };
   if (!storage) return { ...base, status: "unconfigured" };
   try {
@@ -165,7 +180,7 @@ async function readRemote(storage?: BackupStorage): Promise<RemoteCopy> {
     for (const file of found) {
       const content = await storage.read(file.id);
       if (!content) continue;
-      const parsed = parseLog(content.toString("utf8"));
+      const parsed = parseLog(content.toString("utf8"), publicKeys);
       files.push({
         id: file.id,
         entries: parsed.entries,
@@ -202,9 +217,10 @@ async function readRemote(storage?: BackupStorage): Promise<RemoteCopy> {
 async function publishRemote(
   directory: string,
   storage: BackupStorage,
-  local: LogEntry[]
+  local: LogEntry[],
+  publicKeys: LogPublicKeys = {}
 ): Promise<"published" | "current" | "conflict"> {
-  const remote = await readRemote(storage);
+  const remote = await readRemote(storage, publicKeys);
   if (remote.status === "broken" || remote.status === "unreadable")
     return "conflict";
   const relation = compareLogs(local, remote.entries);
@@ -295,6 +311,7 @@ export type VerifyReason =
   /** The database knows a line the log lacks: the log was cut or replaced. */
   | "database_ahead"
   | "database_mismatch"
+  | "verification_keys_missing"
   /** Deleted soldiers the log never recorded. */
   | "unlogged_deletions";
 export type VerifyWarning =
@@ -325,9 +342,14 @@ export async function verifyDeletionLog(
   options: { strict?: boolean; now?: Date } = {}
 ): Promise<LogVerification> {
   const strict = options.strict ?? true;
-  const local = await readLocal(config.directory);
-  const remote = await readRemote(config.storage);
+  const local = await readLocal(config.directory, config.publicKeys);
+  const remote = await readRemote(config.storage, config.publicKeys);
   const reasons: VerifyReason[] = [];
+  if (
+    (config.directory || config.storage) &&
+    !Object.keys(config.publicKeys ?? {}).length
+  )
+    reasons.push("verification_keys_missing");
   const warnings: VerifyWarning[] = [];
   const intactLocal = local.status === "intact";
   const intactRemote = remote.status === "intact";
@@ -431,6 +453,11 @@ export async function drainDeletionLog(
 ): Promise<DrainResult> {
   const directory = config.directory;
   if (!directory) return { status: "disabled" };
+  const signer = config.signer ?? logSigner();
+  if (!signer || !matchingLogKeys(signer, config.publicKeys ?? {})) {
+    await recordFailure("write_failed", now);
+    return { status: "failed", code: "write_failed" };
+  }
   // A restored database is not appended to before its deletions are applied.
   if (
     process.env.RESTORE_MODE === "true" ||
@@ -445,10 +472,19 @@ export async function drainDeletionLog(
     await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(${DELETION_LOG_LOCK})`);
       const state = await readState(tx);
-      let local = await readLocal(directory);
+      let local = await readLocal(directory, config.publicKeys);
       if (local.status === "broken" && local.torn) {
+        // A repair may remove only bytes beyond the committed database witness.
+        if (
+          state.headSeq &&
+          (!state.headHash ||
+            local.entries[state.headSeq - 1]?.hash !== state.headHash)
+        ) {
+          failure = "storage_conflict";
+          return;
+        }
         await truncate(logPath(directory), local.intactBytes);
-        local = await readLocal(directory);
+        local = await readLocal(directory, config.publicKeys);
       }
       if (local.status === "broken") {
         failure = "log_broken";
@@ -457,7 +493,7 @@ export async function drainDeletionLog(
       if (local.status === "missing") {
         // A fresh volume with history elsewhere: take it from the storage copy
         // when it is whole; otherwise start empty only if nothing says there was a log.
-        const remote = await readRemote(config.storage);
+        const remote = await readRemote(config.storage, config.publicKeys);
         if (remote.status === "intact" && remote.entries.length) {
           await writeFile(
             logPath(directory),
@@ -472,7 +508,17 @@ export async function drainDeletionLog(
           failure = "log_missing";
           return;
         } else await writeFile(logPath(directory), "", { mode: 0o640 });
-        local = await readLocal(directory);
+        local = await readLocal(directory, config.publicKeys);
+      }
+      // Never replace a newer database witness with a valid, older signed prefix.
+      // A crash may leave the file ahead of the DB; it must still contain its head.
+      if (
+        state.headSeq &&
+        (!state.headHash ||
+          local.entries[state.headSeq - 1]?.hash !== state.headHash)
+      ) {
+        failure = "storage_conflict";
+        return;
       }
       entries = local.entries;
       const pending = (
@@ -486,11 +532,15 @@ export async function drainDeletionLog(
       for (const row of pending) {
         let entry = entries.find((item) => item.id === row.id);
         if (!entry) {
-          entry = nextEntry(entries.at(-1), {
-            id: row.id,
-            soldierId: row.subjectId!,
-            at: String(row.data.at),
-          });
+          entry = nextEntry(
+            entries.at(-1),
+            {
+              id: row.id,
+              soldierId: row.subjectId!,
+              at: String(row.data.at),
+            },
+            signer
+          );
           await appendDurably(directory, serializeEntry(entry));
           entries = [...entries, entry];
           appended++;
@@ -521,7 +571,12 @@ export async function drainDeletionLog(
   // deletion creates the copy.
   if (!failure && config.storage && entries.length) {
     try {
-      const outcome = await publishRemote(directory, config.storage, entries);
+      const outcome = await publishRemote(
+        directory,
+        config.storage,
+        entries,
+        config.publicKeys
+      );
       if (outcome === "conflict") failure = "storage_conflict";
       else
         await mergeState(db, {

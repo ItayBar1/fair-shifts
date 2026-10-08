@@ -40,9 +40,12 @@ async function signIn(page: Page, email: string) {
       .from(emailOutbox)
       .where(eq(emailOutbox.recipientAccountId, row.id))
   ).filter((item) => item.kind === "login-code");
-  await page
-    .getByLabel("קוד כניסה", { exact: true })
-    .fill(openSecret(message.encryptedSecret!));
+  await page.getByLabel("קוד כניסה", { exact: true }).fill(
+    openSecret(message.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: message.id,
+    })
+  );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })
@@ -90,7 +93,10 @@ test.beforeAll(async ({ browser }) => {
     });
   await db.insert(calendarLink).values({
     accountId: ids[people[2][1]],
-    refreshToken: sealSecret("synthetic-refresh-token"),
+    refreshToken: sealSecret("synthetic-refresh-token", {
+      purpose: "calendar-refresh",
+      recordId: ids[people[2][1]],
+    }),
     state: "active",
     enabled: true,
   });

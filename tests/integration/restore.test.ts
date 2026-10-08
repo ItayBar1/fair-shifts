@@ -1,3 +1,4 @@
+import { testLogKeys } from "../log-keys";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
@@ -169,6 +170,7 @@ function execute(
 
 const logConfig = (): DeletionLogConfig => ({
   directory: logDirectory,
+  ...testLogKeys,
   storage: directoryStorage(store),
 });
 const storage = () => directoryStorage(store);
@@ -437,6 +439,15 @@ beforeEach(async () => {
   logDirectory = join(work, `log-${randomUUID()}`);
   await mkdir(store);
   await mkdir(logDirectory);
+  await writeFile(
+    join(logDirectory, "public-keys.json"),
+    JSON.stringify({
+      "synthetic-test": testLogKeys.publicKeys["synthetic-test"].export({
+        type: "spki",
+        format: "pem",
+      }),
+    })
+  );
   technical = await invite("טכני שחזור", "technical", "00700");
   manager = await invite("אחראי שחזור", "manager", "00701");
   people = [];
@@ -1668,6 +1679,7 @@ describe("the server command", () => {
     BACKUP_DIRECTORY: store,
     AGE_RECIPIENT: recipient,
     DELETION_LOG_DIRECTORY: logDirectory,
+    DELETION_LOG_PUBLIC_KEYS_FILE: join(logDirectory, "public-keys.json"),
     RESTORE_IDENTITY_FILE: identity,
   });
 

@@ -123,7 +123,10 @@ async function storedCode(accountId: string) {
   const latest = rows.sort(
     (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
   )[0];
-  return openSecret(latest.encryptedSecret!);
+  return openSecret(latest.encryptedSecret!, {
+    purpose: "mail-code",
+    recordId: latest.id,
+  });
 }
 /** Moves the last send out of the one-minute window instead of sleeping. */
 async function allowResend(accountId: string) {

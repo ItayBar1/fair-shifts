@@ -235,7 +235,12 @@ describe("the Google sign-in and the calendar permission (decision 195)", () => 
     const link = await linkOf(memberId);
     expect(link).toMatchObject({ state: "active", enabled: true });
     expect(link.refreshToken).not.toContain("refresh-granted-1");
-    expect(openSecret(link.refreshToken!)).toBe("refresh-granted-1");
+    expect(
+      openSecret(link.refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: link.accountId,
+      })
+    ).toBe("refresh-granted-1");
     // Better Auth's own row holds the link to Google and nothing that could open the calendar.
     expect(await googleRow(memberId)).toMatchObject({
       accountId: "sub-member",
@@ -275,9 +280,12 @@ describe("the Google sign-in and the calendar permission (decision 195)", () => 
     await googleSignIn(profile("sub-member", "member"), {
       scopes: withCalendar,
     });
-    expect(openSecret((await linkOf(memberId)).refreshToken!)).toBe(
-      "refresh-first"
-    );
+    expect(
+      openSecret((await linkOf(memberId)).refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: memberId,
+      })
+    ).toBe("refresh-first");
     expect(await linkOf(memberId)).toMatchObject({ state: "active" });
   });
 
@@ -315,7 +323,12 @@ describe("the Google sign-in and the calendar permission (decision 195)", () => 
       calendarId: "calendar-1",
       permissionNoticeAt: null,
     });
-    expect(openSecret(link.refreshToken!)).toBe("refresh-second");
+    expect(
+      openSecret(link.refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: link.accountId,
+      })
+    ).toBe("refresh-second");
     // The sign-in itself never writes the lost-permission notice: the soldier is present.
     expect(
       (await db.select().from(records)).filter(
@@ -424,12 +437,18 @@ describe("the Google sign-in and the calendar permission (decision 195)", () => 
       }),
     ]);
     expect(results.map((value) => value.signedIn)).toEqual([true, true]);
-    expect(openSecret((await linkOf(memberId)).refreshToken!)).toBe(
-      "refresh-member"
-    );
-    expect(openSecret((await linkOf(otherId)).refreshToken!)).toBe(
-      "refresh-other"
-    );
+    expect(
+      openSecret((await linkOf(memberId)).refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: memberId,
+      })
+    ).toBe("refresh-member");
+    expect(
+      openSecret((await linkOf(otherId)).refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: otherId,
+      })
+    ).toBe("refresh-other");
   });
 
   it("does not reactivate an expired grant without a replacement refresh token", async () => {
@@ -526,9 +545,12 @@ describe("the Google sign-in and the calendar permission (decision 195)", () => 
         leaseUntil: null,
         version: before.version + 1,
       });
-      expect(openSecret((await linkOf(memberId)).refreshToken!)).toBe(
-        "refresh-renewed"
-      );
+      expect(
+        openSecret((await linkOf(memberId)).refreshToken!, {
+          purpose: "calendar-refresh",
+          recordId: memberId,
+        })
+      ).toBe("refresh-renewed");
     }
   );
 

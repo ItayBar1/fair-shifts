@@ -189,7 +189,14 @@ describe("security #124: OTP burn and durable budgets", () => {
       .where(eq(user.id, person.id));
     await requestCode(person.email, start);
     const [mail] = await mails();
-    await verifyCode(person.email, openSecret(mail.encryptedSecret!), start);
+    await verifyCode(
+      person.email,
+      openSecret(mail.encryptedSecret!, {
+        purpose: "mail-code",
+        recordId: mail.id,
+      }),
+      start
+    );
     expect(await current()).toMatchObject({
       failedAttempts: 0,
       nextCodeAllowedAt: null,

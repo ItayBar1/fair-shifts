@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, generateKeyPairSync } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -26,8 +26,8 @@ if (!directory)
     "usage: init-production-config <dir> --environment=staging --url=https://..."
   );
 
-const files = ["db.env", "app.env", "tunnel.env"].map((name) =>
-  join(directory, name)
+const files = ["db.env", "app.env", "worker-secrets.env", "tunnel.env"].map(
+  (name) => join(directory, name)
 );
 const existing = files.filter((file) => existsSync(file));
 if (existing.length) {
@@ -40,6 +40,13 @@ if (existing.length) {
 const hex = (bytes: number) => randomBytes(bytes).toString("hex");
 const databasePassword = hex(24);
 const origin = new URL(options.url).origin;
+const signing = generateKeyPairSync("ed25519");
+const signingKeyId = `key-${hex(8)}`;
+const publicKeys = Buffer.from(
+  JSON.stringify({
+    [signingKeyId]: signing.publicKey.export({ type: "spki", format: "pem" }),
+  })
+).toString("base64url");
 const content = {
   "db.env": [
     "# PostgreSQL on the internal network only. Do not change after the database is initialized.",
@@ -55,6 +62,7 @@ const content = {
     `BETTER_AUTH_SECRET=${hex(32)}`,
     `OTP_SECRET=${hex(32)}`,
     `MAIL_ENCRYPTION_KEY=${hex(32)}`,
+    `DELETION_LOG_PUBLIC_KEYS=${publicKeys}`,
     "# Real mail delivery stays off until Brevo is verified (card #28).",
     "MAIL_TRANSPORT=disabled",
     "BREVO_API_KEY=",
@@ -82,10 +90,18 @@ const content = {
     "# Tunnel token from the Cloudflare dashboard (Networks → Tunnels).",
     "TUNNEL_TOKEN=",
   ],
+  "worker-secrets.env": [
+    "# Worker only. Copy the private key to offline recovery storage before enabling deployment.",
+    `DELETION_LOG_KEY_ID=${signingKeyId}`,
+    `DELETION_LOG_PRIVATE_KEY=${Buffer.from(signing.privateKey.export({ type: "pkcs8", format: "pem" })).toString("base64url")}`,
+    "DELETION_LOG_KEY_RECOVERY_CONFIRMED=false",
+  ],
 };
 for (const [name, lines] of Object.entries(content))
   writeFileSync(join(directory, name), `${lines.join("\n")}\n`, {
     mode: 0o600,
     flag: "wx",
   });
-console.log("Created the configuration files db.env, app.env and tunnel.env");
+console.log(
+  "Created db.env, app.env, worker-secrets.env and tunnel.env. Back up the deletion signing key offline, then confirm recovery storage in worker-secrets.env."
+);

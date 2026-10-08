@@ -1,10 +1,9 @@
+import { nextEntry, parseLog } from "../log-keys";
 import { describe, expect, it } from "vitest";
 import {
   GENESIS_HASH,
   compareLogs,
   entryHash,
-  nextEntry,
-  parseLog,
   serializeEntry,
   type LogEntry,
 } from "../../src/domain/deletion-log";
@@ -54,8 +53,10 @@ describe("deletion log chain", () => {
       "at",
       "hash",
       "id",
+      "keyId",
       "prev",
       "seq",
+      "signature",
       "soldierId",
       "v",
     ]);

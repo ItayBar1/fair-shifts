@@ -56,7 +56,7 @@ services:
       [
         sh,
         -c,
-        "pnpm --silent config:check && pnpm --silent db:migrate && exec node_modules/.bin/next start --hostname 0.0.0.0",
+        "pnpm --silent config:check && pnpm --silent db:migrate && pnpm --silent security:secrets verify && exec node_modules/.bin/next start --hostname 0.0.0.0",
       ]
     healthcheck:
       test:
@@ -73,6 +73,14 @@ services:
 
   worker:
     <<: *app
+    env_file:
+      - path: ${FAIR_SHIFTS_CONFIG_DIR}/app.env
+        required: true
+      - path: ${FAIR_SHIFTS_CONFIG_DIR}/worker-secrets.env
+        required: true
+    environment:
+      DELETION_LOG_DIRECTORY: /var/lib/fair-shifts-deletion-log
+      SERVICE_ROLE: worker
     pull_policy: never
     # The independent deletion log, outside the database and its backups (decision 196).
     volumes:
@@ -87,7 +95,7 @@ services:
       [
         sh,
         -c,
-        "pnpm --silent config:check && exec node_modules/.bin/tsx src/worker.ts",
+        "pnpm --silent config:check && pnpm --silent security:log verify && exec node_modules/.bin/tsx src/worker.ts",
       ]
     # The worker touches this file after each maintenance run (every minute).
     healthcheck:

@@ -62,7 +62,10 @@ export async function recordGoogleGrant(
             existing?.errorCode ?? ""
           );
         const values = {
-          refreshToken: sealSecret(grant.refreshToken),
+          refreshToken: sealSecret(grant.refreshToken, {
+            purpose: "calendar-refresh",
+            recordId: userId,
+          }),
           state: "active",
           attempts: creationUncertain ? (existing?.attempts ?? 0) : 0,
           nextAttemptAt: now,
@@ -254,7 +257,10 @@ export async function purgeCalendarLink(
   if (!options.collect || !link?.refreshToken) return undefined;
   let refreshToken: string;
   try {
-    refreshToken = openSecret(link.refreshToken);
+    refreshToken = openSecret(link.refreshToken, {
+      purpose: "calendar-refresh",
+      recordId: link.accountId,
+    });
   } catch {
     // A damaged ciphertext cannot delay erasure or leave a token in the database.
     console.error("Calendar cleanup token unavailable");

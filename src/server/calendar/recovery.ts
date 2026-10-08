@@ -74,7 +74,10 @@ export async function recoverCalendarCreation(input: unknown) {
   const before = await unitTransaction((tx) => snapshot(tx, command.accountId));
   if (command.mode === "adopt") {
     const token = await refreshAccessToken(
-      openSecret(before.link.refreshToken!)
+      openSecret(before.link.refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: before.link.accountId,
+      })
     );
     // The narrow app-created scope cannot read a private or primary calendar.
     const calendar = await calendarMetadata(token, command.calendarId);

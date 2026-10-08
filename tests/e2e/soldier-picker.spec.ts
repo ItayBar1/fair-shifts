@@ -122,9 +122,12 @@ async function login(page: Page, email: string) {
   )
     .filter((row) => row.kind === "login-code")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  await page
-    .getByLabel("קוד כניסה", { exact: true })
-    .fill(openSecret(message.encryptedSecret!));
+  await page.getByLabel("קוד כניסה", { exact: true }).fill(
+    openSecret(message.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: message.id,
+    })
+  );
   await submitAuth(
     page,
     "/api/auth/verify-code",

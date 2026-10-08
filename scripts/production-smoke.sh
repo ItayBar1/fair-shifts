@@ -58,13 +58,18 @@ rm "$bad_env"
 
 step 'יצירת תצורה סינתטית עם סודות אקראיים'
 production init --environment=staging --url=https://staging.example.invalid
-for file in app.env db.env tunnel.env; do
+for file in app.env db.env worker-secrets.env tunnel.env; do
   [ "$(find "$FAIR_SHIFTS_CONFIG_DIR/$file" -perm 600)" ] || fail "הרשאות $file"
 done
 if production init --environment=staging --url=https://staging.example.invalid \
   >/dev/null 2>&1; then
   fail 'אתחול חוזר דרס קובצי תצורה'
 fi
+
+# Synthetic smoke only: no real key or offline recovery claim is made here.
+worker_key_file="$FAIR_SHIFTS_CONFIG_DIR/worker-secrets.env"
+(umask 077; sed 's/^DELETION_LOG_KEY_RECOVERY_CONFIRMED=false$/DELETION_LOG_KEY_RECOVERY_CONFIRMED=true/' "$worker_key_file" > "$worker_key_file.tmp")
+mv "$worker_key_file.tmp" "$worker_key_file"
 
 # Waits for an ok status with matching versions and checks that the response
 # carries operational fields only.

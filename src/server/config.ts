@@ -1,5 +1,10 @@
 import { DateTime } from "luxon";
 import { validBackupTime } from "../domain/backup";
+import {
+  logPublicKeys,
+  logSigner,
+  matchingLogKeys,
+} from "./operations/deletion-log-keys";
 
 // Deployment configuration check. Messages name the variable only and never
 // echo its value, so the output is safe for container logs. They are English:
@@ -168,6 +173,32 @@ export function validateDeploymentConfig(env: Env): string[] {
 
   if (!["", "true", "false"].includes(value("RESTORE_MODE")))
     errors.push("RESTORE_MODE: allowed values are true or false");
+
+  if (value("DELETION_LOG_DIRECTORY") || value("SERVICE_ROLE") === "worker") {
+    try {
+      const keys = logPublicKeys(
+        value("DELETION_LOG_PUBLIC_KEYS_FILE"),
+        value("DELETION_LOG_PUBLIC_KEYS")
+      );
+      if (!Object.keys(keys).length)
+        errors.push(
+          "DELETION_LOG_PUBLIC_KEYS: public verification keys are required"
+        );
+      if (value("SERVICE_ROLE") === "worker") {
+        const signer = logSigner(env);
+        if (!signer || !matchingLogKeys(signer, keys))
+          errors.push(
+            "DELETION_LOG_PRIVATE_KEY: matching Ed25519 signing key is required for the worker"
+          );
+        if (value("DELETION_LOG_KEY_RECOVERY_CONFIRMED") !== "true")
+          errors.push(
+            "DELETION_LOG_KEY_RECOVERY_CONFIRMED: confirm an offline recovery copy before deployment"
+          );
+      }
+    } catch {
+      errors.push("DELETION_LOG_KEYS: invalid key configuration");
+    }
+  }
 
   return errors;
 }

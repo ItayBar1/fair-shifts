@@ -62,9 +62,12 @@ async function signedIn(browser: Browser, email: string, mobile = false) {
       .from(emailOutbox)
       .where(eq(emailOutbox.recipientAccountId, person.id))
   ).filter((row) => row.kind === "login-code");
-  await page
-    .getByLabel("קוד כניסה", { exact: true })
-    .fill(openSecret(message.encryptedSecret!));
+  await page.getByLabel("קוד כניסה", { exact: true }).fill(
+    openSecret(message.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: message.id,
+    })
+  );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })

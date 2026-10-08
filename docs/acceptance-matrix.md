@@ -687,6 +687,8 @@
 - [notifications.test.ts](../tests/integration/notifications.test.ts): `applies changed unit defaults to inheriting accounts without overriding a saved personal form`
 - [mail-delivery.test.ts](../tests/unit/mail-delivery.test.ts): `retries five times in total with growing delays inside 24 hours`
 - [auth.test.ts](../tests/integration/auth.test.ts): `encrypts codes and prioritizes them over reminders`
+- [secrets.test.ts](../tests/unit/secrets.test.ts): `authenticates purpose and record`; `rejects short tags, noncanonical encoding`; `rejects changed authenticated ciphertext`
+- [security-conversion.test.ts](../tests/integration/security-conversion.test.ts): `converts existing mail and Calendar atomically`; `rolls back every conversion if one old secret is corrupt`
 - [mail-operations.spec.ts](../tests/e2e/mail-operations.spec.ts): `technical admin sees mail failures, the pause and the quota without personal data`
 - ספקים, שרת ופיילוט:
   - נבדק: Brevo אמיתי ב־staging: קוד, פרסום, כשל וחזרה (#25)
@@ -759,7 +761,7 @@
 ### 60. יומן מחיקות עצמאי ושחזור — גיבוי ושחזור; פרטיות; מקביליות — מכוסה
 
 - [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `expires content at 30 days and never reexecutes an old key, including conflict checks`; `prunes content at the exact 30-day boundary while retaining newer results`
-- [deletion-log.test.ts](../tests/integration/deletion-log.test.ts): `queues a deletion in its own commit and appends it once, with ids and a time only`; `leaves nothing in the log for a deletion that rolled back`; `appends each deletion once and in order when workers drain at the same time`; `is not appended to when a line was changed`; `is released only by a person with a reason and the exact words, and the managers are told`
+- [deletion-log.test.ts](../tests/integration/deletion-log.test.ts): `never lowers the database witness when both signed copies are rolled back`; `does not repair a torn signed entry that the database already witnessed`; `queues a deletion in its own commit and appends it once, with ids and a time only`; `leaves nothing in the log for a deletion that rolled back`; `appends each deletion once and in order when workers drain at the same time`; `is not appended to when a line was changed`; `is released only by a person with a reason and the exact words, and the managers are told`
 - [deletion-log.test.ts](../tests/unit/deletion-log.test.ts): `keeps only what is personal-data free: ids, a time and hashes`
 
 ### 61. מייל מרוכז לכמה שיבוצים — הודעות והעדפות; תורנויות ולוח; מקביליות — מכוסה
@@ -780,6 +782,8 @@
 
 ### 63. שחזור מבודד ותרגיל רבעוני — גיבוי ושחזור; פרטיות; הרשאות; מקביליות — מכוסה
 
+- [security-conversion.test.ts](../tests/integration/security-conversion.test.ts): `requires stopped-service acknowledgement and a recent verified backup whose stored hash still matches`; `blocks restore when both copies contain a deletion with recomputed hashes but no valid signature`; `refuses unsigned logs during restore`; `refuses unequal old copies`; `refuses a database head mismatch`
+- [secrets.test.ts](../tests/unit/secrets.test.ts): `verifies with public keys only`; `rejects an attacker who changes a deletion and recomputes every hash`; `rejects unsigned old lines`
 - [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `detects expired unpruned results and false tombstones in restore checks even without a deleted soldier`
 - [restore.test.ts](../tests/integration/restore.test.ts): `restores the newest backup into a scratch database, passes every check and leaves the live system as it was`; `refuses a backup written by a newer version, and runs no other check on it`; `stays closed when a check fails, and cannot be promoted`; `refuses while anyone is connected to either database, and changes nothing`; `reminds the technical account once when overdue, and again after 30 days`
 - [restore.test.ts](../tests/unit/restore.test.ts): `passes only when every check passed and the deletion log was applied`
