@@ -65,7 +65,12 @@ async function login(page: Page, email: string) {
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
   await expect(
     page.getByRole("heading", {
-      name: person.role === "technical" ? "תמונת מצב" : "לוח התורנויות",
+      name:
+        person.role === "technical"
+          ? "תמונת מצב"
+          : person.role === "manager"
+            ? "מרכז טיפול"
+            : "לוח התורנויות",
       exact: true,
     })
   ).toBeVisible();
@@ -210,11 +215,15 @@ test("manager invites, assigns and publishes; soldier sees only published duties
       () => document.documentElement.scrollWidth <= window.innerWidth
     )
   ).toBe(true);
-  await memberPage.getByRole("button", { name: "פתיחת תפריט" }).click();
-  await memberPage
-    .getByRole("button", { name: "סגירת תפריט", exact: true })
-    .last()
-    .click();
+  // A soldier's phone navigates from the bottom tab bar (decision 218).
+  await expect(
+    memberPage.getByRole("button", { name: "פתיחת תפריט" })
+  ).toHaveCount(0);
+  await memberPage.getByRole("button", { name: "עוד", exact: true }).click();
+  const more = memberPage.getByRole("dialog", { name: "עוד" });
+  await expect(more.getByRole("link", { name: "טבלת הצדק" })).toBeVisible();
+  await more.getByRole("button", { name: "סגירה" }).click();
+  await expect(more).toHaveCount(0);
   await memberPage.screenshot({
     path: "test-results/mobile-duty.png",
     fullPage: true,

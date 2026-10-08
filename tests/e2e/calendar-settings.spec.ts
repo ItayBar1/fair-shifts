@@ -13,6 +13,7 @@ import {
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret, sealSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 /**
  * The calendar switch of the settings screen in its four states (decision 195). Google
@@ -47,9 +48,7 @@ async function signIn(page: Page, email: string) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
 test.beforeAll(async ({ browser }) => {

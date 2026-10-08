@@ -9,7 +9,7 @@ import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { announceDepartures } from "../../src/server/departures";
 import { soldier } from "../fixtures";
-import { submitAuth } from "./auth-submit";
+import { submitAuth, signedInHome } from "./auth-submit";
 
 const israelDate = (days = 0) =>
   DateTime.now().setZone("Asia/Jerusalem").plus({ days }).toISODate()!;
@@ -85,9 +85,7 @@ async function login(page: Page, email: string) {
     "/api/auth/verify-code",
     page.getByRole("button", { name: "כניסה לחשבון", exact: true })
   );
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
 test("release blocks the open session at the boundary, the managers get one departure notice and the service dates are shown", async ({

@@ -1,6 +1,12 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
+ * Where a sign-in lands: the calendar for a soldier, the care centre for a
+ * manager (decision 218). For checks that only wait for the sign-in to finish.
+ */
+export const signedInHome = /^(לוח התורנויות|מרכז טיפול)$/;
+
+/**
  * The production Better Auth limiter uses a shared IP/path bucket in memory;
  * resetting the test database does not reset that bucket. It differs from the
  * application's per-account OTP cooldown and failed-code counter. Only retry a

@@ -20,6 +20,7 @@ import { executeAction } from "../../src/server/actions";
 import { settleDue } from "../../src/server/scoring";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 // A duty manager is never assigned to a duty (card #82, decision 192). Synthetic people only.
 const HOUR = 3_600_000;
@@ -118,7 +119,11 @@ async function duty(
     );
   return row.id;
 }
-async function login(page: Page, email: string, heading = "לוח התורנויות") {
+async function login(
+  page: Page,
+  email: string,
+  heading: string | RegExp = signedInHome
+) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(email);
   await page.getByRole("button", { name: "שליחת קוד למייל" }).click();
@@ -146,13 +151,16 @@ async function login(page: Page, email: string, heading = "לוח התורנוי
 // One sign-in code a minute per account: a session is reused by the tests that follow.
 const sessions: Partial<Record<Key, Page>> = {};
 async function signedIn(browser: Browser, key: Key, heading?: string) {
+  // The tiles under test are the calendar's; the technical account has none.
+  const start = heading ? "/" : "/calendar";
   const known = sessions[key];
   if (known && !known.isClosed()) {
-    await known.goto("/");
+    await known.goto(start);
     return known;
   }
   const page = await (await browser.newContext()).newPage();
   await login(page, people[key][2], heading);
+  await page.goto(start);
   sessions[key] = page;
   return page;
 }

@@ -26,7 +26,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
-import { submitAuth } from "./auth-submit";
+import { submitAuth, signedInHome } from "./auth-submit";
 
 // Search and filters in the soldier picker (card #83, decision 193). Synthetic people only.
 // Dates are Israel dates around D, ten days ahead; the duty runs 08:00-16:00 on D.
@@ -133,9 +133,7 @@ async function login(page: Page, email: string) {
     "/api/auth/verify-code",
     page.getByRole("button", { name: "כניסה לחשבון", exact: true })
   );
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 // One sign-in code a minute per account: the session is reused by every test here.
 let session: Page | undefined;

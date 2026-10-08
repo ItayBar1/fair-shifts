@@ -10,6 +10,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 const emails = {
   manager: "access-manager@example.invalid",
@@ -91,7 +92,11 @@ async function submitCode(page: Page, code: string) {
   await page.getByLabel("קוד כניסה", { exact: true }).fill(code);
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
 }
-async function login(page: Page, email: string, home = "לוח התורנויות") {
+async function login(
+  page: Page,
+  email: string,
+  home: string | RegExp = signedInHome
+) {
   await requestCode(page, email);
   await submitCode(page, await latestCode(email));
   await expect(

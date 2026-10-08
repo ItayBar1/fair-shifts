@@ -57,13 +57,14 @@ const screens: Record<Key, { path: string; title: string }[]> = {
     { path: "/notifications", title: "הודעות" },
     { path: "/settings", title: "העדפות אישיות" },
   ],
+  // A manager starts at the care centre (decision 218).
   manager: [
+    { path: "/manage", title: "מרכז טיפול" },
     { path: "/calendar", title: "לוח התורנויות" },
     { path: "/fairness", title: "טבלת הצדק" },
     { path: "/requests", title: "החלפות ובקשות" },
     { path: "/notifications", title: "הודעות" },
     { path: "/settings", title: "העדפות אישיות" },
-    { path: "/manage", title: "מרכז טיפול" },
     { path: "/manage/soldiers", title: "חיילי היחידה" },
     { path: "/manage/eligibility", title: "פטורים וכשירויות" },
     { path: "/manage/ranks", title: "דרגות ופז״ם" },
@@ -362,7 +363,7 @@ test.describe("what a role may not open", () => {
     const page = await open("soldier");
     await page.goto("/nowhere");
     await expect(page.getByText("המסך לא נמצא")).toBeVisible();
-    await page.getByRole("link", { name: "חזרה ללוח" }).click();
+    await page.getByRole("link", { name: "חזרה לדף הבית" }).click();
     await expect(page.locator("main h1")).toHaveText("לוח התורנויות");
   });
 });

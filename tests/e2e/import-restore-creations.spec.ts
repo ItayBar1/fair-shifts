@@ -9,6 +9,7 @@ import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { createImportTemplate } from "../../src/server/import-workbook";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 const managerEmail = "restore-manager@example.invalid";
 const activeEmail = "restore-active@example.invalid";
@@ -84,9 +85,7 @@ async function login(page: Page, email: string) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
 test("cancels a new soldier without activity and waits for a decision on one who signed in", async ({

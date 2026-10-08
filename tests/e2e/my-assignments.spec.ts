@@ -14,6 +14,7 @@ import {
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { assignment, duty, soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 let dutyId: string;
 let assignmentId: string;
@@ -136,9 +137,7 @@ async function login(page: Page, email: string) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
 test("personal assignments on desktop and mobile, private mail highlight and visit markers", async ({

@@ -125,7 +125,7 @@ for (const width of [1280, 390]) {
     ).toBeVisible();
     await fresh.reload();
     await expect(fresh).toHaveURL(/\/login$/);
-    await login(fresh, newEmail, "לוח התורנויות");
+    await login(fresh, newEmail, "מרכז טיפול");
     expect((await forbidden()).status()).toBe(403);
     await fresh.goto("/manage/soldiers");
     await fresh

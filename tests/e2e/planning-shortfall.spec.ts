@@ -17,6 +17,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 const managerEmail = "planning-manager@example.invalid";
 const planned = DateTime.now()
@@ -102,9 +103,7 @@ async function login(page: Page, email: string) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
 test("a period plan explains each shortfall, and a changed draw drops its approval form", async ({

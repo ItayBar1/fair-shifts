@@ -16,6 +16,7 @@ import {
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { assignment, duty, soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 // A deterministic synthetic calendar, behind real sign-in and state permissions.
 const month = DateTime.now().setZone("Asia/Jerusalem").startOf("month");
@@ -172,6 +173,9 @@ async function login(page: Page, key: keyof typeof people) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
+  // The cards are the calendar's; a manager lands at the care centre (decision 218).
+  await page.goto("/calendar");
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })
   ).toBeVisible();

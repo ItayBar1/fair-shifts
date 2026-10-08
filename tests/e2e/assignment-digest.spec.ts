@@ -19,6 +19,7 @@ import {
   openSecret,
 } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -85,9 +86,7 @@ async function signedIn(browser: Browser, email: string, mobile = false) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
   return page;
 }
 async function command(
