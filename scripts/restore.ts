@@ -96,6 +96,9 @@ try {
     console.error("DATABASE_URL is not set");
     code = 2;
   } else if (command === "promote") {
+    // The operations permission check opened the live pool. Promotion requires
+    // no connections to either database, including this CLI's own connection.
+    await pool.end();
     const result = await promoteRestore({
       liveUrl,
       restored: text("database"),

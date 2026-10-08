@@ -116,6 +116,79 @@ afterAll(async () => {
 });
 
 describe("separate PostgreSQL service privileges", () => {
+  it("promotes through the operations CLI after closing its permission-check connection, while preserving the external-connection guard", async () => {
+    const name = "fair_shifts_ops_cli_promote_test";
+    const restored = `${name}_restore`;
+    const url = new URL(roleUrl("operations"));
+    url.pathname = `/${name}`;
+    const restoredUrl = new URL(url);
+    restoredUrl.pathname = `/${restored}`;
+    let external: Client | undefined;
+    const invoke = () =>
+      execFileSync(
+        process.execPath,
+        ["--import", "tsx", "scripts/restore.ts", "promote"],
+        {
+          encoding: "utf8",
+          stdio: "pipe",
+          timeout: 15_000,
+          env: {
+            ...process.env,
+            SERVICE_ROLE: "operations",
+            DATABASE_URL: url.toString(),
+          },
+        }
+      );
+    try {
+      await pool.query(`create database ${name} owner fair_shifts_ops`);
+      await pool.query(`create database ${restored} owner fair_shifts_ops`);
+      const copy = new Client({ connectionString: restoredUrl.toString() });
+      await copy.connect();
+      try {
+        await copy.query(
+          'create table operations_state (key text primary key, data jsonb); insert into operations_state values (\'restore-report\', \'{"mode":"restore","outcome":"passed"}\');'
+        );
+      } finally {
+        await copy.end();
+      }
+      external = new Client({ connectionString: url.toString() });
+      await external.connect();
+      let failure = "";
+      try {
+        invoke();
+      } catch (error) {
+        failure = String(
+          (error as { stderr?: Buffer | string }).stderr ?? error
+        );
+      }
+      expect(failure).toContain("Other connections are open");
+      await external.end();
+      external = undefined;
+      expect(invoke()).toContain("Promoted (passed)");
+      const live = new Client({ connectionString: url.toString() });
+      await live.connect();
+      try {
+        expect(
+          (
+            await live.query(
+              "select data->>'outcome' as outcome from operations_state"
+            )
+          ).rows
+        ).toEqual([{ outcome: "passed" }]);
+      } finally {
+        await live.end();
+      }
+    } finally {
+      await external?.end();
+      const copies = await pool.query<{ datname: string }>(
+        "select datname from pg_database where datname = any($1) or starts_with(datname, $2)",
+        [[name, restored], `${name}_before_restore_`]
+      );
+      for (const { datname } of copies.rows)
+        await pool.query(`drop database "${datname}" with (force)`);
+    }
+  });
+
   it("verifies real non-superuser logins and grants operations DDL while limiting runtime schemas", async () => {
     for (const role of Object.keys(clients) as ServiceRole[])
       expect(await checkDatabaseRole(role, clients[role].db)).toEqual([]);
