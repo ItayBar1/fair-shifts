@@ -16,6 +16,7 @@ import {
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { assignment, duty, soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 // A deterministic synthetic calendar, behind real sign-in and state permissions.
 const month = DateTime.now().setZone("Asia/Jerusalem").startOf("month");
@@ -172,6 +173,9 @@ async function login(page: Page, key: keyof typeof people) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
+  // The cards are the calendar's; a manager lands at the care centre (decision 218).
+  await page.goto("/calendar");
   await expect(
     page.getByRole("heading", { name: "לוח התורנויות", exact: true })
   ).toBeVisible();
@@ -179,6 +183,9 @@ async function login(page: Page, key: keyof typeof people) {
 const card = (page: Page, label: string) =>
   page.getByRole("button", { name: `סינון לפי ${label}`, exact: true });
 const list = (page: Page) => page.locator(".duty-list .duty-row");
+// The view a card restores: a phone opens the calendar as a list (decision 218).
+const startView = (width: number) =>
+  width <= 760 ? "תצוגת רשימה" : "תצוגת חודש";
 const fits = (page: Page) =>
   page.evaluate(
     () => document.documentElement.scrollWidth <= window.innerWidth
@@ -208,7 +215,7 @@ for (const width of [1280, 390]) {
     await expect(page.locator(".duty-list")).not.toContainText("שמירה בוטלה");
     await card(page, "תורנויות החודש").click();
     await expect(
-      page.getByRole("button", { name: "תצוגת חודש", exact: true })
+      page.getByRole("button", { name: startView(width), exact: true })
     ).toHaveAttribute("aria-pressed", "true");
     await card(page, "התורנויות שלי").click();
     await expect(list(page)).toHaveCount(2);
@@ -239,7 +246,7 @@ for (const width of [1280, 390]) {
     await expect(list(page)).toContainText("החודש הבא");
     await card(page, "תורנויות החודש").click();
     await expect(
-      page.getByRole("button", { name: "תצוגת חודש", exact: true })
+      page.getByRole("button", { name: startView(width), exact: true })
     ).toHaveAttribute("aria-pressed", "true");
     expect(await fits(page)).toBe(true);
     await page.screenshot({
@@ -290,7 +297,7 @@ for (const width of [1280, 390]) {
     });
     await card(page, "מקומות פנויים בחודש").click();
     await expect(
-      page.getByRole("button", { name: "תצוגת חודש", exact: true })
+      page.getByRole("button", { name: startView(width), exact: true })
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
       page

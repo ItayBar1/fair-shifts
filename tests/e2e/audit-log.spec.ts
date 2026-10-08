@@ -11,6 +11,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 const people = [
   ["אחראי יומן", "audit-manager@example.invalid", "manager", "000201"],
@@ -113,9 +114,7 @@ async function login(page: Page, email: string) {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 const entry = (page: Page, label: string) =>
   page.getByRole("article", { name: label });

@@ -17,6 +17,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 // A soldier deleted while a duty runs (ticket #34, decision 196). Synthetic people only.
 const people = {
@@ -135,7 +136,11 @@ test.beforeAll(async () => {
   deletedAt = gone.deletedAt!.getTime();
 });
 
-async function login(page: Page, email: string, heading = "לוח התורנויות") {
+async function login(
+  page: Page,
+  email: string,
+  heading: string | RegExp = signedInHome
+) {
   await page.goto("/login");
   await page.getByLabel("כתובת המייל המאושרת").fill(email);
   await page.getByRole("button", { name: "שליחת קוד למייל" }).click();

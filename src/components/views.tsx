@@ -59,6 +59,7 @@ import {
   segmentLabel,
   shiftMonth,
   shortMonth,
+  timeOf,
 } from "@/client/calendar";
 import {
   ActionDialog,
@@ -141,10 +142,15 @@ export function CalendarView({
   initialOnlyMine?: boolean;
 }) {
   const router = useRouter();
-  const [controls, setControls] = useState<CalendarControls>({
-    mode: "month",
+  // A month grid does not fit a phone; there the list is the calendar.
+  const [controls, setControls] = useState<CalendarControls>(() => ({
+    mode:
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 760px)").matches
+        ? "list"
+        : "month",
     onlyMine: initialOnlyMine,
-  });
+  }));
   const { onlyMine, mode, selection } = controls;
   const [query, setQuery] = useState("");
   const [month, setMonth] = useState(() =>
@@ -380,7 +386,7 @@ export function CalendarView({
             </div>
           </div>
         ) : (
-          <DutyList state={state} duties={monthDuties} />
+          <DutyList state={state} duties={monthDuties} ownIds={ownIds} />
         )}
         <div className="calendar-legend">
           <span>
@@ -404,44 +410,59 @@ export function CalendarView({
     </>
   );
 }
+/** "08:00–16:00" within a day, with both dates when a duty crosses days. */
+function dutyRange(duty: Row) {
+  const start = dutyStart(duty);
+  const end = dutyEnd(duty);
+  if (localDay(start) === localDay(end))
+    return `${timeOf(start)}–${timeOf(end)}`;
+  return `${dayOfMonth(start)} ${shortMonth(start)} ${timeOf(start)} – ${dayOfMonth(end)} ${shortMonth(end)} ${timeOf(end)}`;
+}
 export function DutyList({
   state,
   duties,
+  ownIds,
 }: {
   state: AppState;
   duties: Row[];
+  /** The viewer's own duties, marked like their color in the month grid. */
+  ownIds?: Set<string>;
 }) {
   return duties.length ? (
     <div className="duty-list">
       {duties.map((d) => (
-        <Link href={`/duties/${d.id}`} className="duty-row" key={d.id}>
+        <Link
+          href={`/duties/${d.id}`}
+          className={`duty-row ${ownIds?.has(str(d.id)) ? "mine" : ""}`}
+          key={d.id}
+        >
           <span className="date-tile">
             <strong>{dayOfMonth(dutyStart(d))}</strong>
             <small>{shortMonth(dutyStart(d))}</small>
           </span>
           <span className="duty-row-title">
             <strong>{str(d.name, "תורנות")}</strong>
+            <small className="duty-row-when">
+              <Clock3 size={13} aria-hidden="true" />
+              {dutyRange(d)}
+            </small>
             <small>
-              <MapPin size={13} />
+              <MapPin size={13} aria-hidden="true" />
               {str(d.location, "המיקום טרם נקבע")}
             </small>
-            <small className="mobile-only">
-              {displayDate(dutyStart(d), true)} –{" "}
-              {displayDate(dutyEnd(d), true)}
-            </small>
           </span>
-          <span className="hide-mobile">
-            {displayDate(dutyStart(d), true)}
-            <small className="block muted">
-              עד {displayDate(dutyEnd(d), true)}
-            </small>
-          </span>
-          <span>
-            <UsersRound size={15} /> {activeAssignments(state, d.id).length}
+          <span className="duty-row-seats">
+            <UsersRound size={15} aria-hidden="true" />{" "}
+            {activeAssignments(state, d.id).length}
             {dutySlots(d).length ? ` / ${dutySlots(d).length}` : ""}
           </span>
-          <Status value={dutyStatus(d)} />
-          <ChevronLeft size={18} />
+          {/* A phone shows the status only when it is not the usual "published". */}
+          <span
+            className={`duty-row-status ${dutyStatus(d) === "published" ? "hide-mobile" : ""}`}
+          >
+            <Status value={dutyStatus(d)} />
+          </span>
+          <ChevronLeft size={18} aria-hidden="true" />
         </Link>
       ))}
     </div>
@@ -506,7 +527,7 @@ export function FairnessView({ state }: { state: AppState }) {
       >
         {filtered.length || outside.length ? (
           <div className="table-scroll">
-            <table>
+            <table className="fairness-table">
               <thead>
                 <tr>
                   <th>דירוג</th>

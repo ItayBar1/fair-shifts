@@ -12,7 +12,7 @@ import {
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
-import { submitAuth } from "./auth-submit";
+import { submitAuth, signedInHome } from "./auth-submit";
 
 const managerEmail = "deletion-manager@example.invalid";
 const phoneManagerEmail = "deletion-phone@example.invalid";
@@ -79,9 +79,7 @@ async function login(page: Page, email: string) {
     "/api/auth/verify-code",
     page.getByRole("button", { name: "כניסה לחשבון", exact: true })
   );
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
 test("the manager sees what a deletion does, deletes the user, and the seat becomes vacant with a warning", async ({

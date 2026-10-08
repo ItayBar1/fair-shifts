@@ -194,7 +194,7 @@ test("the technical account moves itself to a new address with a code from each 
 test("a manager uses its own screen and the server refuses the technical route", async ({
   page,
 }) => {
-  await login(page, emails.manager, "לוח התורנויות");
+  await login(page, emails.manager, "מרכז טיפול");
   await expect(
     page.getByRole("link", { name: "החשבון שלי", exact: true })
   ).toBeVisible();
@@ -218,7 +218,7 @@ test("a manager changes its own email using two codes on desktop and mobile", as
   page,
 }) => {
   const next = "manager-self-next@example.invalid";
-  await login(page, emails.manager, "לוח התורנויות");
+  await login(page, emails.manager, "מרכז טיפול");
   await page.getByRole("link", { name: "החשבון שלי", exact: true }).click();
   await expect(page).toHaveURL(/\/manage\/account$/);
   const change = panel(page, "החלפת כתובת מייל");
@@ -246,7 +246,7 @@ test("a manager changes its own email using two codes on desktop and mobile", as
   await confirm.getByRole("button", { name: "אימות והחלפה" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await login(page, next, "לוח התורנויות");
+  await login(page, next, "מרכז טיפול");
   await page.getByRole("link", { name: "החשבון שלי", exact: true }).click();
   await expect(panel(page, "החשבון שלי").getByText(next)).toBeVisible();
 });

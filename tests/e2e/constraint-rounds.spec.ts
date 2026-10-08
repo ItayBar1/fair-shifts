@@ -9,6 +9,7 @@ import { soldiers, balances } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
 import { soldier } from "../fixtures";
+import { signedInHome } from "./auth-submit";
 
 const people = [
   ["אחראי ראשון", "first-manager@example.invalid", "manager", "100001"],
@@ -56,9 +57,7 @@ async function signedIn(browser: Browser, email: string): Promise<Page> {
     })
   );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "לוח התורנויות", exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
   return page;
 }
 

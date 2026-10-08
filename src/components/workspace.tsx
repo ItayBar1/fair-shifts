@@ -21,15 +21,15 @@ import {
   LogOut,
   Menu,
   X,
-  RefreshCw,
-  ChevronLeft,
   CircleHelp,
   Send,
   UserRound,
+  Ellipsis,
+  type LucideIcon,
 } from "lucide-react";
 import { type AppState, type Action, str, obj } from "@/client/types";
 import { unreadCount } from "@/client/notifications";
-import { Notice, Empty } from "./ui";
+import { Notice, Empty, Modal } from "./ui";
 import { CalendarView, DutyDetail, FairnessView, Dashboard } from "./views";
 import { MyAssignmentsView } from "./my-assignments";
 import { PublishDrafts } from "./publish-drafts";
@@ -88,21 +88,86 @@ const technicalLinks = [
   { path: "/technical/audit", title: "יומן תפעול", icon: ClipboardList },
   { path: "/notifications", title: "הודעות", icon: Bell },
 ];
+// A line under the title only where it tells something the title does not.
 const descriptions: Record<string, string> = {
-  "/calendar": "כל התורנויות במקום אחד. תמונה משותפת, ברורה ועדכנית.",
   "/my-assignments": "התורנויות שפורסמו עבורך, ועדכונים מאז הביקור הקודם.",
-  "/fairness": "חלוקה שקופה מתחילה במידע משותף.",
-  "/manage": "מה שדורש החלטה, ומה שכבר מוכן להמשך.",
-  "/manage/planning": "מתכננים את התקופה וממלאים את המקומות הפנויים.",
   "/manage/publish": "מפרסמים כמה טיוטות יחד. החסומות נשארות טיוטה.",
-  "/manage/soldiers": "פרטי החיילים והנתונים שעליהם נשען השיבוץ.",
-  "/constraints": "מגישים בזמן, עוקבים אחרי ההחלטה.",
-  "/requests": "הסכמות, החלפות ובקשות במקום אחד.",
-  "/manage/catalog": "סוגי התורנויות, התנאים והמחירון של היחידה.",
-  "/manage/constraints": "חלון הגשה אחד לכל היחידה.",
-  "/notifications": "כל העדכונים שחשוב להכיר.",
-  "/settings": "הדרך שבה המערכת נשארת איתך בקשר.",
 };
+type NavItem = { path: string; title: string; icon: LucideIcon };
+const settingsLink: NavItem = {
+  path: "/settings",
+  title: "העדפות אישיות",
+  icon: Settings,
+};
+const linkByPath = new Map<string, NavItem>(
+  [...commonLinks, ...managementLinks, ...technicalLinks, settingsLink].map(
+    (item) => [item.path, item]
+  )
+);
+type NavGroup = { title?: string; paths: string[] };
+// Work comes first, in groups; the person's own account sits at the bottom.
+const managerGroups = (ownDuties: boolean): NavGroup[] => [
+  {
+    paths: ["/manage", "/calendar", ...(ownDuties ? ["/my-assignments"] : [])],
+  },
+  {
+    title: "עבודה שוטפת",
+    paths: [
+      "/manage/planning",
+      "/manage/publish",
+      "/manage/constraints",
+      "/requests",
+    ],
+  },
+  {
+    title: "אנשים",
+    paths: [
+      "/manage/soldiers",
+      "/manage/eligibility",
+      "/manage/ranks",
+      "/manage/imports",
+    ],
+  },
+  {
+    title: "הגדרות ונתונים",
+    paths: ["/manage/catalog", "/manage/scores", "/fairness", "/manage/audit"],
+  },
+];
+const technicalGroups: NavGroup[] = [
+  { paths: ["/technical"] },
+  {
+    title: "חשבונות",
+    paths: [
+      "/technical/permissions",
+      "/technical/locked",
+      "/technical/recovery",
+    ],
+  },
+  {
+    title: "תפעול",
+    paths: ["/technical/mail", "/technical/backups", "/technical/audit"],
+  },
+];
+const soldierGroups: NavGroup[] = [
+  {
+    paths: [
+      "/calendar",
+      "/my-assignments",
+      "/fairness",
+      "/constraints",
+      "/requests",
+      "/notifications",
+    ],
+  },
+];
+// A soldier's phone: the four most used screens, the rest under "more".
+const soldierTabs: NavItem[] = [
+  { path: "/calendar", title: "לוח", icon: CalendarDays },
+  { path: "/my-assignments", title: "השיבוצים", icon: CalendarCheck2 },
+  { path: "/constraints", title: "אילוצים", icon: CalendarOff },
+  { path: "/requests", title: "בקשות", icon: ArrowLeftRight },
+];
+const soldierMore = ["/fairness", "/notifications"];
 async function fetchState(): Promise<AppState | null> {
   const response = await fetch("/api/v1/state", {
     cache: "no-store",
@@ -129,7 +194,21 @@ export function Workspace({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [menu, setMenu] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [more, setMore] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [titleAbove, setTitleAbove] = useState(false);
+  // The bar gets its edge once content scrolls under it, and the title moves
+  // into the bar once the page's own title has scrolled away.
+  useEffect(() => {
+    const track = () => {
+      setScrolled(window.scrollY > 2);
+      const heading = document.querySelector("main h1");
+      setTitleAbove(!!heading && heading.getBoundingClientRect().bottom < 56);
+    };
+    track();
+    window.addEventListener("scroll", track, { passive: true });
+    return () => window.removeEventListener("scroll", track);
+  }, [loading]);
   const [toastHeld, setToastHeld] = useState(false);
   // A confirmation leaves on its own unless the pointer or focus is on it.
   useEffect(() => {
@@ -220,14 +299,11 @@ export function Workspace({
     );
   const technical = state.actor.role === "technical";
   const manager = state.actor.role === "manager";
-  const effectivePath =
-    path === "/" ? (technical ? "/technical" : "/calendar") : path;
-  const allLinks = [
-    ...commonLinks,
-    ...managementLinks,
-    ...technicalLinks,
-    { path: "/settings", title: "העדפות אישיות", icon: Settings },
-  ];
+  const soldier = !technical && !manager;
+  // Each role starts where its work is; a manager at the care centre (decision 218).
+  const home = technical ? "/technical" : manager ? "/manage" : "/calendar";
+  const effectivePath = path === "/" ? home : path;
+  const allLinks = [...linkByPath.values()];
   const pageTitle = effectivePath.startsWith("/duties/")
     ? "פרטי תורנות"
     : effectivePath.startsWith("/manage/audit/")
@@ -236,23 +312,39 @@ export function Workspace({
         ? "פרסום טיוטות"
         : allLinks.find((l) => l.path === effectivePath)?.title || "המערכת";
   const unread = unreadCount(state.notifications);
-  // A manager takes no part in duties and submits no constraints (decision 192).
-  const ownLinks = manager
-    ? commonLinks.filter(
-        (item) =>
-          item.path !== "/constraints" &&
-          (item.path !== "/my-assignments" ||
-            state.assignments.some(
-              (assignment) =>
-                assignment.soldierId === state.actor.soldierId &&
-                state.duties.some(
-                  (duty) =>
-                    duty.id === assignment.dutyId &&
-                    (duty.status === "published" || duty.wasPublished)
-                )
-            ))
-      )
-    : commonLinks;
+  // A manager takes no part in duties and submits no constraints (decision 192);
+  // "my assignments" shows only when the manager still holds a published one.
+  const ownDuties =
+    manager &&
+    state.assignments.some(
+      (assignment) =>
+        assignment.soldierId === state.actor.soldierId &&
+        state.duties.some(
+          (duty) =>
+            duty.id === assignment.dutyId &&
+            (duty.status === "published" || duty.wasPublished)
+        )
+    );
+  const groups = technical
+    ? technicalGroups
+    : manager
+      ? managerGroups(ownDuties)
+      : soldierGroups;
+  // The account page of a manager or the technical account; a soldier has none.
+  const accountPath = technical
+    ? "/technical/account"
+    : manager
+      ? "/manage/account"
+      : null;
+  const signOut = async () => {
+    const response = await fetch("/api/auth/sign-out", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (response.ok) router.push("/login");
+    else setError("לא ניתן לצאת כרגע. נסו שוב.");
+  };
   const restricted =
     (effectivePath === "/constraints" && manager) ||
     (effectivePath.startsWith("/manage") && !manager) ||
@@ -260,10 +352,14 @@ export function Workspace({
     (technical &&
       !effectivePath.startsWith("/technical") &&
       !["/settings", "/notifications"].includes(effectivePath));
-  const navigation = (links: typeof commonLinks) =>
-    links.map((item) => (
+  const navLink = (path: string) => {
+    const item = linkByPath.get(path)!;
+    return (
       <Link
-        onClick={() => setMenu(false)}
+        onClick={() => {
+          setMenu(false);
+          setMore(false);
+        }}
         key={item.path}
         href={item.path}
         className={`nav-link ${effectivePath === item.path ? "active" : ""}`}
@@ -275,7 +371,8 @@ export function Workspace({
           <span className="nav-count">{unread}</span>
         )}
       </Link>
-    ));
+    );
+  };
   const content = () => {
     if (restricted)
       return (
@@ -357,14 +454,63 @@ export function Workspace({
         title="המסך לא נמצא"
         action={
           <Link className="btn primary" href="/">
-            חזרה ללוח
+            חזרה לדף הבית
           </Link>
         }
       />
     );
   };
+  const profileRole = technical
+    ? "מנהל טכני"
+    : manager
+      ? "אחראי תורנויות"
+      : "חיילי היחידה";
+  // Who is signed in, their own pages and the way out, in one row.
+  const profile = (
+    <div className="profile">
+      <span className="avatar" aria-hidden="true">
+        {state.actor.name.slice(0, 1)}
+      </span>
+      <span className="profile-text">
+        <strong>{state.actor.name}</strong>
+        {accountPath ? (
+          <Link
+            href={accountPath}
+            onClick={() => setMenu(false)}
+            className={`profile-account ${effectivePath === accountPath ? "active" : ""}`}
+            aria-current={effectivePath === accountPath ? "page" : undefined}
+          >
+            החשבון שלי
+          </Link>
+        ) : (
+          <small>{profileRole}</small>
+        )}
+      </span>
+      <Link
+        href="/settings"
+        className={`icon-btn ${effectivePath === "/settings" ? "active" : ""}`}
+        aria-label="העדפות אישיות"
+        title="העדפות אישיות"
+        aria-current={effectivePath === "/settings" ? "page" : undefined}
+        onClick={() => {
+          setMenu(false);
+          setMore(false);
+        }}
+      >
+        <Settings size={18} />
+      </Link>
+      <button
+        className="icon-btn"
+        aria-label="יציאה מהמערכת"
+        title="יציאה מהמערכת"
+        onClick={signOut}
+      >
+        <LogOut size={17} />
+      </button>
+    </div>
+  );
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${soldier ? "has-tab-bar" : ""}`}>
       <a className="skip-link" href="#main">
         דילוג לתוכן
       </a>
@@ -376,7 +522,7 @@ export function Workspace({
         />
       )}
       <aside className={`sidebar ${menu ? "open" : ""}`}>
-        <Link href={technical ? "/technical" : "/calendar"} className="brand">
+        <Link href={home} className="brand">
           <span className="brand-mark">ת</span>
           <span>
             <strong>תורנות הוגנת</strong>
@@ -390,69 +536,43 @@ export function Workspace({
         >
           <X />
         </button>
-        <div className="workspace-label">
-          <span className="live-dot" /> מרחב היחידה
-        </div>
-        <nav aria-label="ניווט ראשי">
-          {technical ? navigation(technicalLinks) : navigation(ownLinks)}
-          {manager && (
-            <>
-              <div className="nav-section">ניהול היחידה</div>
-              {navigation(managementLinks)}
-            </>
-          )}
+        <nav aria-label="ניווט ראשי" className="nav-groups">
+          {groups.map((group) => (
+            <div className="nav-group" key={group.paths[0]}>
+              {group.title && <div className="nav-section">{group.title}</div>}
+              {group.paths.map(navLink)}
+            </div>
+          ))}
         </nav>
         <div className="sidebar-bottom">
-          <Link
-            href="/settings"
-            className={`nav-link ${effectivePath === "/settings" ? "active" : ""}`}
-          >
-            <Settings size={18} />
-            העדפות אישיות
-          </Link>
-          <div className="profile">
-            <span className="avatar">{state.actor.name.slice(0, 1)}</span>
-            <span>
-              <strong>{state.actor.name}</strong>
-              <small>
-                {technical
-                  ? "מנהל טכני"
-                  : manager
-                    ? "אחראי תורנויות"
-                    : "חיילי היחידה"}
-              </small>
-            </span>
-            <button
-              className="icon-btn"
-              aria-label="יציאה מהמערכת"
-              onClick={async () => {
-                const response = await fetch("/api/auth/sign-out", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: "{}",
-                });
-                if (response.ok) router.push("/login");
-                else setError("לא ניתן לצאת כרגע. נסו שוב.");
-              }}
-            >
-              <LogOut size={17} />
-            </button>
-          </div>
+          {soldier && (
+            <p className="sidebar-help">
+              <CircleHelp size={14} aria-hidden="true" /> לתיקון מידע או שאלה —
+              פונים לאחראי התורנויות
+            </p>
+          )}
+          {profile}
         </div>
       </aside>
       <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              className="icon-btn mobile-menu"
-              aria-label="פתיחת תפריט"
-              onClick={() => setMenu(true)}
+        <header className={`topbar ${scrolled ? "scrolled" : ""}`}>
+          <div className="topbar-start">
+            {!soldier && (
+              <button
+                className="icon-btn mobile-menu"
+                aria-label="פתיחת תפריט"
+                onClick={() => setMenu(true)}
+              >
+                <Menu size={22} />
+              </button>
+            )}
+            {/* The page's own h1 names the screen; this copy only follows it. */}
+            <span
+              className={`topbar-title ${titleAbove ? "shown" : ""}`}
+              aria-hidden="true"
             >
-              <Menu size={22} />
-            </button>
-            <span>מרחב היחידה</span>
-            <ChevronLeft size={14} />
-            <strong>{pageTitle}</strong>
+              {pageTitle}
+            </span>
           </div>
           <div className="topbar-actions">
             <span className="today">
@@ -461,51 +581,26 @@ export function Workspace({
                 timeZone: "Asia/Jerusalem",
               }).format(new Date())}
             </span>
-            <button
-              className="icon-btn"
-              aria-label="רענון נתונים"
-              disabled={refreshing}
-              onClick={async () => {
-                setRefreshing(true);
-                try {
-                  await reload();
-                  setError("");
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "שגיאה בטעינה");
-                } finally {
-                  setRefreshing(false);
-                }
-              }}
+            <Link
+              className={`icon-btn notification-link ${effectivePath === "/notifications" ? "active" : ""}`}
+              href="/notifications"
+              aria-label={`הודעות${unread ? `, ${unread} לא נקראו` : ""}`}
+              aria-current={
+                effectivePath === "/notifications" ? "page" : undefined
+              }
             >
-              <RefreshCw size={17} className={refreshing ? "rotating" : ""} />
-            </button>
-            {!technical && (
-              <Link
-                className="icon-btn notification-link"
-                href="/notifications"
-                aria-label={`הודעות${unread ? `, ${unread} לא נקראו` : ""}`}
-              >
-                <Bell size={19} />
-                {unread > 0 && <span className="notification-dot" />}
-              </Link>
-            )}
+              <Bell size={19} />
+              {unread > 0 && <span className="notification-dot" />}
+            </Link>
           </div>
         </header>
         <main id="main" className="main-content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">
-                {technical
-                  ? "תפעול המערכת"
-                  : effectivePath.startsWith("/manage")
-                    ? "ניהול ותכנון"
-                    : "מרחב היחידה"}
-              </div>
               <h1>{pageTitle}</h1>
-              <p>
-                {descriptions[effectivePath] ||
-                  "מידע משותף, החלטות מתועדות ותמיד תמונה מעודכנת."}
-              </p>
+              {descriptions[effectivePath] && (
+                <p>{descriptions[effectivePath]}</p>
+              )}
             </div>
             {manager && effectivePath === "/calendar" && (
               <Link className="btn primary" href="/manage/planning">
@@ -513,6 +608,7 @@ export function Workspace({
               </Link>
             )}
           </div>
+          {content()}
           {/* Shown above the bottom edge, wherever the page is scrolled. */}
           <div className="toast-stack">
             {error && (
@@ -550,16 +646,47 @@ export function Workspace({
               </div>
             )}
           </div>
-          {content()}
-          <footer className="page-footer">
-            <span>תורנות הוגנת · לוח אחד לכל היחידה</span>
-            <span>
-              <CircleHelp size={14} /> לתיקון מידע או שאלה — פונים לאחראי
-              התורנויות
-            </span>
-          </footer>
         </main>
       </div>
+      {soldier && (
+        <nav className="tab-bar" aria-label="ניווט בטלפון">
+          {soldierTabs.map((tab) => (
+            <Link
+              key={tab.path}
+              href={tab.path}
+              className={`tab ${effectivePath === tab.path ? "active" : ""}`}
+              aria-current={effectivePath === tab.path ? "page" : undefined}
+            >
+              <tab.icon size={22} aria-hidden="true" />
+              <span>{tab.title}</span>
+            </Link>
+          ))}
+          <button
+            type="button"
+            className={`tab ${[...soldierMore, "/settings"].includes(effectivePath) ? "active" : ""}`}
+            aria-haspopup="dialog"
+            onClick={() => setMore(true)}
+          >
+            <span className="tab-icon">
+              <Ellipsis size={22} aria-hidden="true" />
+              {unread > 0 && <span className="notification-dot" />}
+            </span>
+            <span>עוד</span>
+          </button>
+        </nav>
+      )}
+      {more && (
+        <Modal title="עוד" onClose={() => setMore(false)}>
+          <nav aria-label="עוד" className="more-list">
+            {soldierMore.map(navLink)}
+          </nav>
+          <p className="sidebar-help">
+            <CircleHelp size={14} aria-hidden="true" /> לתיקון מידע או שאלה —
+            פונים לאחראי התורנויות
+          </p>
+          {profile}
+        </Modal>
+      )}
     </div>
   );
 }
