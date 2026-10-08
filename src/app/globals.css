@@ -24,6 +24,7 @@
   --surface-2: #f1f4f5;
   --fill: #e9eef0;
   --fill-hover: #eef2f3;
+  --fill-strong: #dde4e7;
   --surface-inverse: #1d2a30;
   --on-inverse: #fff;
   --text: #15262d;
@@ -151,8 +152,14 @@ button {
   cursor: pointer;
 }
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.55;
+}
+/* A button waiting for the server says so; it is not unavailable. */
+[aria-busy="true"],
+button:disabled[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.8;
 }
 a {
   color: inherit;
@@ -256,6 +263,14 @@ small {
   background: none;
   border: 0;
   padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.text-button:hover {
+  background: var(--accent-soft);
+}
+.text-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 .back-link {
   display: inline-flex;
@@ -400,14 +415,25 @@ small {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
   background: transparent;
   border: 0;
   color: var(--text-2);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 .icon-btn:hover {
   background: var(--fill-hover);
+  color: var(--text);
+}
+.icon-btn:active:not(:disabled) {
+  background: var(--fill);
+  transform: scale(0.94);
 }
 .topbar {
   height: 72px;
@@ -549,43 +575,75 @@ small {
   font-size: var(--text-caption);
   margin-top: var(--space-1);
 }
+/*
+ * Buttons: primary (one per view), secondary (gray fill), quiet (.text-button)
+ * and danger. They answer on press, not on release.
+ */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
+  min-height: 2.25rem;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-footnote);
   font-weight: 600;
+  line-height: var(--leading-snug);
+  text-align: center;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .btn.primary {
   background: var(--accent);
   color: var(--on-accent);
 }
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
 .btn.secondary {
-  background: var(--surface);
-  border-color: var(--separator);
+  background: var(--fill);
   color: var(--text);
+}
+.btn.secondary:hover {
+  background: var(--fill-strong);
 }
 .btn.danger {
   background: var(--danger-soft);
   color: var(--danger);
-  border-color: var(--danger-border);
 }
-.btn:hover {
-  filter: brightness(0.97);
+.btn.danger:hover {
+  background: color-mix(in oklab, var(--danger-soft) 80%, var(--danger));
 }
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-1-5);
   font-size: var(--text-caption);
-  border-radius: var(--radius-xs);
+  font-weight: 500;
+  line-height: var(--leading-snug);
+  border-radius: var(--radius-full);
   background: var(--surface-2);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-0-5) var(--space-2);
   white-space: nowrap;
   color: var(--text-2);
+}
+.badge.success::before,
+.badge.warning::before,
+.badge.danger::before,
+.badge.info::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  flex-shrink: 0;
 }
 .badge.success {
   background: var(--success-soft);
@@ -604,27 +662,35 @@ small {
   color: var(--info);
 }
 .notice {
+  --tone: var(--accent);
   display: flex;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
+  border-inline-start: 3px solid var(--tone);
   background: var(--accent-soft);
   color: var(--text);
   font-size: var(--text-footnote);
+  line-height: var(--leading-body);
   margin-bottom: var(--space-5);
   align-items: flex-start;
 }
 .notice svg {
   flex-shrink: 0;
   margin-top: var(--space-0-5);
+  color: var(--tone);
 }
 .notice.danger {
+  --tone: var(--danger);
   background: var(--danger-soft);
-  color: var(--danger);
 }
 .notice.warning {
+  --tone: var(--warning-fill);
   background: var(--warning-soft);
-  color: var(--warning);
+}
+.notice.success {
+  --tone: var(--success);
+  background: var(--success-soft);
 }
 .notice > div {
   flex: 1;
@@ -651,7 +717,8 @@ small {
 }
 .empty p {
   font-size: var(--text-footnote);
-  max-width: 420px;
+  max-width: 26rem;
+  line-height: var(--leading-body);
 }
 .empty-icon {
   display: grid;
@@ -876,6 +943,7 @@ small {
   flex-direction: column;
   gap: var(--space-1-5);
   font-size: var(--text-footnote);
+  font-weight: 500;
 }
 .field.full {
   grid-column: 1/-1;
@@ -883,18 +951,49 @@ small {
 .field small {
   color: var(--text-2);
   font-size: var(--text-caption);
+  font-weight: 400;
 }
-.field input,
+.field input:not([type="checkbox"]):not([type="radio"]),
 .field select,
 .field textarea,
 .search input,
 select {
+  min-height: 2.5rem;
   border: 1px solid var(--separator-strong);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
   min-width: 0;
   color: var(--text);
+  font-size: var(--text-callout);
+  font-weight: 400;
+}
+.field input:not([type="checkbox"]):not([type="radio"]):hover,
+.field select:hover,
+.field textarea:hover,
+.search input:hover,
+select:hover {
+  border-color: var(--text-3);
+}
+/* Fields show focus with their own edge and a soft ring, not an outline. */
+.field input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible,
+.search input:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+/* Checked only after the person has left the field, never while typing. */
+.field input:user-invalid,
+.field select:user-invalid,
+.field textarea:user-invalid {
+  border-color: var(--danger);
+}
+::placeholder {
+  color: var(--text-3);
+  opacity: 1;
 }
 .field input:not([type="checkbox"]),
 .field select,
@@ -903,6 +1002,7 @@ select {
 }
 .field textarea {
   resize: vertical;
+  min-height: 5.5rem;
 }
 .required {
   color: var(--danger);
@@ -968,8 +1068,9 @@ select {
 }
 .check-field input {
   accent-color: var(--accent);
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 .check-field small {
   display: block;
@@ -981,10 +1082,19 @@ select {
   appearance: none;
   padding-inline-end: var(--space-8);
 }
+/* A list that allows several choices is not a dropdown: no chevron. */
+.select-wrap select[multiple] {
+  padding-inline-end: var(--space-3);
+}
+.select-wrap select[multiple] + svg {
+  display: none;
+}
 .select-wrap svg {
   position: absolute;
-  left: 10px;
-  top: 13px;
+  inset-inline-end: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-2);
   pointer-events: none;
 }
 .form-actions {
@@ -1021,15 +1131,24 @@ select {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
-  border: 1px solid var(--separator);
+  min-height: 2.25rem;
+  border: 1px solid var(--separator-strong);
   border-radius: var(--radius-full);
-  padding: var(--space-1-5) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-size: var(--text-footnote);
   cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.toggle:hover {
+  background: var(--fill-hover);
 }
 .toggle:has(input:checked) {
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
 }
 .toggle input {
   accent-color: var(--accent);
@@ -1184,6 +1303,38 @@ td {
 tbody tr:last-child td {
   border-bottom: 0;
 }
+/*
+ * A table marked .stack-on-phone becomes a list of cards on a narrow screen;
+ * every cell names its column with data-label.
+ */
+@media (max-width: 760px) {
+  table.stack-on-phone,
+  table.stack-on-phone tbody,
+  table.stack-on-phone tr,
+  table.stack-on-phone td {
+    display: block;
+    white-space: normal;
+  }
+  table.stack-on-phone thead {
+    display: none;
+  }
+  table.stack-on-phone tr {
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--separator);
+  }
+  table.stack-on-phone td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    border: 0;
+  }
+  table.stack-on-phone td[data-label]::before {
+    content: attr(data-label);
+    color: var(--text-2);
+    font-size: var(--text-caption);
+  }
+}
 .personal-row {
   background: var(--accent-soft);
 }
@@ -1204,14 +1355,38 @@ tbody tr:last-child td {
   color: var(--text-2);
 }
 .modal {
+  --modal-pad: var(--space-6);
+  /* The CSS reset zeroes margins; a dialog is centered by auto margins. */
+  margin: auto;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 0;
   max-width: 650px;
   width: calc(100% - 32px);
   max-height: 90vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* Whatever scrolls or is focused into view stays clear of the pinned
+     title and buttons (WCAG 2.4.11, focus not obscured). */
+  scroll-padding-block: 4.5rem 5.5rem;
+  background: var(--surface);
   box-shadow: var(--shadow-3);
   color: var(--text);
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+@starting-style {
+  .modal[open] {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.modal.closing {
+  opacity: 0;
+  transform: scale(0.96);
 }
 .modal.wide {
   max-width: 850px;
@@ -1219,30 +1394,104 @@ tbody tr:last-child td {
 .modal::backdrop {
   background: var(--scrim);
   backdrop-filter: blur(3px);
+  transition: background-color var(--duration-base) var(--ease-out);
+}
+@starting-style {
+  .modal[open]::backdrop {
+    background: transparent;
+  }
+}
+.modal.closing::backdrop {
+  background: transparent;
 }
 .modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5) var(--space-6);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--modal-pad);
+  background: var(--surface);
   border-bottom: 1px solid var(--separator);
 }
+.modal-head h2 {
+  font-size: var(--text-headline);
+}
 .modal-body {
-  padding: var(--space-6);
+  padding: var(--modal-pad);
+}
+/* The form's buttons stay in reach while a long form scrolls. Only when the
+   form ends the window: content after it must never slide under the bar. */
+.modal-body:has(> form:last-child) {
+  padding-bottom: 0;
+}
+.modal-body > form:last-child .form-actions {
+  position: sticky;
+  bottom: 0;
+  margin-inline: calc(-1 * var(--modal-pad));
+  padding: var(--space-3) var(--modal-pad)
+    calc(var(--space-3) + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--separator);
+}
+/* A duty's own requests: buttons in a row, their notices on lines of their own. */
+.duty-offers {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.duty-offers:empty {
+  display: none;
+}
+.duty-offers > :not(.btn) {
+  flex-basis: 100%;
+}
+.toast-stack {
+  position: fixed;
+  inset-inline: 0;
+  bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-4);
+  pointer-events: none;
+}
+.toast-stack > * {
+  pointer-events: auto;
+  width: max-content;
+  max-width: min(36rem, 100%);
+  margin: 0;
+  box-shadow: var(--shadow-2);
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+@starting-style {
+  .toast-stack > * {
+    opacity: 0;
+    transform: translateY(var(--space-4));
+  }
+}
+.toast-stack > .notice {
+  background: var(--surface);
 }
 .toast {
-  position: fixed;
-  bottom: 25px;
-  left: 30px;
-  z-index: 40;
   background: var(--surface-inverse);
   color: var(--on-inverse);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-full);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-5) var(--space-2);
   display: flex;
-  gap: var(--space-5);
+  gap: var(--space-3);
   align-items: center;
-  box-shadow: var(--shadow-2);
+  font-size: var(--text-footnote);
+  font-weight: 500;
 }
 .toast .icon-btn {
   color: var(--on-inverse);
@@ -1313,16 +1562,25 @@ tbody tr:last-child td {
   gap: var(--space-0-5);
 }
 .segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  min-height: 2rem;
   background: none;
   border: 0;
-  padding: var(--space-1-5) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   color: var(--text-2);
   border-radius: var(--radius-xs);
-  font-size: var(--text-caption);
+  font-size: var(--text-footnote);
+}
+.segmented button:hover:not(.selected) {
+  color: var(--text);
 }
 .segmented button.selected {
   background: var(--surface);
-  color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
   box-shadow: var(--shadow-1);
 }
 .calendar-weekdays,
@@ -1730,6 +1988,50 @@ tbody tr:last-child td {
   body {
     font-size: var(--text-body);
   }
+  /* 44px touch targets. */
+  .btn,
+  .toggle,
+  .field input:not([type="checkbox"]):not([type="radio"]),
+  .field select,
+  .search input,
+  select {
+    min-height: 2.75rem;
+  }
+  .icon-btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  .field input:not([type="checkbox"]):not([type="radio"]),
+  .field select,
+  .field textarea,
+  .search input,
+  select {
+    font-size: var(--text-body);
+  }
+  .modal {
+    --modal-pad: var(--space-5);
+    width: 100%;
+    max-width: none;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .modal.wide {
+    max-width: none;
+  }
+  @starting-style {
+    .modal[open] {
+      opacity: 1;
+      transform: translateY(100%);
+    }
+  }
+  .modal.closing {
+    opacity: 1;
+    transform: translateY(100%);
+  }
+  .modal-body > form:last-child .form-actions .btn {
+    flex: 1;
+  }
   .sidebar {
     display: none;
     width: 265px;
@@ -1858,9 +2160,28 @@ tbody tr:last-child td {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  /* Surfaces still fade, briefly, but nothing slides, scales or springs. */
+  .modal,
+  .modal.closing,
+  .toast-stack > *,
+  .btn,
+  .icon-btn {
+    transform: none !important;
+    transition-property: opacity, background-color !important;
+    transition-duration: var(--duration-fast) !important;
+  }
+  @starting-style {
+    .modal[open],
+    .toast-stack > * {
+      transform: none !important;
+    }
   }
 }
 @media (prefers-reduced-transparency: reduce) {

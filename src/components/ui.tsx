@@ -163,19 +163,47 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const [closing, setClosing] = useState(false);
+  // Read through a ref so the effects below never re-run for a new callback.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     const dialog = ref.current;
-    dialog?.showModal();
-    return () => dialog?.close();
+    if (!dialog) return;
+    let unmounting = false;
+    // The browser may close the dialog itself (a second Escape); follow it.
+    // A late event from an earlier close() is ignored once it is open again.
+    const closed = () => {
+      if (!unmounting && !dialog.open) close.current();
+    };
+    dialog.addEventListener("close", closed);
+    dialog.showModal();
+    return () => {
+      unmounting = true;
+      dialog.removeEventListener("close", closed);
+      dialog.close();
+    };
   }, []);
+  // The window leaves the way it came in, then the caller unmounts it.
+  useEffect(() => {
+    if (!closing) return;
+    const done = window.setTimeout(() => close.current(), 220);
+    return () => window.clearTimeout(done);
+  }, [closing]);
+  const requestClose = () => setClosing(true);
   return (
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      className={`modal ${wide ? "wide" : ""}`}
-      onCancel={onClose}
+      className={`modal ${wide ? "wide" : ""} ${closing ? "closing" : ""}`}
+      onCancel={(e) => {
+        e.preventDefault();
+        requestClose();
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       <div className="modal-head">
@@ -184,7 +212,7 @@ export function Modal({
           type="button"
           className="icon-btn"
           aria-label="סגירה"
-          onClick={onClose}
+          onClick={requestClose}
         >
           <X size={20} />
         </button>
@@ -413,7 +441,7 @@ export function Form({
         {children}
         {error && <Notice tone="danger">{error}</Notice>}
         <div className="form-actions">
-          <button className="btn primary" type="submit">
+          <button className="btn primary" type="submit" aria-busy={pending}>
             {pending ? <span className="spinner small" /> : <Check size={17} />}{" "}
             {pending ? "שומרים…" : submitLabel}
           </button>
@@ -513,6 +541,7 @@ export function QuickAction({
   return (
     <button
       disabled={pending}
+      aria-busy={pending}
       className={`btn ${className}`}
       onClick={async () => {
         setPending(true);
@@ -525,7 +554,13 @@ export function QuickAction({
         }
       }}
     >
-      {pending ? "מעדכנים…" : children}
+      {pending ? (
+        <>
+          <span className="spinner small" aria-hidden="true" /> מעדכנים…
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }
