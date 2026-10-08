@@ -38,7 +38,14 @@ case "${1:-}" in
       echo "TUNNEL_TOKEN is missing in $FAIR_SHIFTS_CONFIG_DIR/tunnel.env" >&2
       exit 1
     fi
+    # Resolve every required env file before building or touching live services.
+    compose --profile operations config --quiet
     compose build app
+    # Entrypoints do not run: these checks neither migrate nor start runtime.
+    for service in app worker operations; do
+      compose --profile operations run --rm --no-deps --entrypoint node "$service" \
+        --import tsx scripts/check-config.ts
+    done
     compose up -d --wait db
     compose stop worker app
     compose --profile operations run --rm --no-deps operations

@@ -36,10 +36,17 @@ echo "${APP_VERSION:-} $*" >>"$STUB/calls"
 case "$1" in
   deploy)
     version=$(git -C "$STUB/host" rev-parse --short=12 HEAD)
+    if [ -e "$STUB/change-config-on-failure" ]; then
+      echo incompatible >"$FAIR_SHIFTS_CONFIG_DIR/compatibility"
+    fi
     [ ! -e "$STUB/fail-deploy" ] || exit 1
     echo "$version" >"$STUB/running" ;;
   up)
     [ ! -e "$STUB/fail-up" ] || exit 1
+    if [ -e "$STUB/require-legacy-context" ]; then
+      [ "$(cat "$(dirname "$0")/../compatibility")" = legacy ] || exit 1
+      [ "$(cat "$FAIR_SHIFTS_CONFIG_DIR/compatibility")" = legacy ] || exit 1
+    fi
     echo "$APP_VERSION" >"$STUB/running" ;;
   health)
     version=$(cat "$STUB/running")
@@ -59,7 +66,7 @@ esac
 EOF
 chmod +x "$work/bin/curl"
 export STUB="$work" PATH="$work/bin:$PATH"
-export FAIR_SHIFTS_PRODUCTION_SCRIPT="$work/production.sh"
+unset FAIR_SHIFTS_PRODUCTION_SCRIPT
 export FAIR_SHIFTS_STATE_DIR="$work/state" FAIR_SHIFTS_CONFIG_DIR="$work/config"
 export FAIR_SHIFTS_HEALTH_TRIES=2 FAIR_SHIFTS_HEALTH_WAIT=0
 configure() {
@@ -73,6 +80,9 @@ git clone -q "$work/origin.git" "$work/seed" 2>/dev/null
 git -C "$work/seed" symbolic-ref HEAD refs/heads/main
 mkdir -p "$work/seed/scripts" "$work/seed/drizzle"
 cp "$source_script" "$work/seed/scripts/auto-deploy.sh"
+cp "$work/production.sh" "$work/seed/scripts/production.sh"
+echo legacy >"$work/seed/compatibility"
+echo legacy >"$work/config/compatibility"
 echo "-- 0000" >"$work/seed/drizzle/0000_initial.sql"
 git -C "$work/seed" add -A
 git -C "$work/seed" commit -q -m initial
@@ -159,14 +169,18 @@ expect_status 0 "בדיקות נכשלו, סבב שני"
 [ ! -s "$work/curl-calls" ] || fail "בדיקות נכשלו: אותו commit נבדק שוב"
 
 step 'פריסה שנכשלה בלי שינוי מסד: חזרה לגרסה הקודמת'
+echo incompatible >"$work/seed/compatibility"
 fourth=$(push fourth)
 ci "$fourth" success
 touch "$work/fail-deploy"
+touch "$work/require-legacy-context" "$work/change-config-on-failure"
 tick
-rm "$work/fail-deploy"
+rm "$work/fail-deploy" "$work/require-legacy-context" "$work/change-config-on-failure"
 expect_status 1 "פריסה נכשלה"
 expect_call "^$(short "$second") up -d --wait --no-build" "פריסה נכשלה: חזרה"
 expect_running "$second" "פריסה נכשלה"
+expect_output "is live again" "פריסה נכשלה: תצורה וקוד קודמים"
+echo legacy >"$work/config/compatibility"
 [ "$(cat "$work/state/stopped")" = "$fourth" ] || fail "פריסה נכשלה: לא נרשמה עצירה"
 tick
 expect_status 0 "פריסה נכשלה, סבב שני"

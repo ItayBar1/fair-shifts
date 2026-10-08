@@ -71,6 +71,25 @@ case "$conclusion" in
 esac
 
 previous=$deployed
+# The previous image also needs its own Compose, wrapper and configuration.
+# Changing only APP_VERSION leaves rollback subject to the failed new release.
+rollback_dir=$(mktemp -d "${TMPDIR:-/tmp}/fair-shifts-rollback.XXXXXX")
+chmod 700 "$rollback_dir"
+trap 'rm -rf "$rollback_dir"' EXIT
+trap 'exit 1' HUP INT TERM
+if ! git archive "$previous" >"$rollback_dir/source.tar" ||
+  ! tar -xf "$rollback_dir/source.tar" -C "$rollback_dir"; then
+  log "cannot capture the deployed source; live services were not changed"
+  stop_at "$target"
+fi
+mkdir -m 700 "$rollback_dir/config"
+cp -R "$FAIR_SHIFTS_CONFIG_DIR/." "$rollback_dir/config/"
+previous_production=${FAIR_SHIFTS_PRODUCTION_SCRIPT:-$rollback_dir/scripts/production.sh}
+run_previous() {
+  APP_VERSION=$(short "$previous") FAIR_SHIFTS_CONFIG_DIR="$rollback_dir/config" \
+    sh "$previous_production" "$@"
+}
+run_target() { sh "$production" "$@"; }
 if ! git merge -q --ff-only "$target"; then
   log "main on this server cannot fast-forward to $(short "$target"); not deploying"
   stop_at "$target"
@@ -82,7 +101,7 @@ if [ "$migrations" = yes ]; then
   if [ -n "$(setting BACKUP_STORAGE)" ]; then
     # In the worker of the version still live, before anything changes.
     log "$(short "$target") changes the database; taking a verified backup first"
-    if ! APP_VERSION=$(short "$previous") sh "$production" exec -T worker \
+    if ! run_previous exec -T worker \
       node_modules/.bin/tsx scripts/backup-before-deploy.ts "$(short "$target")"; then
       log "no verified backup, so $(short "$target") is not deployed. See docs/operations.md"
       stop_at "$target"
@@ -98,14 +117,15 @@ fi
 # Health must be ok for this version, with a worker of the same version, and
 # the login page must answer.
 verify() {
+  runner=${2:-run_target}
   tries=0
-  until sh "$production" health 2>/dev/null | tr -d ' \n' |
+  until "$runner" health 2>/dev/null | tr -d ' \n' |
     grep -q "^{\"status\":\"ok\",\"version\":\"$1\""; do
     tries=$((tries + 1))
     [ "$tries" -lt "${FAIR_SHIFTS_HEALTH_TRIES:-6}" ] || return 1
     sleep "${FAIR_SHIFTS_HEALTH_WAIT:-10}"
   done
-  sh "$production" exec -T app node -e \
+  "$runner" exec -T app node -e \
     "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 }
 
@@ -121,8 +141,8 @@ if [ "$migrations" = yes ]; then
   stop_at "$target"
 fi
 log "deployment failed; rolling back to $(short "$previous")"
-if APP_VERSION=$(short "$previous") sh "$production" up -d --wait --no-build --remove-orphans &&
-  verify "$(short "$previous")"; then
+if run_previous up -d --wait --no-build --remove-orphans &&
+  verify "$(short "$previous")" run_previous; then
   log "$(short "$previous") is live again"
 else
   log "the rollback failed too; manual action needed, see docs/operations.md"
