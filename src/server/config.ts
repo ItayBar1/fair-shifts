@@ -39,6 +39,7 @@ function parseUrl(value: string) {
 export function validateDeploymentConfig(env: Env): string[] {
   const errors: string[] = [];
   const value = (name: string) => env[name]?.trim() ?? "";
+  const serviceRole = value("SERVICE_ROLE");
   const required = (name: string) => {
     if (!value(name)) errors.push(`${name}: missing value`);
     return value(name);
@@ -79,6 +80,7 @@ export function validateDeploymentConfig(env: Env): string[] {
   }
 
   for (const name of ["BETTER_AUTH_SECRET", "OTP_SECRET"]) {
+    if (serviceRole === "operations") continue;
     const secret = required(name);
     if (secret && (secret.length < 32 || isDevelopmentValue(secret)))
       errors.push(
@@ -100,9 +102,25 @@ export function validateDeploymentConfig(env: Env): string[] {
     errors.push("MAIL_ENCRYPTION_KEY: the key is taken from development");
 
   const transport = required("MAIL_TRANSPORT");
+  if (serviceRole && !["app", "worker", "operations"].includes(serviceRole))
+    errors.push("SERVICE_ROLE: allowed values are app, worker or operations");
+  if (serviceRole === "app")
+    for (const name of [
+      "BREVO_API_KEY",
+      "BREVO_SENDER_EMAIL",
+      "GOOGLE_DRIVE_CLIENT_ID",
+      "GOOGLE_DRIVE_CLIENT_SECRET",
+      "GOOGLE_DRIVE_REFRESH_TOKEN",
+      "GOOGLE_DRIVE_FOLDER_ID",
+      "DELETION_LOG_PRIVATE_KEY",
+      "DELETION_LOG_PRIVATE_KEY_FILE",
+      "DELETION_LOG_KEY_ID",
+    ])
+      if (value(name))
+        errors.push(`${name}: must not be available to the site`);
   if (transport && !["disabled", "brevo"].includes(transport))
     errors.push("MAIL_TRANSPORT: allowed values are disabled or brevo");
-  if (transport === "brevo") {
+  if (transport === "brevo" && serviceRole !== "app") {
     required("BREVO_API_KEY");
     const sender = required("BREVO_SENDER_EMAIL");
     if (sender && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sender))
@@ -153,14 +171,15 @@ export function validateDeploymentConfig(env: Env): string[] {
     errors.push(
       "BACKUP_STORAGE: allowed values are drive or directory, or empty to switch backups off"
     );
-  if (backup === "drive")
+  if (backup === "drive" && serviceRole !== "app")
     for (const name of [
       "GOOGLE_DRIVE_CLIENT_ID",
       "GOOGLE_DRIVE_CLIENT_SECRET",
       "GOOGLE_DRIVE_REFRESH_TOKEN",
     ])
       required(name);
-  if (backup === "directory") required("BACKUP_DIRECTORY");
+  if (backup === "directory" && serviceRole !== "app")
+    required("BACKUP_DIRECTORY");
   if (backup === "drive" || backup === "directory") {
     const recipient = required("AGE_RECIPIENT");
     if (recipient && !/^age1[0-9a-z]{58}$/.test(recipient))

@@ -27,7 +27,11 @@ const heartbeatFile =
   process.env.WORKER_HEARTBEAT_FILE ?? "/tmp/fair-shifts-worker-heartbeat";
 // A file left by a previous run in the same container must not pass the check.
 await rm(heartbeatFile, { force: true });
-const boss = new PgBoss(process.env.DATABASE_URL);
+const boss = new PgBoss({
+  connectionString: process.env.DATABASE_URL,
+  // Operations creates the schema; this login may administer only its contents.
+  createSchema: process.env.SERVICE_ROLE !== "worker",
+});
 boss.on("error", (error) => console.error("Worker queue error", error.name));
 await boss.start();
 // One drain of the outbox at a time, from the minute's maintenance or from a
@@ -43,6 +47,15 @@ const drainMail = singleFlight(async () => {
 const drainLog = singleFlight(async () => {
   await drainDeletionLog();
 });
+const workerBackup = () => {
+  const config = backupConfig();
+  return {
+    kind: config.kind,
+    storageConfigured: Boolean(config.storage),
+    keyConfigured: Boolean(config.recipient),
+    time: config.time,
+  };
+};
 await boss.createQueue("unit-maintenance", { retryLimit: 5, retryDelay: 15 });
 await boss.schedule("unit-maintenance", "* * * * *");
 await boss.work("unit-maintenance", async () => {
@@ -53,7 +66,11 @@ await boss.work("unit-maintenance", async () => {
       .from(operationsState)
       .where(eq(operationsState.key, "restore"));
     if (process.env.RESTORE_MODE === "true" || restore?.data.blocked === true) {
-      await recordWorkerHeartbeat(tx, { now, paused: true });
+      await recordWorkerHeartbeat(tx, {
+        now,
+        paused: true,
+        backup: workerBackup(),
+      });
       return;
     }
     const credited = await settleDue(tx);
@@ -75,7 +92,12 @@ await boss.work("unit-maintenance", async () => {
           error instanceof Error ? error.name : "unknown"
         )
       );
-    await recordWorkerHeartbeat(tx, { now, paused: false, credited });
+    await recordWorkerHeartbeat(tx, {
+      now,
+      paused: false,
+      credited,
+      backup: workerBackup(),
+    });
   });
   await writeFile(heartbeatFile, new Date().toISOString());
   await drainMail();

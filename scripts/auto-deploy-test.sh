@@ -64,7 +64,7 @@ export FAIR_SHIFTS_STATE_DIR="$work/state" FAIR_SHIFTS_CONFIG_DIR="$work/config"
 export FAIR_SHIFTS_HEALTH_TRIES=2 FAIR_SHIFTS_HEALTH_WAIT=0
 configure() {
   printf 'DEPLOYMENT_ENVIRONMENT=%s\nBACKUP_STORAGE=%s\n' "$1" "${2:-}" \
-    >"$work/config/app.env"
+    >"$work/config/worker.env"
 }
 configure staging
 

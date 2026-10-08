@@ -3,6 +3,10 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { deploymentEnvironments } from "../src/server/config";
+import {
+  parseConfiguration,
+  splitServiceConfiguration,
+} from "../src/server/operations/service-configuration";
 
 // Creates the external configuration files for compose.production.yaml with
 // fresh random secrets. Existing files are never overwritten. Provider keys and
@@ -26,9 +30,14 @@ if (!directory)
     "usage: init-production-config <dir> --environment=staging --url=https://..."
   );
 
-const files = ["db.env", "app.env", "worker-secrets.env", "tunnel.env"].map(
-  (name) => join(directory, name)
-);
+const files = [
+  "db.env",
+  "app.env",
+  "worker.env",
+  "operations.env",
+  "worker-secrets.env",
+  "tunnel.env",
+].map((name) => join(directory, name));
 const existing = files.filter((file) => existsSync(file));
 if (existing.length) {
   console.error(
@@ -97,11 +106,20 @@ const content = {
     "DELETION_LOG_KEY_RECOVERY_CONFIRMED=false",
   ],
 };
-for (const [name, lines] of Object.entries(content))
+const split = splitServiceConfiguration(
+  parseConfiguration(content["app.env"].join("\n")),
+  parseConfiguration(content["db.env"].join("\n"))
+);
+const filesToWrite = {
+  ...split,
+  "worker-secrets.env": content["worker-secrets.env"],
+  "tunnel.env": content["tunnel.env"],
+};
+for (const [name, lines] of Object.entries(filesToWrite))
   writeFileSync(join(directory, name), `${lines.join("\n")}\n`, {
     mode: 0o600,
     flag: "wx",
   });
 console.log(
-  "Created db.env, app.env, worker-secrets.env and tunnel.env. Back up the deletion signing key offline, then confirm recovery storage in worker-secrets.env."
+  "Created db.env, app.env, worker.env, operations.env, worker-secrets.env and tunnel.env. Back up the deletion signing key offline, then confirm recovery storage in worker-secrets.env."
 );

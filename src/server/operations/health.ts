@@ -38,13 +38,24 @@ export type SystemHealth = {
 // Merges into the existing row so a paused beat keeps the last successful run.
 export async function recordWorkerHeartbeat(
   tx: Executor,
-  beat: { now: Date; paused: boolean; credited?: number }
+  beat: {
+    now: Date;
+    paused: boolean;
+    credited?: number;
+    backup?: {
+      kind: "none" | "drive" | "directory";
+      storageConfigured: boolean;
+      keyConfigured: boolean;
+      time: string;
+    };
+  }
 ) {
   const data: Record<string, unknown> = {
     lastBeatAt: beat.now.toISOString(),
     version: appVersion(),
     paused: beat.paused,
   };
+  if (beat.backup) data.backup = beat.backup;
   if (!beat.paused) {
     data.lastSuccessAt = beat.now.toISOString();
     data.credited = beat.credited ?? 0;
@@ -59,6 +70,24 @@ export async function recordWorkerHeartbeat(
         updatedAt: beat.now,
       },
     });
+}
+
+/** Worker reports configuration presence; provider credentials stay out of the site. */
+export async function readWorkerBackup(executor: Executor) {
+  const [row] = await executor
+    .select({ data: operationsState.data })
+    .from(operationsState)
+    .where(eq(operationsState.key, HEARTBEAT_KEY));
+  const value = row?.data.backup as Record<string, unknown> | undefined;
+  return {
+    kind:
+      value?.kind === "drive" || value?.kind === "directory"
+        ? value.kind
+        : ("none" as "none" | "drive" | "directory"),
+    storageConfigured: value?.storageConfigured === true,
+    keyConfigured: value?.keyConfigured === true,
+    time: typeof value?.time === "string" ? value.time : "03:30",
+  };
 }
 
 const text = (value: unknown) =>

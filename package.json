@@ -21,6 +21,8 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:permissions": "tsx scripts/database-permissions.ts",
+    "security:configuration": "tsx scripts/split-service-config.ts",
     "bootstrap": "tsx scripts/bootstrap.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "staging:soldiers": "tsx scripts/staging-soldiers.ts",

@@ -582,6 +582,8 @@
 
 ### 34. התאוששות משליחה ומגיבוי — הודעות ותיעוד; תפעול — מכוסה
 
+- [database-permissions.test.ts](../tests/integration/database-permissions.test.ts): `verifies real non-superuser logins`; `lets pg-boss initialize and work only`
+- [auth.test.ts](../tests/integration/auth.test.ts): `shows worker backup presence to the site`
 - [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `retries with growing delays, then fails visibly while the site notice stays`
 - [backup.test.ts](../tests/integration/backup.test.ts): `produces a verified copy that is only ciphertext, decrypts and restores the data`
 - [restore.test.ts](../tests/integration/restore.test.ts): `restores the newest backup into a scratch database, passes every check and leaves the live system as it was`

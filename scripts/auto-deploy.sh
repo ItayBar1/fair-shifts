@@ -18,7 +18,7 @@ export FAIR_SHIFTS_CONFIG_DIR="${FAIR_SHIFTS_CONFIG_DIR:-/opt/fair-shifts/config
 
 log() { echo "auto-deploy: $*"; }
 short() { git rev-parse --short=12 "$1"; }
-setting() { sed -n "s/^$1=//p" "$FAIR_SHIFTS_CONFIG_DIR/app.env" | tail -1; }
+setting() { sed -n "s/^$1=//p" "$FAIR_SHIFTS_CONFIG_DIR/worker.env" | tail -1; }
 stop_at() {
   echo "$1" >"$state/stopped"
   exit 1

@@ -32,8 +32,12 @@ services:
     env_file:
       - path: ${FAIR_SHIFTS_CONFIG_DIR}/db.env
         required: true
+    environment:
+      DATABASE_BOOTSTRAP_ACKNOWLEDGEMENT: ""
     volumes:
       - postgres-data:/var/lib/postgresql
+      - ./scripts/database-bootstrap.sh:/docker-entrypoint-initdb.d/config/database-bootstrap.sh:ro
+      - ./scripts/database-bootstrap.sql:/docker-entrypoint-initdb.d/10-service-roles.sql:ro
     networks: [internal]
     stop_grace_period: 60s
     healthcheck:
@@ -51,12 +55,12 @@ services:
       args:
         APP_VERSION: ${APP_VERSION}
     networks: [internal, egress]
-    # Configuration is checked before migrations; exec lets Next.js receive SIGTERM.
+    # Operations migrates separately; runtime credentials cannot change the schema.
     command:
       [
         sh,
         -c,
-        "pnpm --silent config:check && pnpm --silent db:migrate && pnpm --silent security:secrets verify && exec node_modules/.bin/next start --hostname 0.0.0.0",
+        "pnpm --silent config:check && pnpm --silent db:permissions check && pnpm --silent security:secrets verify && exec node_modules/.bin/next start --hostname 0.0.0.0",
       ]
     healthcheck:
       test:
@@ -74,7 +78,7 @@ services:
   worker:
     <<: *app
     env_file:
-      - path: ${FAIR_SHIFTS_CONFIG_DIR}/app.env
+      - path: ${FAIR_SHIFTS_CONFIG_DIR}/worker.env
         required: true
       - path: ${FAIR_SHIFTS_CONFIG_DIR}/worker-secrets.env
         required: true
@@ -85,6 +89,7 @@ services:
     # The independent deletion log, outside the database and its backups (decision 196).
     volumes:
       - deletion-log:/var/lib/fair-shifts-deletion-log
+      - backup-data:/var/lib/fair-shifts-backups
     networks: [internal, egress]
     depends_on:
       db:
@@ -95,7 +100,7 @@ services:
       [
         sh,
         -c,
-        "pnpm --silent config:check && pnpm --silent security:log verify && exec node_modules/.bin/tsx src/worker.ts",
+        "pnpm --silent config:check && pnpm --silent db:permissions check && pnpm --silent security:log verify && exec node_modules/.bin/tsx src/worker.ts",
       ]
     # The worker touches this file after each maintenance run (every minute).
     healthcheck:
@@ -110,6 +115,24 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
+
+  operations:
+    <<: *app
+    profiles: [operations]
+    restart: "no"
+    env_file:
+      - path: ${FAIR_SHIFTS_CONFIG_DIR}/operations.env
+        required: true
+    volumes:
+      - deletion-log:/var/lib/fair-shifts-deletion-log
+      - backup-data:/var/lib/fair-shifts-backups
+    networks: [internal, egress]
+    command:
+      [
+        sh,
+        -c,
+        "pnpm --silent config:check && pnpm --silent db:permissions check && pnpm --silent db:migrate && pnpm --silent db:permissions apply && pnpm --silent security:secrets verify",
+      ]
 
   cloudflared:
     <<: *service
@@ -132,3 +155,4 @@ networks:
 volumes:
   postgres-data:
   deletion-log:
+  backup-data:
