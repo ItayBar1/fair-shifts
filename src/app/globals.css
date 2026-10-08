@@ -234,6 +234,18 @@ small {
 .block {
   display: block;
 }
+/* Read by a screen reader, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 .muted {
   color: var(--text-2);
 }
@@ -253,6 +265,11 @@ small {
 }
 .full-width {
   width: 100%;
+}
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 .text-link,
 .text-button {
@@ -635,10 +652,62 @@ small {
 }
 .my-assignment {
   border: 1px solid var(--separator);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-4);
   min-width: 0;
   overflow-wrap: anywhere;
+  background: var(--surface);
+}
+.my-assignment.cancelled h3 {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+/* The next duty: the day in large type beside its card. */
+.next-assignment {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+  margin-bottom: var(--space-6);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+}
+.next-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 4.5rem;
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-variant-numeric: tabular-nums;
+}
+.next-date strong {
+  font-size: var(--text-large-title);
+  line-height: 1;
+}
+.next-date span {
+  margin-top: var(--space-1);
+  font-size: var(--text-footnote);
+  font-weight: 500;
+}
+.next-body {
+  flex: 1;
+  min-width: 0;
+}
+.next-label {
+  margin-bottom: var(--space-2);
+  color: var(--accent-text);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+}
+.next-assignment .my-assignment {
+  border-color: transparent;
+  box-shadow: var(--shadow-1);
+}
+.next-assignment .my-assignment-heading h3 {
+  font-size: var(--text-title-3);
 }
 .my-assignment.mail-highlight {
   border-color: var(--accent);
@@ -660,17 +729,19 @@ small {
 }
 .my-assignment-details {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
   margin: var(--space-3) 0;
-  font-size: var(--text-footnote);
+  font-size: var(--text-callout);
 }
 .my-assignment-details div {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1-5);
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 .my-assignment-details dt {
-  color: var(--text-2);
+  color: var(--text-3);
+  display: inline-flex;
+  padding-top: var(--space-0-5);
 }
 .my-assignment-details dd {
   margin: 0;
@@ -807,6 +878,10 @@ small {
 .notice > div {
   flex: 1;
 }
+.field + .notice,
+form + .notice {
+  margin-top: var(--space-4);
+}
 .service-fact {
   display: block;
 }
@@ -826,6 +901,23 @@ small {
 }
 .empty h3 {
   color: var(--text);
+}
+/* Inside a panel an empty list is a line, not a hero: less to scroll past. */
+.panel .empty {
+  padding: var(--space-5) var(--space-4);
+  gap: var(--space-2);
+}
+.panel .empty h3 {
+  font-size: var(--text-callout);
+}
+.panel .empty-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+}
+.panel .empty-icon svg {
+  width: 20px;
+  height: 20px;
 }
 .empty p {
   font-size: var(--text-footnote);
@@ -848,16 +940,35 @@ small {
 }
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-5);
-  margin-bottom: var(--space-6);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 .stat-card,
 .stat {
   background: var(--surface);
   border: 1px solid var(--separator);
   border-radius: var(--radius-md);
-  padding: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+}
+.stat-button {
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.stat-button:active {
+  transform: scale(0.98);
+}
+.stat-button > strong {
+  font-size: var(--text-title-2);
+  line-height: var(--leading-tight);
+  margin-top: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+.stat-button > small {
+  color: var(--text-2);
+  font-size: var(--text-caption);
 }
 .stat-top {
   display: flex;
@@ -1068,7 +1179,6 @@ small {
 .field input:not([type="checkbox"]):not([type="radio"]),
 .field select,
 .field textarea,
-.search input,
 select {
   min-height: 2.5rem;
   border: 1px solid var(--separator-strong);
@@ -1083,7 +1193,6 @@ select {
 .field input:not([type="checkbox"]):not([type="radio"]):hover,
 .field select:hover,
 .field textarea:hover,
-.search input:hover,
 select:hover {
   border-color: var(--text-3);
 }
@@ -1091,7 +1200,6 @@ select:hover {
 .field input:not([type="checkbox"]):not([type="radio"]):focus-visible,
 .field select:focus-visible,
 .field textarea:focus-visible,
-.search input:focus-visible,
 select:focus-visible {
   outline: none;
   border-color: var(--accent);
@@ -1380,14 +1488,36 @@ select:focus-visible {
 .search {
   display: flex;
   align-items: center;
-  gap: var(--space-1-5);
-  border: 1px solid var(--separator);
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  border: 1px solid var(--separator-strong);
   border-radius: var(--radius-sm);
   padding-inline: var(--space-3);
+  background: var(--surface);
+  color: var(--text-2);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.search:hover {
+  border-color: var(--text-3);
+}
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
 }
 .search input {
+  flex: 1;
+  min-width: 0;
   border: 0;
-  max-width: 180px;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-callout);
+  padding: var(--space-2) 0;
+}
+.toolbar-controls .search {
+  flex: 0 1 16rem;
 }
 .table-scroll {
   overflow-x: auto;
@@ -1414,6 +1544,62 @@ td {
 }
 tbody tr:last-child td {
   border-bottom: 0;
+}
+/* On a phone the fairness table is a ranked list: place, name, then
+   population and rank on a second line, points at the side. */
+@media (max-width: 760px) {
+  .fairness-table thead {
+    display: none;
+  }
+  .fairness-table,
+  .fairness-table tbody {
+    display: block;
+  }
+  .fairness-table tr {
+    display: grid;
+    grid-template-columns: 2rem auto 1fr auto;
+    grid-template-areas:
+      "place name name score"
+      "place population rank score";
+    align-items: center;
+    column-gap: var(--space-2);
+    row-gap: var(--space-0-5);
+    padding: var(--space-3) var(--space-1);
+    border-bottom: 1px solid var(--separator);
+  }
+  .fairness-table td {
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+  .fairness-table td:nth-child(1) {
+    grid-area: place;
+    text-align: center;
+  }
+  .fairness-table td:nth-child(2) {
+    grid-area: name;
+  }
+  .fairness-table td:nth-child(3),
+  .fairness-table td:nth-child(4) {
+    color: var(--text-2);
+    font-size: var(--text-caption);
+  }
+  .fairness-table td:nth-child(3) {
+    grid-area: population;
+  }
+  .fairness-table td:nth-child(4) {
+    grid-area: rank;
+  }
+  .fairness-table td:nth-child(4)::before {
+    content: "· ";
+  }
+  .fairness-table td:nth-child(5) {
+    grid-area: score;
+    text-align: end;
+  }
+  .fairness-table .avatar.small {
+    display: none;
+  }
 }
 /*
  * A table marked .stack-on-phone becomes a list of cards on a narrow screen;
@@ -1655,10 +1841,11 @@ tbody tr:last-child td {
 }
 .calendar-toolbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-5);
 }
 .calendar-navigation,
 .calendar-controls,
@@ -1818,19 +2005,66 @@ tbody tr:last-child td {
 .duty-row {
   display: flex;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-4) 0;
+  gap: var(--space-4);
+  min-height: 3.5rem;
+  padding: var(--space-3) var(--space-2);
+  margin-inline: calc(-1 * var(--space-2));
   border-bottom: 1px solid var(--separator);
-  font-size: var(--text-caption);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-footnote);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.duty-row:hover {
+  background: var(--fill-hover);
+}
+.duty-row:active {
+  background: var(--fill);
+}
+.duty-row > svg:last-child {
+  color: var(--text-3);
+  flex-shrink: 0;
 }
 .duty-row:last-child {
   border-bottom: 0;
 }
 .duty-row-title {
   flex: 1;
+  min-width: 0;
 }
-.duty-row-title strong,
+.duty-row-title strong {
+  font-size: var(--text-callout);
+}
 .duty-row-title small {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-0-5);
+}
+.duty-row-title small svg {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+.duty-row-seats {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.month-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.month-switch h2 {
+  min-width: 8.5rem;
+  text-align: center;
+  font-size: var(--text-title-3);
+}
+.month-switch .btn {
+  margin-inline-start: var(--space-2);
+}
+.duty-row-title strong {
   display: block;
 }
 .duty-row-title small {
@@ -1840,13 +2074,20 @@ tbody tr:last-child td {
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex-shrink: 0;
+  min-width: 3.25rem;
   background: var(--surface-2);
   border-radius: var(--radius-sm);
-  padding: var(--space-1-5) var(--space-4);
-  color: var(--accent);
+  padding: var(--space-1-5) var(--space-2);
+  color: var(--text);
+}
+.duty-row.mine .date-tile {
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 .date-tile strong {
-  font-size: var(--text-title-2);
+  font-size: var(--text-title-3);
+  line-height: var(--leading-tight);
 }
 .date-tile small {
   font-size: var(--text-caption);
@@ -2080,7 +2321,7 @@ tbody tr:last-child td {
     padding: var(--space-6);
   }
   .stats-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .catalog-grid {
     grid-template-columns: 1fr 1fr;
@@ -2105,7 +2346,7 @@ tbody tr:last-child td {
   .toggle,
   .field input:not([type="checkbox"]):not([type="radio"]),
   .field select,
-  .search input,
+  .search,
   select {
     min-height: 2.75rem;
   }
@@ -2218,8 +2459,56 @@ tbody tr:last-child td {
   .catalog-grid {
     grid-template-columns: 1fr;
   }
+  /* The summary tiles scroll sideways in one row, so the duties show first. */
   .stats-grid {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    margin-inline: calc(-1 * var(--space-4));
+    padding: 0 var(--space-4) var(--space-1);
+    scrollbar-width: none;
+  }
+  .stats-grid > .stat {
+    flex: 0 0 auto;
+    min-width: 9.5rem;
+    scroll-snap-align: start;
+  }
+  .stat-top .stat-icon {
+    display: none;
+  }
+  .calendar-toolbar .toolbar-controls {
+    width: 100%;
+  }
+  .calendar-toolbar .search {
+    flex: 1 1 100%;
+  }
+  .duty-row {
     gap: var(--space-3);
+  }
+  .duty-row-seats {
+    display: none;
+  }
+  /* The next duty's date sits above its card in one line on a phone. */
+  .next-assignment {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+  .next-date {
+    align-self: flex-start;
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-1-5) var(--space-3);
+  }
+  .next-date strong {
+    font-size: var(--text-title-2);
+  }
+  .next-date span {
+    margin-top: 0;
   }
   .calendar-toolbar {
     flex-wrap: wrap;

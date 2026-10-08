@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assignmentDate,
+  assignmentRange,
   personalAssignmentList,
   type FeedEvent,
   type PersonalAssignment,
@@ -104,5 +105,24 @@ describe("personal assignment projection", () => {
     expect(after).toContain("01:30");
     expect(before).toContain("+3");
     expect(after).toContain("+2");
+  });
+  it("shows the offset only where the wall time is ambiguous", () => {
+    // 08:00 Israel summer time, an ordinary hour.
+    expect(assignmentDate("2026-10-09T05:00:00Z")).toBe("09.10.2026, 08:00");
+    expect(assignmentDate("2026-10-09T05:00:00Z")).not.toContain("GMT");
+    // 00:30 on the change night happens once: no offset.
+    expect(assignmentDate("2026-10-24T21:30:00Z")).not.toContain("GMT");
+  });
+  it("names a one-day duty's date once and a longer one's twice", () => {
+    expect(
+      assignmentRange("2026-10-09T05:00:00Z", "2026-10-09T13:00:00Z")
+    ).toBe("09.10.2026, 08:00–16:00");
+    expect(
+      assignmentRange("2026-10-09T15:00:00Z", "2026-10-10T05:00:00Z")
+    ).toBe("09.10.2026, 18:00 – 10.10.2026, 08:00");
+    // Across the repeated hour both ends carry their offsets.
+    expect(
+      assignmentRange("2026-10-24T22:30:00Z", "2026-10-24T23:30:00Z")
+    ).toBe("25.10.2026, 01:30 (GMT+3) – 25.10.2026, 01:30 (GMT+2)");
   });
 });

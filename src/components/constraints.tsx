@@ -237,6 +237,9 @@ export function ConstraintsView({
       row.roundId === roundId &&
       (!manage || row.subjectId === state.actor.soldierId)
   );
+  const openRounds = state.rounds.filter(
+    (round) => roundPhase(round, now) === "open"
+  );
   return (
     <>
       <Panel
@@ -362,34 +365,42 @@ export function ConstraintsView({
         )}
       </Panel>
       <Panel title="הגשת האילוצים שלי">
-        <label className="field">
-          <span>בחירת סבב</span>
-          <select
-            value={roundId}
-            onChange={(event) => setRoundId(event.target.value)}
-          >
-            <option value="">בחירה…</option>
-            {state.rounds
-              .filter((round) => roundPhase(round, now) === "open")
-              .map((round) => (
-                <option value={round.id} key={round.id}>
-                  {str(round.name)}
-                </option>
-              ))}
-          </select>
-        </label>
-        {roundId && (
-          <ConstraintForm
-            key={roundId}
-            action={action}
-            roundId={roundId}
-            existing={own}
+        {openRounds.length ? (
+          <>
+            <label className="field">
+              <span>בחירת סבב</span>
+              <select
+                value={roundId}
+                onChange={(event) => setRoundId(event.target.value)}
+              >
+                <option value="">בחירה…</option>
+                {openRounds.map((round) => (
+                  <option value={round.id} key={round.id}>
+                    {str(round.name)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {roundId && (
+              <ConstraintForm
+                key={roundId}
+                action={action}
+                roundId={roundId}
+                existing={own}
+              />
+            )}
+            <Notice>
+              יש לפרט סיבה לכל טווח. אילוץ ללא סיבה מוצדקת עשוי להידחות בידי
+              האחראי. שינוי ממתין אינו מבטל גרסה שאושרה.
+            </Notice>
+          </>
+        ) : (
+          // Nothing to choose from: say so once instead of an empty list.
+          <Empty
+            title="אין כרגע סבב פתוח להגשה"
+            text="כשסבב ייפתח, תוכלו לבחור אותו כאן ולהגיש אילוצים."
           />
         )}
-        <Notice>
-          יש לפרט סיבה לכל טווח. אילוץ ללא סיבה מוצדקת עשוי להידחות בידי האחראי.
-          שינוי ממתין אינו מבטל גרסה שאושרה.
-        </Notice>
       </Panel>
       <Panel title={manage ? "הגשות לטיפול" : "ההגשות שלי"}>
         {state.constraints.length ? (

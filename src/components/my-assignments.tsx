@@ -1,12 +1,26 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, Clock3, MapPin, UserRound } from "lucide-react";
 import {
-  assignmentDate,
+  assignmentRange,
   type AssignmentItem,
   type CancelledItem,
 } from "@/domain/my-assignments";
 import { Badge, Empty, Notice, Panel } from "./ui";
+
+const dayName = new Intl.DateTimeFormat("he-IL", {
+  timeZone: "Asia/Jerusalem",
+  weekday: "long",
+});
+const dayOfMonth = new Intl.DateTimeFormat("he-IL", {
+  timeZone: "Asia/Jerusalem",
+  day: "numeric",
+});
+const monthName = new Intl.DateTimeFormat("he-IL", {
+  timeZone: "Asia/Jerusalem",
+  month: "long",
+});
 
 type Feed = { current: AssignmentItem[]; cancelled: CancelledItem[] };
 function AssignmentCard({
@@ -18,7 +32,9 @@ function AssignmentCard({
 }) {
   const active = !cancelled ? (item as AssignmentItem) : undefined;
   return (
-    <li className={`my-assignment ${item.highlighted ? "mail-highlight" : ""}`}>
+    <li
+      className={`my-assignment ${item.highlighted ? "mail-highlight" : ""} ${cancelled ? "cancelled" : ""}`}
+    >
       <div className="my-assignment-heading">
         <h3>{item.name}</h3>
         <div className="my-assignment-badges">
@@ -34,25 +50,56 @@ function AssignmentCard({
       </div>
       <dl className="my-assignment-details">
         <div>
-          <dt>תפקיד</dt>
-          <dd>{item.role || "—"}</dd>
-        </div>
-        <div>
-          <dt>מועד</dt>
+          <dt>
+            <Clock3 size={15} aria-hidden="true" />
+            <span className="visually-hidden">מועד</span>
+          </dt>
           <dd>
-            <time dateTime={item.start}>{assignmentDate(item.start)}</time> עד{" "}
-            <time dateTime={item.end}>{assignmentDate(item.end)}</time>
+            <time dateTime={item.start}>
+              {assignmentRange(item.start, item.end)}
+            </time>
           </dd>
         </div>
         <div>
-          <dt>מיקום</dt>
+          <dt>
+            <MapPin size={15} aria-hidden="true" />
+            <span className="visually-hidden">מיקום</span>
+          </dt>
           <dd>{item.location || "לא צוין"}</dd>
+        </div>
+        <div>
+          <dt>
+            <UserRound size={15} aria-hidden="true" />
+            <span className="visually-hidden">תפקיד</span>
+          </dt>
+          <dd>{item.role || "—"}</dd>
         </div>
       </dl>
       <Link className="text-link" href={`/duties/${item.dutyId}`}>
-        לפרטי התורנות
+        לפרטי התורנות <ChevronLeft size={15} aria-hidden="true" />
       </Link>
     </li>
+  );
+}
+/** The next duty first and large: the day it falls on answers "when". */
+function NextAssignment({ item }: { item: AssignmentItem }) {
+  const start = new Date(item.start);
+  return (
+    <section className="next-assignment" aria-labelledby="next-assignment">
+      <div className="next-date" aria-hidden="true">
+        <strong>{dayOfMonth.format(start)}</strong>
+        <span>{monthName.format(start)}</span>
+      </div>
+      <div className="next-body">
+        <h2 className="next-label" id="next-assignment">
+          {item.inProgress ? "מתבצעת עכשיו" : "התורנות הבאה שלך"} ·{" "}
+          {dayName.format(start)}
+        </h2>
+        <ol className="my-assignment-list">
+          <AssignmentCard item={item} />
+        </ol>
+      </div>
+    </section>
   );
 }
 
@@ -80,25 +127,31 @@ export function MyAssignmentsView() {
   }, []);
   if (error) return <Notice tone="danger">{error}</Notice>;
   if (!feed) return <p role="status">טוענים את השיבוצים…</p>;
+  const [next, ...later] = feed.current;
   return (
     <>
-      <Panel
-        title="השיבוצים הקרובים שלי"
-        subtitle="תורנויות שפורסמו וטרם הסתיימו, לפי תחילת תקופת הביצוע שלך"
-      >
-        {feed.current.length ? (
-          <ol className="my-assignment-list">
-            {feed.current.map((item) => (
-              <AssignmentCard key={item.assignmentId} item={item} />
-            ))}
-          </ol>
-        ) : (
+      {next ? (
+        <NextAssignment item={next} />
+      ) : (
+        <Panel>
           <Empty
             title="אין לך שיבוצים קרובים"
             text="שיבוצים חדשים יופיעו כאן אחרי פרסום התורנות."
           />
-        )}
-      </Panel>
+        </Panel>
+      )}
+      {later.length ? (
+        <Panel
+          title="אחר כך"
+          subtitle="תורנויות שפורסמו וטרם הסתיימו, לפי תחילת תקופת הביצוע שלך"
+        >
+          <ol className="my-assignment-list">
+            {later.map((item) => (
+              <AssignmentCard key={item.assignmentId} item={item} />
+            ))}
+          </ol>
+        </Panel>
+      ) : null}
       {feed.cancelled.length ? (
         <Panel
           title="בוטלו מאז הביקור הקודם"
