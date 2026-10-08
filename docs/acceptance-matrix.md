@@ -549,6 +549,7 @@
 ### 29. שחרור ומחיקה — חיילים וחשבונות; תורנויות — מכוסה
 
 - [service-lifecycle.test.ts](../tests/integration/service-lifecycle.test.ts): `announces a departure once to each manager across repeated runs, races and downtime, without deleting`; `refuses every request from the local midnight after the release day, before any worker run`
+- [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `erases an opaque result by its explicit subject and keeps its replay key and fingerprint`
 - [soldier-deletion.test.ts](../tests/integration/soldier-deletion.test.ts): `vacates future seats, keeps seats of a duty that started, and warns the managers`; `removes contact details and conditions, and keeps name, number and history`
 
 ### 30. תצוגת חייל — תורנויות ולוח; ניקוד — מכוסה
@@ -664,11 +665,16 @@
 ### 47. דחיית קובץ, דריסה ושחזור — ייבוא — מכוסה
 
 - [auth.test.ts](../tests/integration/auth.test.ts): `rejects all rows on duplicate, conflicting identities, incomplete ranks or deleted people`; `restores unchanged imported fields while preserving later edits and reservations`; `cancels a new soldier without activity: removes every trace, frees the number and keeps the row`; `shows each kind of activity as a conflict, including an edit that was reverted, and closes the batch only when every row is handled`
+- [bounded-body.test.ts](../tests/unit/bounded-body.test.ts): `counts streamed action bodies despite a missing or false length`
+- [workbook-archive.test.ts](../tests/unit/workbook-archive.test.ts): `counts actual bytes even when the directory advertises one byte`
+- [workbook-process.test.ts](../tests/unit/workbook-process.test.ts): `contains a parser process crash`; `kills a parser that exceeds the actual resident-memory limit`; `kills a stalled parser at the deadline`
+- [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `completes the subject links of an import preview after the new soldier is created, then erases its replay content`
 - [import-restore-creations.spec.ts](../tests/e2e/import-restore-creations.spec.ts): `cancels a new soldier without activity and waits for a decision on one who signed in`
 
 ### 48. מידע רגיש ומחיקה בזמן ביצוע — פרטיות — מכוסה
 
 - [soldier-deletion.test.ts](../tests/integration/soldier-deletion.test.ts): `removes contact details and conditions, and keeps name, number and history`; `is removed, while the event and the history stay`
+- [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `scrubs historical contact-only results before erasing contact revisions and conservatively scrubs unlinked legacy results`; `refuses a claimed copy when deletion commits before dispatch begins`; `serializes erasure with an already-started dispatch and removes the local copy after delivery`; `detects deleted subjects and counterpart mail in a restored copy, and applies the same erasure rules`
 - [deletion-in-execution.test.ts](../tests/integration/deletion-in-execution.test.ts): `stays on the deleted soldier, is not credited by itself, and is urgent for the managers by site and email`; `is decided by recording the part performed, which is credited once, and a replacement for the rest`; `never credits twice when the worker and the manager's decision race`
 - [restore.test.ts](../tests/integration/restore.test.ts): `are applied again from the log before anything of the restored copy is open, and no deleted data returns`
 - [deletion-in-execution.spec.ts](../tests/e2e/deletion-in-execution.spec.ts): `the manager finds the urgent item, is offered the part up to the deletion, records a replacement, and the item goes`
@@ -752,6 +758,7 @@
 
 ### 60. יומן מחיקות עצמאי ושחזור — גיבוי ושחזור; פרטיות; מקביליות — מכוסה
 
+- [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `expires content at 30 days and never reexecutes an old key, including conflict checks`; `prunes content at the exact 30-day boundary while retaining newer results`
 - [deletion-log.test.ts](../tests/integration/deletion-log.test.ts): `queues a deletion in its own commit and appends it once, with ids and a time only`; `leaves nothing in the log for a deletion that rolled back`; `appends each deletion once and in order when workers drain at the same time`; `is not appended to when a line was changed`; `is released only by a person with a reason and the exact words, and the managers are told`
 - [deletion-log.test.ts](../tests/unit/deletion-log.test.ts): `keeps only what is personal-data free: ids, a time and hashes`
 
@@ -762,7 +769,7 @@
 - [assignment-digest.test.ts](../tests/integration/assignment-digest.test.ts): `gathers publications of a window into one notice and one mail, sent when the window closes`; `does not extend the window: an event after ten minutes opens a new window and a second mail`; `sends a duty starting within two hours at once and apart, and keeps the rest in the window`; `leaves out a duty published and cancelled in the same window, and sends nothing when none is left`; `shows a read or hidden notice again, unread, when an event joins its window`; `does not mail a switched-off type, and still writes the notice`; `does not send a window twice when two workers claim at once`
 - [assignment-digest.test.ts](../tests/unit/assignment-digest.test.ts): `sends a duty starting within two hours at once, the boundary included`; `follows the clock change: a night that loses an hour still reads 22:00 to 06:00`
 - [assignment-digest.spec.ts](../tests/e2e/assignment-digest.spec.ts): `several publications reach the soldier as one notice that counts them and leads to all assignments`
-- [my-assignments.test.ts](../tests/integration/my-assignments.test.ts): `records batch publication and highlights every duty in the recipient's mail`; `records publication, advances the cursor once, and keeps later events for another window`; `records changed duty details and removal, then clears the cancelled section on revisit`; `highlights mail items only for their recipient and blocks technical and manager without history`
+- [my-assignments.test.ts](../tests/integration/my-assignments.test.ts): `records batch publication and highlights every duty in the recipient's mail`; `reads without waiting for a unit-wide writer`; `serializes two tabs on their account`; `does not hold another account behind a locked account`; `records publication, advances the cursor once, and keeps later events for another window`; `records changed duty details and removal, then clears the cancelled section on revisit`; `highlights mail items only for their recipient and blocks technical and manager without history`
 - [my-assignments.test.ts](../tests/unit/my-assignments.test.ts): `uses Israel dates across midnight and distinguishes the repeated autumn hour`
 - [my-assignments.spec.ts](../tests/e2e/my-assignments.spec.ts): `personal assignments on desktop and mobile, private mail highlight and visit markers`
 
@@ -773,6 +780,7 @@
 
 ### 63. שחזור מבודד ותרגיל רבעוני — גיבוי ושחזור; פרטיות; הרשאות; מקביליות — מכוסה
 
+- [security-erasure.test.ts](../tests/integration/security-erasure.test.ts): `detects expired unpruned results and false tombstones in restore checks even without a deleted soldier`
 - [restore.test.ts](../tests/integration/restore.test.ts): `restores the newest backup into a scratch database, passes every check and leaves the live system as it was`; `refuses a backup written by a newer version, and runs no other check on it`; `stays closed when a check fails, and cannot be promoted`; `refuses while anyone is connected to either database, and changes nothing`; `reminds the technical account once when overdue, and again after 30 days`
 - [restore.test.ts](../tests/unit/restore.test.ts): `passes only when every check passed and the deletion log was applied`
 - [backups.spec.ts](../tests/e2e/backups.spec.ts): `the restore drill row shows how long ago a backup was restored and checked end to end`

@@ -11,7 +11,7 @@ import {
   dutyTypes,
   soldiers,
 } from "../../src/server/schema";
-import { emailOutbox } from "../../src/server/auth-schema";
+import { emailOutbox, user } from "../../src/server/auth-schema";
 import {
   createInvitedAccount,
   type Actor,
@@ -105,6 +105,116 @@ beforeEach(async () => {
 afterAll(async () => pool.end());
 
 describe("private assignment feed", () => {
+  it("reads without waiting for a unit-wide writer and sees its publication after commit", async () => {
+    const actor = await person();
+    const { dutyId } = await makeDuty(actor);
+    await unitTransaction(async () => {});
+    const writer = await pool.connect();
+    try {
+      await writer.query("begin");
+      await writer.query("select id from unit_lock where id = 1 for update");
+      await writer.query(
+        'update duties set data = data || \'{"status":"published"}\'::jsonb, version = version + 1 where id = $1',
+        [dutyId]
+      );
+      const before = await Promise.race([
+        readMyAssignments(actor),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Private read waited for the unit lock")),
+            1500
+          )
+        ),
+      ]);
+      expect(before.current).toEqual([]);
+      await writer.query("commit");
+      expect((await readMyAssignments(actor)).current).toMatchObject([
+        { dutyId, badge: "new" },
+      ]);
+      expect((await readMyAssignments(actor)).current[0].badge).toBeUndefined();
+    } finally {
+      await writer.query("rollback");
+      writer.release();
+    }
+  });
+  it("serializes two tabs on their account, retries an old snapshot and consumes each event once", async () => {
+    const actor = await person();
+    const { dutyId } = await makeDuty(actor, true);
+    const blocker = await pool.connect();
+    let tabs: ReturnType<typeof readMyAssignments>[] = [];
+    try {
+      await blocker.query("begin");
+      await blocker.query("select id from auth_user where id = $1 for update", [
+        actor.id,
+      ]);
+      tabs = [readMyAssignments(actor), readMyAssignments(actor)];
+      const until = Date.now() + 3000;
+      let waiting = 0;
+      while (Date.now() < until) {
+        const result = await pool.query(
+          "select count(*)::int as count from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query ilike '%auth_user%for update%'"
+        );
+        waiting = result.rows[0].count;
+        if (waiting >= 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(2);
+      await blocker.query("commit");
+      const results = await Promise.all(tabs);
+      expect(
+        results.flatMap((result) =>
+          result.current.filter((item) => item.badge === "new")
+        )
+      ).toHaveLength(1);
+      expect(
+        results.every((result) => result.current[0].dutyId === dutyId)
+      ).toBe(true);
+      const [account] = await db
+        .select()
+        .from(user)
+        .where(eq(user.id, actor.id));
+      expect(account.assignmentFeedCursor).toBe(
+        Math.max(...results.map((result) => result.viewedThrough))
+      );
+      const next = await makeDuty(actor, true, 4);
+      expect(
+        (await readMyAssignments(actor)).current.filter((item) => item.badge)
+      ).toMatchObject([{ dutyId: next.dutyId, badge: "new" }]);
+    } finally {
+      await blocker.query("rollback");
+      blocker.release();
+      await Promise.allSettled(tabs);
+    }
+  });
+  it("does not hold another account behind a locked account", async () => {
+    const locked = await person();
+    const other = await person();
+    await makeDuty(other, true);
+    const blocker = await pool.connect();
+    try {
+      await blocker.query("begin");
+      await blocker.query("select id from auth_user where id = $1 for update", [
+        locked.id,
+      ]);
+      expect(
+        (
+          await Promise.race([
+            readMyAssignments(other),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(new Error("Another account blocked the private feed")),
+                1500
+              )
+            ),
+          ])
+        ).current
+      ).toHaveLength(1);
+    } finally {
+      await blocker.query("rollback");
+      blocker.release();
+    }
+  });
   it("records batch publication and highlights every duty in the recipient's mail", async () => {
     const actor = await person();
     const manager = await person("manager");

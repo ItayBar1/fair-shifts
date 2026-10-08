@@ -6,13 +6,13 @@ import { staffNotificationRecipients } from "./notification-audience";
 import {
   assignments,
   assignmentFeed,
-  commandResults,
   duties,
   records,
   soldierContacts,
   soldiers,
 } from "./schema";
-import { user } from "./auth-schema";
+import { user, emailOutbox } from "./auth-schema";
+import { eraseLinkedCommandResults } from "./command-results";
 import { deleteAccountAuth } from "./auth/accounts";
 import { purgeCalendarLink, type CalendarCleanup } from "./calendar/link";
 import {
@@ -527,18 +527,89 @@ async function eraseRecords(
  * Such results keep their key, so a repeated request is still recognized, but
  * return only an erasure marker.
  */
-async function eraseCommandResults(
+function historicContacts(
+  value: unknown,
+  found = new Set<string>(),
+  contactField = false
+): Set<string> {
+  if (typeof value === "string" && contactField && value) found.add(value);
+  else if (Array.isArray(value))
+    for (const item of value) historicContacts(item, found, contactField);
+  else if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    const change = /email|phone|address/i.test(
+      String(object.field ?? object.key ?? "")
+    );
+    for (const [key, item] of Object.entries(object))
+      historicContacts(
+        item,
+        found,
+        contactField ||
+          /email|phone|address/i.test(key) ||
+          (change && ["before", "after", "value"].includes(key))
+      );
+  }
+  return found;
+}
+
+/** Counterpart mail is an active copy too, including delivered mail retained locally. */
+export async function eraseRelatedCopies(
   tx: DbTransaction,
+  soldierId: string,
+  accountId: string | undefined,
   needles: string[],
   at: string
 ) {
-  const hits = needles.map(
-    (needle) => sql`position(${needle} in ${commandResults.result}::text) > 0`
+  const related = await requestsOf(tx, soldierId);
+  const requestIds = related.map((row) => row.id);
+  const privateRows = await tx
+    .select()
+    .from(records)
+    .where(eq(records.subjectId, soldierId));
+  const historic = new Set(needles);
+  const [contact] = await tx
+    .select()
+    .from(soldierContacts)
+    .where(eq(soldierContacts.soldierId, soldierId));
+  for (const value of [contact?.email, contact?.phone, contact?.address])
+    if (value) historic.add(value);
+  for (const row of privateRows) historicContacts(row.data, historic);
+  if (accountId) {
+    const [account] = await tx
+      .select()
+      .from(user)
+      .where(eq(user.id, accountId));
+    if (account?.email && !account.deletedAt) historic.add(account.email);
+    const mail = await tx
+      .select({ destination: emailOutbox.destination })
+      .from(emailOutbox)
+      .where(eq(emailOutbox.recipientAccountId, accountId));
+    for (const row of mail) if (row.destination) historic.add(row.destination);
+  }
+  const touching = or(
+    accountId ? eq(emailOutbox.recipientAccountId, accountId) : undefined,
+    requestIds.length ? inArray(emailOutbox.requestId, requestIds) : undefined,
+    ...requestIds.map(
+      (requestId) => sql`position(${requestId} in ${emailOutbox.eventKey}) > 0`
+    )
   );
-  await tx
-    .update(commandResults)
-    .set({ result: { erasedAt: at } })
-    .where(or(...hits));
+  if (touching)
+    await tx
+      .update(emailOutbox)
+      .set({
+        status: "cancelled",
+        title: "",
+        body: "",
+        href: null,
+        destination: null,
+        encryptedSecret: null,
+        leaseUntil: null,
+        providerId: null,
+        error: "recipient_unavailable",
+        updatedAt: new Date(at),
+      })
+      .where(touching);
+  await eraseLinkedCommandResults(tx, soldierId, [...historic], at);
 }
 
 /**
@@ -593,6 +664,9 @@ export async function eraseSoldier(
   const at = now.toISOString();
   const deletedAt = options.restored ? new Date(options.restored.at) : now;
 
+  // Capture historical contact and request links before any workflow is scrubbed.
+  await eraseRelatedCopies(tx, soldierId, login?.id, needles, at);
+
   await vacateSeats(tx, vacated, soldierId);
   // The private feed is no longer useful after account erasure.
   await tx
@@ -626,7 +700,6 @@ export async function eraseSoldier(
 
   const erased = await eraseRecords(tx, soldierId, login?.id, requests, at);
   erased.scrubbed += await eraseSeatApprovals(tx, soldierId);
-  await eraseCommandResults(tx, needles, at);
   // Seats of a started duty stay; their eligibility now reads "deleted".
   await reassessAssignments(tx, soldierId);
   await refreshRankReminders(tx);

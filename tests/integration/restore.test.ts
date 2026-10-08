@@ -564,6 +564,10 @@ describe("a restore drill", () => {
     const client = await pool.connect();
     try {
       await client.query("begin");
+      await client.query("drop table command_result_subjects");
+      await client.query(
+        "alter table command_results drop column import_batch_id, drop column linkage_complete, drop column content_expired_at"
+      );
       await client.query(
         "alter table email_outbox drop column request_id, drop column request_scope, drop column request_event"
       );

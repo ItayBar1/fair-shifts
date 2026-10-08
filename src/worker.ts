@@ -3,6 +3,7 @@ import { PgBoss } from "pg-boss";
 import { pool, unitTransaction } from "./server/db";
 import { settleDue } from "./server/scoring";
 import { deliverNextEmail } from "./server/operations/email";
+import { expireCommandResults } from "./server/command-results";
 import { operationsState, authRateLimit } from "./server/auth-schema";
 import { eq, lt } from "drizzle-orm";
 import { refreshRankReminders } from "./server/ranks";
@@ -56,6 +57,7 @@ await boss.work("unit-maintenance", async () => {
       return;
     }
     const credited = await settleDue(tx);
+    await expireCommandResults(tx, now);
     await refreshRankReminders(tx);
     await refreshRoundNotices(tx, now);
     await announceDepartures(tx, now);

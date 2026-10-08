@@ -110,7 +110,7 @@ export async function enqueueEmail(tx: DbTransaction, input: EnqueueInput) {
   const { secret, ...values } = input;
   const singleDuty = /^\/duties\/([0-9a-f-]{36})$/.exec(values.href ?? "");
   const requestEvent =
-    /^(transfer|swap|execution):([0-9a-f-]{36}):(.+):([0-9a-f-]{36})$/.exec(
+    /^(transfer|swap|execution|cancellation):([0-9a-f-]{36}):(.+):([0-9a-f-]{36})$/.exec(
       values.eventKey
     );
   await tx
@@ -477,30 +477,61 @@ export async function deliverNextEmail(
     eq(emailOutbox.leaseUntil, claimed.leaseUntil)
   );
   try {
-    const body = claimed.encryptedSecret
-      ? claimed.body.replace("{{CODE}}", openSecret(claimed.encryptedSecret))
-      : claimed.body;
-    const providerId = await (transport ?? brevoTransport)({
-      to: claimed.to,
-      subject: claimed.title,
-      text: emailText(
-        body,
-        claimed.href,
-        process.env.BETTER_AUTH_URL ?? "http://localhost:3000"
-      ),
-      eventKey: claimed.eventKey,
+    return await db.transaction(async (tx) => {
+      // Erasure and dispatch serialize on this row. No copy escapes a completed
+      // deletion before transport starts; once handed to the provider it cannot be recalled.
+      const [current] = await tx
+        .select()
+        .from(emailOutbox)
+        .where(ownLease)
+        .for("update");
+      if (!current) return { status: "skipped" as const };
+      const [recipient] = await tx
+        .select()
+        .from(user)
+        .where(eq(user.id, current.recipientAccountId));
+      if (
+        !recipient ||
+        recipient.deletedAt ||
+        !(await staffMailRelevant(tx, recipient, current.kind, now)) ||
+        !(await seatRequestMailRelevant(tx, current, recipient))
+      ) {
+        await tx
+          .update(emailOutbox)
+          .set({
+            status: "cancelled",
+            error: "not_relevant",
+            ...cleared,
+            updatedAt: new Date(),
+          })
+          .where(ownLease);
+        return { status: "skipped" as const };
+      }
+      const body = current.encryptedSecret
+        ? current.body.replace("{{CODE}}", openSecret(current.encryptedSecret))
+        : current.body;
+      const providerId = await (transport ?? brevoTransport)({
+        to: current.destination ?? recipient.email,
+        subject: current.title,
+        text: emailText(
+          body,
+          current.href,
+          process.env.BETTER_AUTH_URL ?? "http://localhost:3000"
+        ),
+        eventKey: claimed.eventKey,
+      });
+      await tx
+        .update(emailOutbox)
+        .set({
+          status: "sent",
+          providerId,
+          ...cleared,
+          error: null,
+          updatedAt: new Date(),
+        })
+        .where(ownLease);
+      return { status: "sent" as const };
     });
-    await db
-      .update(emailOutbox)
-      .set({
-        status: "sent",
-        providerId,
-        ...cleared,
-        error: null,
-        updatedAt: new Date(),
-      })
-      .where(ownLease);
-    return { status: "sent" };
   } catch (error) {
     const category =
       error instanceof MailDeliveryError ? error.category : "transient";

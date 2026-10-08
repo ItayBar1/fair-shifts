@@ -65,6 +65,8 @@ export async function notifySoldier(
     requestId: string;
     title: string;
     body: string;
+    /** Decision reasons stay on site; mail can carry a separate neutral body. */
+    mailBody?: string;
     email: boolean;
     expiresAt: number;
     /** Mail event namespace, so a swap and a transfer never share a key. */
@@ -93,7 +95,7 @@ export async function notifySoldier(
       eventKey: `${input.scope ?? "transfer"}:${input.requestId}:${input.event}:${account.id}`,
       kind: "transfer",
       title: input.title,
-      body: input.body,
+      body: input.mailBody ?? input.body,
       href,
       priority: 1,
       expiresAt: new Date(Math.min(Date.now() + 86_400_000, input.expiresAt)),

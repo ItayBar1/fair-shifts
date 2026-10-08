@@ -9,7 +9,9 @@ import {
   records,
   soldierContacts,
   soldiers,
+  commandResultSubjects,
 } from "./schema";
+import { eraseRelatedCopies } from "./soldier-deletion";
 import {
   account,
   emailOutbox,
@@ -391,6 +393,16 @@ async function cancelCreation(
     .select()
     .from(user)
     .where(eq(user.soldierId, soldierId));
+  await eraseRelatedCopies(
+    tx,
+    soldierId,
+    login?.id,
+    [],
+    new Date().toISOString()
+  );
+  await tx
+    .delete(commandResultSubjects)
+    .where(eq(commandResultSubjects.soldierId, soldierId));
   const reminders = (
     await tx.select().from(records).where(eq(records.subjectId, soldierId))
   )

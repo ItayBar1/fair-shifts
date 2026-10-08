@@ -933,6 +933,7 @@ export async function decideTransfer(
       requestId: row.id,
       title: "האחראי דחה את ההעברה",
       body: `העברת התורנות ${data.dutyName} ל${to} נדחתה: ${input.reason}. השיבוץ שלך נשאר בתוקף.`,
+      mailBody: `האחראי דחה את העברת התורנות ${data.dutyName}. פרטי ההחלטה באתר. השיבוץ שלך נשאר בתוקף.`,
       email: true,
       expiresAt,
     });
@@ -941,6 +942,7 @@ export async function decideTransfer(
       requestId: row.id,
       title: "האחראי דחה את ההעברה",
       body: `העברת התורנות ${data.dutyName} אליך נדחתה: ${input.reason}.`,
+      mailBody: `האחראי דחה את העברת התורנות ${data.dutyName}. פרטי ההחלטה באתר.`,
       email: true,
       expiresAt,
     });

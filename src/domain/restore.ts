@@ -34,6 +34,7 @@ export const checkIds = [
   "accounts",
   "technical_account",
   "deleted_soldier_residue",
+  "command_result_retention",
 ] as const;
 export type CheckId = (typeof checkIds)[number];
 
@@ -57,6 +58,8 @@ export const checkLabels: Record<CheckId, string> = {
   technical_account: "an active technical account exists",
   deleted_soldier_residue:
     "nothing erased by a deletion is left for a deleted soldier",
+  command_result_retention:
+    "command content is attributed, retained at most 30 days, and expired results contain only a tombstone",
 };
 
 /** fail blocks the restore; warn is reported and does not. */

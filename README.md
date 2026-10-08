@@ -7,7 +7,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.65](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.67](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [תוכנית תיקון האבטחה המאושרת](plans/2026-10-07-security-remediation.md), [מעקב #122](https://github.com/ItayBar1/fair-shifts/issues/122). שינוי עצמי של אחראי ב־`/manage/account`; חילוץ כתובתו בידי הטכני במסך ההרשאות, עם סיבה וקוד לכתובת החדשה.
@@ -16,6 +16,8 @@
 - [זיכרון בין סשנים](config/memory/README.md) ו[יומן סשנים](config/memory/session-log.md). הזיכרון מתועד ב־Git, אינו נטען אוטומטית ואינו מחליף את האפיון.
 
 ## הרצה ובדיקות — Docker בלבד
+
+גבולות קלט (#127): פעולות עד 2MiB, אימות עד 16KiB ועומק JSON עד 32. XLSX עד 5MiB דחוסים, 2,000 רשומות ZIP, 500 שורות ו־50MiB שנפרסו בפועל. הפענוח נעשה בילד Linux עם heap של 128MiB, RSS של 256MiB ו־10 שניות; קובץ אחד במקביל לכל תהליך אתר, ועודף מקבל 429 לניסיון נוסף. נדרשת גישה ל־`/proc` למדידת הזיכרון; כשל מדידה עוצר פענוח. בדיקות crash/זיכרון/זמן נעשות ב־Docker מוגבל בלבד. אין מיגרציה בקבוצה זו; חזרה לתמונה תואמת, ללא ביטול ההגנות שכבר נוספו במסד.
 
 נדרש Docker פעיל. אין צורך ב־Node, pnpm או PostgreSQL על המארח. הסקריפט מזהה גם Docker Desktop ב־macOS שאינו ב־PATH.
 

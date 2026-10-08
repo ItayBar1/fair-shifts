@@ -217,11 +217,38 @@ export const commandResults = pgTable(
     requestKey: text("request_key").notNull(),
     payloadHash: text("payload_hash").notNull(),
     result: jsonb("result").$type<unknown>().notNull(),
+    importBatchId: uuid("import_batch_id"),
+    linkageComplete: boolean("linkage_complete").notNull().default(false),
+    contentExpiredAt: timestamp("content_expired_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("command_once").on(t.actorId, t.requestKey)]
+  (t) => [
+    uniqueIndex("command_once").on(t.actorId, t.requestKey),
+    index("command_content_retention")
+      .on(t.createdAt)
+      .where(sql`${t.contentExpiredAt} is null`),
+    index("command_import_batch").on(t.importBatchId),
+  ]
+);
+
+/** Keys and fingerprints persist; these links govern erasure of result content. */
+export const commandResultSubjects = pgTable(
+  "command_result_subjects",
+  {
+    id: uuid("id").primaryKey(),
+    commandId: uuid("command_id")
+      .notNull()
+      .references(() => commandResults.id, { onDelete: "cascade" }),
+    soldierId: uuid("soldier_id")
+      .notNull()
+      .references(() => soldiers.id),
+  },
+  (t) => [
+    uniqueIndex("command_subject_once").on(t.commandId, t.soldierId),
+    index("command_subject_soldier").on(t.soldierId),
+  ]
 );
 
 /**
