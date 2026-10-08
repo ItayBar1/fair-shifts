@@ -398,6 +398,7 @@
 - [auth.test.ts](../tests/integration/auth.test.ts): `rejects forged privileges and makes retries idempotent`
 - [audit-log.test.ts](../tests/integration/audit-log.test.ts): `gives soldiers no log and the technical account only operations within its authority`
 - [screens-sweep.spec.ts](../tests/e2e/screens-sweep.spec.ts): `and sees nothing of it`
+- [browser-security.spec.ts](../tests/e2e/browser-security.spec.ts): `each HTML response gets a fresh server nonce`; `the production browser boots normally and blocks injected inline script and eval`; `public health exposes readiness only`
 
 ### 3. שני אחראים ומאגר משותף — חיילים וחשבונות; סבבי אילוצים — מכוסה
 

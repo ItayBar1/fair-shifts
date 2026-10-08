@@ -42,8 +42,7 @@ case "${1:-}" in
     compose up -d --wait --remove-orphans "$@"
     ;;
   health)
-    compose exec -T app node -e \
-      "fetch('http://127.0.0.1:3000/api/health').then(async r=>{console.log(JSON.stringify(await r.json(),null,2));process.exit(r.ok?0:1)})"
+    compose exec -T app node_modules/.bin/tsx scripts/system-health.ts
     ;;
   *)
     compose "$@"

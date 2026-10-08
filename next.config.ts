@@ -10,6 +10,10 @@ const config: NextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
+          // Browsers honor HSTS only over HTTPS. No subdomains or preload.
+          ...(process.env.NODE_ENV === "production"
+            ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }]
+            : []),
           { key: "Referrer-Policy", value: "same-origin" },
           {
             key: "Permissions-Policy",
