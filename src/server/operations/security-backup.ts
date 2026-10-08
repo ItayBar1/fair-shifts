@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { backupRun } from "../auth-schema";
 import { backupConfig } from "./backup";
@@ -18,7 +18,21 @@ export async function requireConversionBackup(
   const id = env.SECURITY_BACKUP_RUN_ID;
   if (!id || !/^[0-9a-f-]{36}$/i.test(id))
     throw new Error("SECURITY_BACKUP_RUN_ID is required");
-  const [row] = await db.select().from(backupRun).where(eq(backupRun.id, id));
+  await verifyMigrationBackup(id, env, now);
+}
+
+export async function verifyMigrationBackup(
+  id?: string,
+  env: Record<string, string | undefined> = process.env,
+  now = new Date()
+) {
+  const query = db
+    .select()
+    .from(backupRun)
+    .where(id ? eq(backupRun.id, id) : eq(backupRun.status, "verified"))
+    .orderBy(desc(backupRun.finishedAt))
+    .limit(1);
+  const [row] = await query;
   if (
     !row ||
     row.status !== "verified" ||

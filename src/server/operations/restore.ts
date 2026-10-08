@@ -845,7 +845,14 @@ export async function readDrillStatus(
     .where(inArray(backupRun.status, ["verified", "deleted"]));
   return drillStatus({
     now,
-    backupEnabled: config.kind !== "none",
+    backupEnabled:
+      process.env.SERVICE_ROLE === "app"
+        ? (
+            await import("./health").then(({ readWorkerBackup }) =>
+              readWorkerBackup(tx)
+            )
+          ).kind !== "none"
+        : config.kind !== "none",
     record: await readDrillRecord(tx),
     firstBackupAt: first?.at ? new Date(first.at).toISOString() : undefined,
   });
@@ -983,6 +990,10 @@ export async function runRestore(options: RestoreRun): Promise<RestoreResult> {
     } else {
       log("Bringing the copy up to this version's schema");
       await migrate(target, { migrationsFolder: migrationsFolder() });
+      if (process.env.SERVICE_ROLE === "operations") {
+        const { applyDatabaseGrants } = await import("./database-permissions");
+        await applyDatabaseGrants(target);
+      }
       // Closed first: whatever happens next, nobody opens this database half checked.
       await raiseRestoreBlocker(target, RESTORE_CHECKS_BLOCKER, {
         restoreId,

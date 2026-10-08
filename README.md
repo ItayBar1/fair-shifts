@@ -1,5 +1,7 @@
 # Fair Shifts
 
+הפרדת שירותים (הכרעה 216, אפיון 1.70, #130): ב־production האתר, העובד והתפעול משתמשים בקובצי env ובמשתמשי מסד נפרדים. `production deploy` עוצר אתר ועובד, מפעיל מיגרציות ובדיקת הרשאות דרך שירות `operations`, ואז מפעיל אותם. שחזור: `sh scripts/production.sh --profile operations run --rm -T --no-deps operations node_modules/.bin/tsx scripts/restore.ts ...`. לתצורה קיימת נדרש מעבר מפורש לפי [מדריך ההפעלה](docs/operations.md#מעבר-לתצורה-ולהרשאות-נפרדות--130); אין להפעיל את הגרסה החדשה עם קובץ env משותף.
+
 מערכת לניהול וחלוקת תורנויות ביחידה של כ־120 חיילים, בעברית וב־RTL.
 
 רוב [תוכנית 20 השלבים המאושרת](plans/fair-shifts-implementation.md) ממומשת. [ביקורת 05.10.2026](docs/audits/2026-10-05/README.md) מפרטת תקלות שנמצאו, יכולת Calendar חסרה ושערי פרטיות, נגישות וקבלה תפעולית שעדיין פתוחים. משתמשים בנתונים סינתטיים בלבד. [מצב ובדיקות בפועל](config/memory/project-state.md).
@@ -7,7 +9,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.69](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.70](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [תוכנית תיקון האבטחה המאושרת](plans/2026-10-07-security-remediation.md), [מעקב #122](https://github.com/ItayBar1/fair-shifts/issues/122). שינוי עצמי של אחראי ב־`/manage/account`; חילוץ כתובתו בידי הטכני במסך ההרשאות, עם סיבה וקוד לכתובת החדשה.

@@ -1517,6 +1517,12 @@ export const scenarios: Record<number, Entry> = {
   34: covered(
     [
       ...t(
+        "tests/integration/database-permissions.test.ts",
+        "verifies real non-superuser logins",
+        "lets pg-boss initialize and work only"
+      ),
+      ...t(I.auth, "shows worker backup presence to the site"),
+      ...t(
         I.mail,
         "retries with growing delays, then fails visibly while the site notice stays"
       ),

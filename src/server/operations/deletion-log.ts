@@ -16,6 +16,7 @@ import { createRecord, updateRecord } from "../repository";
 import { enqueueEmail } from "./email";
 import { readRestoreGate } from "./restore-gate";
 import { backupConfig } from "./backup";
+import { readWorkerBackup } from "./health";
 import type { BackupStorage } from "./backup-storage";
 import {
   compareLogs,
@@ -708,6 +709,10 @@ export async function readDeletionLogStatus(
     .map((row) => row.createdAt.getTime())
     .sort((a, b) => a - b)[0];
   const entries = state.headSeq ?? 0;
+  const storageConfigured =
+    process.env.SERVICE_ROLE === "app"
+      ? (await readWorkerBackup(tx)).storageConfigured
+      : Boolean(config.storage);
   return {
     enabled: Boolean(config.directory),
     pending: pending.length,
@@ -715,7 +720,7 @@ export async function readDeletionLogStatus(
     entries,
     appendedAt: state.appendedAt,
     // An empty log is not copied, so there is nothing for the copy to lack.
-    storageCopy: !config.storage
+    storageCopy: !storageConfigured
       ? "none"
       : entries === 0 || (state.remoteSeq ?? 0) >= entries
         ? "current"

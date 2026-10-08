@@ -20,6 +20,29 @@ const errorsFor = (overrides: Record<string, string | undefined>) =>
   validateDeploymentConfig({ ...valid, ...overrides });
 
 describe("deployment configuration check", () => {
+  it("allows the site to report providers without possessing their secrets and refuses leaked worker credentials", () => {
+    expect(
+      errorsFor({
+        SERVICE_ROLE: "app",
+        MAIL_TRANSPORT: "brevo",
+        BACKUP_STORAGE: "drive",
+        AGE_RECIPIENT: `age1${"q".repeat(58)}`,
+      })
+    ).toEqual([]);
+    for (const name of [
+      "BREVO_API_KEY",
+      "GOOGLE_DRIVE_CLIENT_SECRET",
+      "GOOGLE_DRIVE_REFRESH_TOKEN",
+      "DELETION_LOG_PRIVATE_KEY",
+      "DELETION_LOG_KEY_ID",
+    ])
+      expect(errorsFor({ SERVICE_ROLE: "app", [name]: "synthetic" })).toContain(
+        `${name}: must not be available to the site`
+      );
+    expect(errorsFor({ SERVICE_ROLE: "other" })).toContain(
+      "SERVICE_ROLE: allowed values are app, worker or operations"
+    );
+  });
   it("requires public verification keys and a matching worker-only signing key with acknowledged offline recovery", () => {
     const first = generateKeyPairSync("ed25519"),
       other = generateKeyPairSync("ed25519");
@@ -63,6 +86,7 @@ describe("deployment configuration check", () => {
         ...signing,
         SERVICE_ROLE: "app",
         DELETION_LOG_PRIVATE_KEY: undefined,
+        DELETION_LOG_KEY_ID: undefined,
         DELETION_LOG_KEY_RECOVERY_CONFIRMED: undefined,
       })
     ).toEqual([]);

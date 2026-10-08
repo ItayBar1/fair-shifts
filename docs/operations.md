@@ -1,5 +1,28 @@
 # הפעלה ב־Ubuntu עם Docker ו־Cloudflare Tunnel
 
+## מעבר לתצורה ולהרשאות נפרדות — #130
+
+**הקמה חדשה:** init יוצר שש תצורות בהרשאה 600: `app.env`, `worker.env`, `operations.env`, `db.env`, `worker-secrets.env`, `tunnel.env`. האתר מקבל OAuth כניסה, סודות אימות/הצפנה ומפתחות ציבוריים. Brevo בעובד בלבד; Drive בעובד ובתפעול; מפתח חתימת מחיקות בקובץ העובד בלבד. עדכון לקוח Google/דגל Calendar נעשה בשני קובצי האתר והעובד. הגדרות גיבוי נעשות בעובד ובתפעול. חיווי האתר מגיע מפעימת העובד, ללא סודות.
+
+PostgreSQL יוצר logins נפרדים ללא superuser. מנהל האשכול וסיסמאות bootstrap נשארים ב־db.env בלבד. האתר והעובד אינם בעלי סכמת היישום; רק התפעול מבצע DDL ושחזור. לעובד בעלות בסכמת pgboss בלבד. `production deploy` בונה, מפעיל מסד, עוצר אתר ועובד, מריץ שירות operations חד־פעמי (config, הרשאות, מיגרציות, החלת grants ואימות סודות), ורק אז מפעיל runtime. מיגרציה חדשה במסד קיים דורשת גיבוי מאומת מהיממה האחרונה שנקרא שוב באחסון; חיבור runtime פעיל עוצר אותה. כשל משאיר שירותים עצורים לטיפול. הפעלה ישירה של app אינה מבצעת מיגרציות.
+
+**מעבר מערכת קיימת:** משהים את טיימר הפריסה; משלימים את מעבר v2 להלן וגיבוי מאומת. עוצרים אתר ועובד ושומרים מחוץ לשרת את הגיבוי, היומן והתצורה התואמים. בכלי Docker של הגרסה החדשה, עם התצורה הישנה וספריית התצורה ממופה ל־/config, מריצים `pnpm security:configuration /config`. נדרשים `SECURITY_BACKUP_RUN_ID` ו־`SECURITY_CONVERSION_ACKNOWLEDGEMENT="services stopped and backup verified"`; הגודל וה־hash נבדקים שוב מול האחסון. הכלי יוצר app.next.env, db.next.env, worker.env ו־operations.env בלי לדרוס מקור. ציבוריים חייבים להימצא במפת DELETION_LOG_PUBLIC_KEYS; תצורת קובץ ציבורי ישנה יש להמיר למפה לפני הכלי. אינו מפרש משתני shell או מריץ תוכן env.
+
+בודקים את הקבצים ומחליפים app/db בקבצים החדשים תוך שמירת עותקי ההתאוששות. יוצרים מחדש **רק את קונטיינר המסד, ללא מחיקת volume**, כדי שיקרא db.env ואת mounts של כלי ה־bootstrap. בתצורה קיימת ה־init אינו רץ שוב: מבצעים במפורש את המעבר הבא עם מנהל האשכול הקיים, כשהאתר והעובד עצורים:
+
+```sh
+sh scripts/production.sh up -d --wait --no-deps db
+sh scripts/production.sh exec -T -e DATABASE_BOOTSTRAP_ACKNOWLEDGEMENT="services stopped and backup verified" db sh /docker-entrypoint-initdb.d/config/database-bootstrap.sh
+sh scripts/production.sh deploy
+sh scripts/production.sh health
+```
+
+כלי ה־bootstrap מעביר רק סכמות ואובייקטים של היישום, ולא REASSIGN OWNED גורף על אובייקטי מערכת. הוא מסרב בלי אישור קדם או עם חיבור שירות פעיל. בדיקות קדם בודקות logins, הרשאות אשכול, חברות בתפקיד התפעול, CREATE ובעלות על אובייקטים. פגם נעצר לפני פתיחת האתר. פרטי מנהל האשכול אינם מותרים בתצורות שירות.
+
+**שחזור:** מריצים `--profile operations run --rm -T --no-deps operations ...`, לא worker. עותק השחזור נוצר בבעלות התפעול, בלי ACL/בעלויות מה־dump; המיגרציה והחלת ההרשאות קודמות לבדיקות. נפחי היומן והגיבויים זמינים לעובד ולתפעול בלבד. ה־directory המקומי בבדיקה הוא `/var/lib/fair-shifts-backups`; בייצור משתמשים ב־Drive. מפתח הפענוח נשאר מחוץ לשרת.
+
+**חזרה:** תמונה תואמת להפרדה, ל־v2 ולציבוריים ההיסטוריים בלבד. אין להחזיר runtime למשתמש superuser כדי להשתיק כשל הרשאות. אחרי שינוי סכמה משתמשים בנוהל שחזור מבודד, ולא בהחזרת תמונה בלבד. לפני פתיחת נתוני אמת נדרש staging סינתטי לכניסה, מייל, Calendar, גיבוי ושחזור; smoke ב־Docker אינו בדיקה מול ספקים אמיתיים.
+
 ## מעבר מבוקר לסודות וליומן גרסה 2 — #128
 
 בתצורה קיימת שעדיין אין בה מפתחות חתימה, יוצרים אותם בכלי Docker של הגרסה החדשה עם `pnpm security:keys /config`, כשספריית התצורה החיצונית ממופה ל־`/config` ובבעלות משתמש הכלי. הוא מסרב לדרוס קבצים קיימים ויוצר `worker-secrets.env` ו־`deletion-public-keys.env` בהרשאה 600, בלי להדפיס מפתח. מוסיפים את השורה הציבורית בלבד מ־`deletion-public-keys.env` ל־`app.env`; אין להוסיף לאתר את קובץ העובד. שומרים עותק התאוששות של הפרטי מחוץ לשרת ומאשרים אותו בקובץ העובד לפני המשך. אין להריץ init רגיל על תצורה קיימת. בזמן החלפת מפתח שומרים את הציבוריים ההיסטוריים במפה; כלי האתחול אינו כלי החלפת מפתחות.
@@ -44,7 +67,7 @@
 ## מבנה ההפעלה
 
 - **db** — PostgreSQL 18 עם נפח קבוע `postgres-data`. הוא מחובר רק לרשת `internal`, שאין לה יציאה אל מחוץ לשרת, ואין לו פורט פתוח.
-- **app** — Next.js במצב production. בכל עלייה נבדקת התצורה, ואחר כך מוחלות המיגרציות תחת נעילה. גם לו אין פורט פתוח; הגישה אליו עוברת רק דרך cloudflared ברשת הפנימית של Compose.
+- **app** — Next.js במצב production. בכל עלייה נבדקים תצורה, הרשאות ופורמט סודות. מיגרציות רצות לפניו בשירות operations בלבד. גם לו אין פורט פתוח; הגישה אליו עוברת רק דרך cloudflared ברשת הפנימית של Compose.
 - **worker** — אותה תמונה ואותה גרסה של האתר. הוא עולה רק אחרי שהאתר תקין, כלומר אחרי המיגרציות. כל דקה הוא רושם פעימה במסד ובקובץ שבודקת בדיקת הבריאות של הקונטיינר.
 - **נפח `deletion-log`** — נפח נפרד שהעובד כותב אליו את יומן המחיקות העצמאי (בסעיף הבא). הוא אינו חלק מהמסד ולא מהגיבויים, ואסור למחוק אותו: `down --volumes` מוחק גם אותו.
 - **cloudflared** — `cloudflare/cloudflared:2026.9.3`, בחיבור יוצא בלבד. אין צורך לפתוח פורטים נכנסים בחומת האש.
@@ -68,6 +91,7 @@ sh scripts/production.sh init --environment=staging --url=https://staging.exampl
 נוצרים ארבעה קבצים בהרשאה 600:
 
 - `db.env` — משתמש, מסד וסיסמה אקראית ל־PostgreSQL. הסיסמה נקבעת רק באתחול הראשון של הנפח. החלפתה בהמשך מחייבת נוהל ייעודי ואינה מתבצעת בעריכת הקובץ.
+- `worker.env` — תצורת העובד, Brevo, Drive ו־OAuth של Calendar; `operations.env` — תפעול ושחזור, עם Drive וללא Brevo/מפתח חתימה.
 - `app.env` — `DEPLOYMENT_ENVIRONMENT` ‏(`staging` או `production`), כתובת המסד, כתובת האתר ב־https, סודות Better Auth וקודי כניסה, ומפתח הצפנת תור המייל. `MAIL_TRANSPORT=disabled`: משלוח אמיתי כבוי עד לאימות Brevo בכרטיס [#28](https://github.com/ItayBar1/fair-shifts/issues/28). שדות Google נשארים ריקים עד כרטיס [#26](https://github.com/ItayBar1/fair-shifts/issues/26).
 - `tunnel.env` — `TUNNEL_TOKEN`, שממלאים ידנית (בהמשך).
 - `worker-secrets.env` — מפתח חתימת Ed25519 ומזההו לעובד בלבד. נדרש עותק התאוששות מחוץ לשרת ואישור מפעיל לפני הפעלה; הציבוריים המאמתים נשמרים ב־`app.env`.
@@ -226,7 +250,7 @@ sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tool
 - **שמירה:** עד 30 עותקים. כשאין מקום נמחקים גיבויי היישום הוותיקים, אבל לא העותק המאומת האחרון. היישום רואה ב־Drive רק קבצים שיצר בעצמו (`drive.file`), ומוחק לצמיתות ולא לאשפה.
 - **כשלים:** כשל זמני נוסה שוב אחרי 15 דקות ואחרי שעה. מפתח חסר, הרשאה שפגה ונפח חסר נכשלים מיד. התראה נשלחת לחשבון הטכני כהודעת אתר וכמייל (סוג העדפה ״תקלות תפעול״). ביומן העובד ובמסד נשמרת רק קטגוריית השגיאה.
 
-### הגדרות ב־`app.env`
+### הגדרות גיבוי ב־`worker.env` וב־`operations.env`
 
 | משתנה                                                                                | משמעות                                                                                                                               |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -247,6 +271,8 @@ age-keygen -y ~/fair-shifts-backup.key   # prints the public key for AGE_RECIPIE
 
 ### חיבור Drive וחידוש הרשאה
 
+שינוי אסימון או לקוח Drive מחייב סנכרון גם ל־operations.env, בלי להוסיף סודות אלה ל־app.env. שינויים בלקוח כניסה או Calendar מחייבים את app.env ואת worker.env.
+
 כרטיס [#37](https://github.com/ItayBar1/fair-shifts/issues/37). ההגדרה בחשבון Google הייעודי:
 
 1. פרויקט Cloud נפרד מהפרויקט של כניסת Google, ובו Google Drive API מופעל.
@@ -262,7 +288,7 @@ age-keygen -y ~/fair-shifts-backup.key   # prints the public key for AGE_RECIPIE
 ```sh
 cd /opt/fair-shifts/app && [ "$(git rev-parse HEAD)" = "$(cat /opt/fair-shifts/deploy-state/deployed)" ] && touch /opt/fair-shifts/deploy-state/paused && echo "OK: timer paused" || echo "STOP: checkout differs from the live version"
 read -rsp 'Drive refresh token: ' token; echo   # paste this line on its own
-env=/opt/fair-shifts/config/app.env; { grep -v '^GOOGLE_DRIVE_REFRESH_TOKEN=' "$env"; printf 'GOOGLE_DRIVE_REFRESH_TOKEN=%s\n' "$token"; } > "$env.new" && chmod 600 "$env.new" && mv "$env.new" "$env"; unset token
+env=/opt/fair-shifts/config/worker.env; { grep -v '^GOOGLE_DRIVE_REFRESH_TOKEN=' "$env"; printf 'GOOGLE_DRIVE_REFRESH_TOKEN=%s\n' "$token"; } > "$env.new" && chmod 600 "$env.new" && mv "$env.new" "$env"; unset token
 sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && sh scripts/production.sh health && rm -f /opt/fair-shifts/deploy-state/paused
 ```
 
@@ -322,7 +348,7 @@ sh scripts/production.sh run --rm --no-deps -e DELETION_LOG_REASON -e DELETION_L
 ```sh
 # All commands run in a one-off worker container; the database must be up.
 export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
-fsr() { sh scripts/production.sh run --rm --no-deps -T worker node_modules/.bin/tsx scripts/restore.ts "$@"; }
+fsr() { sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts "$@"; }
 fsr list                      # the encrypted backups in the storage; before-update marks the one taken before a migration
 fsr fetch > backup.dump.age   # newest verified backup (or --backup <name>) to the standard output
 fsr drill ...                 # restore into <database>_drill, check, report, drop it
@@ -358,9 +384,9 @@ fsr promote                   # swap it in place of the live database (site and 
 
 ```sh
 # On the technical admin's computer. <name> is a file name from "restore list".
-ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh run --rm --no-deps -T worker node_modules/.bin/tsx scripts/restore.ts fetch --backup <name>' > backup.dump.age
+ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts fetch --backup <name>' > backup.dump.age
 age --decrypt -i ~/fair-shifts-backup.key backup.dump.age |
-  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh run --rm --no-deps -T worker node_modules/.bin/tsx scripts/restore.ts drill --dump - --point <name>'
+  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts drill --dump - --point <name>'
 ```
 
 אפשר גם להוריד את הקובץ ידנית מ־Drive (החשבון הייעודי מציג את הקבצים שהיישום יצר), או להשתמש ב־`--file` וב־`--identity` כשהטכני בוחר להניח מפתח זמני בשרת: הקבצים צריכים להיות מחוברים לקונטיינר של הריצה (`run -v <path>:/run/identity:ro`, ו־`--identity /run/identity`), ולהימחק אחריה. בלי `--dump`, `--file` או גיבוי מוגדר ב־Drive, הפקודה מסרבת.
@@ -387,7 +413,7 @@ export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
 sh scripts/production.sh stop app worker
 # On the technical admin's computer: decrypt, and pipe the plaintext into the restore.
 age --decrypt -i ~/fair-shifts-backup.key backup.dump.age |
-  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh run --rm --no-deps -T worker node_modules/.bin/tsx scripts/restore.ts restore --dump - --point <name>'
+  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts restore --dump - --point <name>'
 # On the server: swap it in, start, check.
 fsr promote                                           # renames the live database aside, the copy into its place
 sh scripts/production.sh up -d --wait --no-build app worker

@@ -73,6 +73,14 @@ function pointOf(value: string | undefined) {
 const [command, ...rest] = process.argv.slice(2);
 let code = 0;
 try {
+  if (process.env.SERVICE_ROLE && process.env.SERVICE_ROLE !== "operations")
+    throw new Error("Restore requires the separate operations service");
+  if (process.env.SERVICE_ROLE === "operations") {
+    const { checkDatabaseRole } =
+      await import("../src/server/operations/database-permissions");
+    const errors = await checkDatabaseRole("operations");
+    if (errors.length) throw new Error(errors.join("; "));
+  }
   const options = parse(rest);
   const liveUrl = process.env.DATABASE_URL;
   const text = (key: string) => {

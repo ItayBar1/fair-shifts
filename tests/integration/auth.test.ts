@@ -7832,6 +7832,53 @@ describe("gender, capability and personal hours conditions", () => {
 
 describe("deployment health and worker heartbeat", () => {
   const at = (iso: string) => new Date(iso);
+  it("shows worker backup presence to the site without requiring provider credentials", async () => {
+    await recordWorkerHeartbeat(db, {
+      now: new Date(),
+      paused: false,
+      backup: {
+        kind: "drive",
+        storageConfigured: true,
+        keyConfigured: true,
+        time: "03:30",
+      },
+    });
+    const previous = process.env.SERVICE_ROLE;
+    process.env.SERVICE_ROLE = "app";
+    try {
+      const state = await readState(technical);
+      expect(state).toMatchObject({
+        backups: {
+          kind: "drive",
+          storageConfigured: true,
+          keyConfigured: true,
+          time: "03:30",
+        },
+        deletionLog: { storageCopy: "current" },
+        restoreDrill: { state: "pending" },
+      });
+      const [row] = await db
+        .select()
+        .from(operationsState)
+        .where(eq(operationsState.key, "worker"));
+      expect(row.data.backup).toEqual({
+        kind: "drive",
+        storageConfigured: true,
+        keyConfigured: true,
+        time: "03:30",
+      });
+      for (const secret of [
+        "clientSecret",
+        "refreshToken",
+        "recipient",
+        "password",
+      ])
+        expect(JSON.stringify(row.data)).not.toContain(secret);
+    } finally {
+      if (previous === undefined) delete process.env.SERVICE_ROLE;
+      else process.env.SERVICE_ROLE = previous;
+    }
+  });
   it("reports a missing worker without failing the site", async () => {
     const health = await readHealth(db, at("2026-09-29T09:00:00Z"));
     expect(health).toMatchObject({

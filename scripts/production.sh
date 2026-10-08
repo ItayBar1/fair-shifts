@@ -39,6 +39,9 @@ case "${1:-}" in
       exit 1
     fi
     compose build app
+    compose up -d --wait db
+    compose stop worker app
+    compose --profile operations run --rm --no-deps operations
     compose up -d --wait --remove-orphans "$@"
     ;;
   health)

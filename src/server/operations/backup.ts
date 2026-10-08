@@ -13,6 +13,7 @@ import { backupRun, operationsState, user } from "../auth-schema";
 import { AppError } from "../errors";
 import { audit, createRecord, technical, type Actor } from "../repository";
 import { enqueueEmail } from "./email";
+import { readWorkerBackup } from "./health";
 import {
   BackupFailure,
   directoryStorage,
@@ -454,7 +455,11 @@ export async function requestBackup(
   config = backupConfig()
 ) {
   technical(actor);
-  if (config.kind === "none")
+  const kind =
+    process.env.SERVICE_ROLE === "app"
+      ? (await readWorkerBackup(tx)).kind
+      : config.kind;
+  if (kind === "none")
     throw new AppError("backup_disabled", "הגיבוי אינו מופעל בסביבה הזאת", 409);
   const [row] = await tx
     .insert(backupRun)
@@ -492,11 +497,17 @@ export async function backupState(
       lastVerifiedAt: sql<Date | null>`max(${backupRun.finishedAt}) filter (where ${backupRun.status} = 'verified')`,
     })
     .from(backupRun);
+  const reported =
+    process.env.SERVICE_ROLE === "app"
+      ? await readWorkerBackup(executor)
+      : {
+          kind: config.kind,
+          storageConfigured: Boolean(config.storage),
+          keyConfigured: Boolean(config.recipient),
+          time: config.time,
+        };
   return {
-    kind: config.kind,
-    storageConfigured: Boolean(config.storage),
-    keyConfigured: Boolean(config.recipient),
-    time: config.time,
+    ...reported,
     max: MAX_BACKUPS,
     retained: counts?.verified ?? 0,
     lastVerifiedAt: counts?.lastVerifiedAt
