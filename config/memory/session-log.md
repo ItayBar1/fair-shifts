@@ -2,9 +2,11 @@
 
 ## 08.10.2026 — התאוששות מ־502 ואבחון חזרה שנכשלה
 
+נקודת התקדמות 4921e6e עברה Husky מלא: 417 יחידה, 643 PostgreSQL ו־116 דפדפן, טיפוסים/lint/בנייה. נוספו אחריה שימור הקשר עבור bind mounts, הפרדת source/configuration, גיבוי דרך app.env ישן והבחנה ב־preflight exit 78. התוספות עברו 14 יחידה/מפה ו־15 קבוצות auto-deploy ב־Docker; commit סופי מחייב שער מלא נוסף.
+
 המשתמש דיווח על 502 וביקש לבדוק למה לא חזר לגרסה הקודמת. אבחון ישיר ב־Termius: app/worker של c807fb01f2c9 עצורים, DB/Tunnel רצים; main checkout ב־6b4a361, תצורה ישנה בת שלושה קבצים. journal מראה ניסיונות #140/#142 שנכשלו על env חסרים, וחזרה שהשתמשה ב־Compose החדש ונכשלה שוב. נבדק שאין סודות/יומן v2; created paused, והקונטיינרים הישנים הופעלו בנעילה. HTTP 200 ו־status ok למערכת ולעובד באותה גרסה אומתו ב־Docker ב־10:12 UTC. אין שינוי נתונים/סודות או שירותים אחרים; הטיימר נשאר מושהה לפני מעבר האבטחה.
 
-בעלות #36/#130 אומתה ItayBar1; ענף codex/fix-deployment-rollback על main. production preflight בודק env ותוכן לפני עצירת שירותים; auto-deploy שומר source/config של deployed לגיבוי ולחזרה, עם ניקוי הספרייה הפרטית בסיום. שלוש בדיקות unit, 11 למפה והרגרסיה מול Git אמיתי עברו בדוקר, טיפוסים/lint עברו. production smoke עבר כולל פריסה, restart ושחזור מוצפן אחרי תיקון entrypoint ל־node --import tsx. דוח תקלה, README, תפעול, כיסוי ומפת קבלה עודכנו. נדרש שער Husky מלא לפני commit/PR; התיקון טרם נפרס בשרת.
+בעלות #36/#130 אומתה ItayBar1; ענף codex/fix-deployment-rollback על main. production preflight בודק env ותוכן לפני עצירת שירותים; auto-deploy שומר source/config של deployed לגיבוי ולחזרה. source ו־configuration נפרדים כדי לא להתנגש בתיקיית config שבמאגר. הקשר חזרה נשמר עבור bind mounts עד החלפה בריאה; preflight exit 78 אינו מפעיל מחדש שירותים. שלוש בדיקות unit, 11 למפה ו־15 קבוצות מול Git אמיתי עברו בדוקר, כולל legacy app.env, שימור וניקוי; טיפוסים/lint עברו. production smoke עבר כולל פריסה, restart ושחזור מוצפן אחרי תיקון entrypoint ל־node --import tsx. דוח תקלה, README, תפעול, כיסוי ומפת קבלה עודכנו. שער Husky ראשון רץ; תוספות אחרונות יידרשו לשער מלא נוסף לפני PR. התיקון טרם נפרס בשרת.
 
 ## 08.10.2026 — הפרדת שירותים #130; מיזוגי האבטחה אומתו
 

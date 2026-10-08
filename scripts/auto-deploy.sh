@@ -18,7 +18,11 @@ export FAIR_SHIFTS_CONFIG_DIR="${FAIR_SHIFTS_CONFIG_DIR:-/opt/fair-shifts/config
 
 log() { echo "auto-deploy: $*"; }
 short() { git rev-parse --short=12 "$1"; }
-setting() { sed -n "s/^$1=//p" "$FAIR_SHIFTS_CONFIG_DIR/worker.env" | tail -1; }
+setting() {
+  settings_file="$rollback_dir/configuration/worker.env"
+  [ -f "$settings_file" ] || settings_file="$rollback_dir/configuration/app.env"
+  sed -n "s/^$1=//p" "$settings_file" | tail -1
+}
 stop_at() {
   echo "$1" >"$state/stopped"
   exit 1
@@ -73,20 +77,41 @@ esac
 previous=$deployed
 # The previous image also needs its own Compose, wrapper and configuration.
 # Changing only APP_VERSION leaves rollback subject to the failed new release.
-rollback_dir=$(mktemp -d "${TMPDIR:-/tmp}/fair-shifts-rollback.XXXXXX")
+rollback_dir=$(mktemp -d "$state/rollback.XXXXXX")
 chmod 700 "$rollback_dir"
-trap 'rm -rf "$rollback_dir"' EXIT
+keep_rollback=no
+cleanup_rollback() { [ "$keep_rollback" = yes ] || rm -rf "$rollback_dir"; }
+trap cleanup_rollback EXIT
 trap 'exit 1' HUP INT TERM
+mkdir -m 700 "$rollback_dir/source" "$rollback_dir/configuration"
 if ! git archive "$previous" >"$rollback_dir/source.tar" ||
-  ! tar -xf "$rollback_dir/source.tar" -C "$rollback_dir"; then
+  ! tar -xf "$rollback_dir/source.tar" -C "$rollback_dir/source"; then
   log "cannot capture the deployed source; live services were not changed"
   stop_at "$target"
 fi
-mkdir -m 700 "$rollback_dir/config"
-cp -R "$FAIR_SHIFTS_CONFIG_DIR/." "$rollback_dir/config/"
-previous_production=${FAIR_SHIFTS_PRODUCTION_SCRIPT:-$rollback_dir/scripts/production.sh}
+configuration_source=$FAIR_SHIFTS_CONFIG_DIR
+retained_context=$(cat "$state/rollback-context" 2>/dev/null || true)
+if [ -n "$retained_context" ] && [ "$(dirname "$retained_context")" = "$state" ] &&
+  [ ! -L "$retained_context" ] &&
+  [ "$(cat "$retained_context/format" 2>/dev/null || true)" = fair-shifts-rollback-v1 ] &&
+  [ "$(cat "$retained_context/deployed" 2>/dev/null || true)" = "$previous" ]; then
+  configuration_source="$retained_context/configuration"
+fi
+cp -RL "$configuration_source/." "$rollback_dir/configuration/"
+echo fair-shifts-rollback-v1 >"$rollback_dir/format"
+echo "$previous" >"$rollback_dir/deployed"
+previous_production=${FAIR_SHIFTS_PRODUCTION_SCRIPT:-$rollback_dir/source/scripts/production.sh}
+cleanup_retained() {
+  # Only marked contexts created by this script, after every replacement is healthy.
+  for context in "$state"/rollback.*; do
+    [ "$context" != "$rollback_dir" ] && [ -d "$context" ] && [ ! -L "$context" ] || continue
+    [ "$(cat "$context/format" 2>/dev/null || true)" = fair-shifts-rollback-v1 ] || continue
+    rm -rf "$context"
+  done
+  rm -f "$state/rollback-context"
+}
 run_previous() {
-  APP_VERSION=$(short "$previous") FAIR_SHIFTS_CONFIG_DIR="$rollback_dir/config" \
+  APP_VERSION=$(short "$previous") FAIR_SHIFTS_CONFIG_DIR="$rollback_dir/configuration" \
     sh "$previous_production" "$@"
 }
 run_target() { sh "$production" "$@"; }
@@ -130,19 +155,31 @@ verify() {
 }
 
 log "deploying $(short "$target") in place of $(short "$previous") (database change: $migrations)"
-if sh "$production" deploy && verify "$(short "$target")"; then
+deployment_status=0
+sh "$production" deploy || deployment_status=$?
+if [ "$deployment_status" -eq 0 ] && verify "$(short "$target")"; then
   echo "$target" >"$state/deployed"
   rm -f "$state/stopped"
   log "$(short "$target") is live"
+  cleanup_retained
   exit 0
+fi
+if [ "$deployment_status" -eq 78 ]; then
+  log "deployment preflight failed; live services were not changed"
+  stop_at "$target"
 fi
 if [ "$migrations" = yes ]; then
   log "deployment failed after a database change; no automatic rollback. See docs/operations.md"
   stop_at "$target"
 fi
 log "deployment failed; rolling back to $(short "$previous")"
+keep_rollback=yes
+# Bind-mounted files must survive this process and a later Docker/host restart.
+(umask 077; printf '%s\n' "$rollback_dir" >"$state/rollback-context")
 if run_previous up -d --wait --no-build --remove-orphans &&
   verify "$(short "$previous")" run_previous; then
+  cleanup_retained
+  (umask 077; printf '%s\n' "$rollback_dir" >"$state/rollback-context")
   log "$(short "$previous") is live again"
 else
   log "the rollback failed too; manual action needed, see docs/operations.md"

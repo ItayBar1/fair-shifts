@@ -49,7 +49,7 @@ esac
 describe("deployment configuration preflight", () => {
   it("rejects missing runtime or operations env files before building or changing live services", () => {
     const result = deploy(true);
-    expect(result.status).toBe(1);
+    expect(result.status).toBe(78);
     expect(result.calls).toContain("--profile operations config --quiet");
     expect(result.calls).not.toMatch(
       /build|up -d|stop worker app|--no-deps operations/
@@ -58,7 +58,7 @@ describe("deployment configuration preflight", () => {
   it("rejects invalid configuration for each service before changing live services", () => {
     for (const service of ["app", "worker", "operations"]) {
       const result = deploy(false, service);
-      expect(result.status).toBe(1);
+      expect(result.status).toBe(78);
       expect(result.calls).toContain(`--entrypoint node ${service}`);
       expect(result.calls).not.toMatch(
         /up -d|stop worker app|--no-deps operations/

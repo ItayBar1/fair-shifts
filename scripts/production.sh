@@ -39,12 +39,12 @@ case "${1:-}" in
       exit 1
     fi
     # Resolve every required env file before building or touching live services.
-    compose --profile operations config --quiet
-    compose build app
+    compose --profile operations config --quiet || exit 78
+    compose build app || exit 78
     # Entrypoints do not run: these checks neither migrate nor start runtime.
     for service in app worker operations; do
       compose --profile operations run --rm --no-deps --entrypoint node "$service" \
-        --import tsx scripts/check-config.ts
+        --import tsx scripts/check-config.ts || exit 78
     done
     compose up -d --wait db
     compose stop worker app
