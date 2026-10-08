@@ -130,6 +130,13 @@ export function Workspace({
   const [success, setSuccess] = useState("");
   const [menu, setMenu] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [toastHeld, setToastHeld] = useState(false);
+  // A confirmation leaves on its own unless the pointer or focus is on it.
+  useEffect(() => {
+    if (!success || toastHeld) return;
+    const timer = window.setTimeout(() => setSuccess(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [success, toastHeld]);
   const reload = useCallback(async () => {
     const data = await fetchState();
     if (!data) {
@@ -506,30 +513,43 @@ export function Workspace({
               </Link>
             )}
           </div>
-          {error && (
-            <Notice tone="danger">
-              {error}
-              <button
-                className="inline-dismiss"
-                onClick={() => setError("")}
-                aria-label="סגירת הודעה"
+          {/* Shown above the bottom edge, wherever the page is scrolled. */}
+          <div className="toast-stack">
+            {error && (
+              <Notice tone="danger">
+                {error}
+                <button
+                  className="inline-dismiss"
+                  onClick={() => setError("")}
+                  aria-label="סגירת הודעה"
+                >
+                  <X size={16} />
+                </button>
+              </Notice>
+            )}
+            {success && (
+              <div
+                className="toast"
+                role="status"
+                onPointerEnter={() => setToastHeld(true)}
+                onPointerLeave={() => setToastHeld(false)}
+                onFocus={() => setToastHeld(true)}
+                onBlur={() => setToastHeld(false)}
               >
-                <X size={16} />
-              </button>
-            </Notice>
-          )}
-          {success && (
-            <div className="toast" role="status">
-              {success}
-              <button
-                className="icon-btn"
-                onClick={() => setSuccess("")}
-                aria-label="סגירת הודעה"
-              >
-                <X size={15} />
-              </button>
-            </div>
-          )}
+                {success}
+                <button
+                  className="icon-btn"
+                  onClick={() => {
+                    setSuccess("");
+                    setToastHeld(false);
+                  }}
+                  aria-label="סגירת הודעה"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
+          </div>
           {content()}
           <footer className="page-footer">
             <span>תורנות הוגנת · לוח אחד לכל היחידה</span>

@@ -1015,9 +1015,15 @@ export function DutyDetail({
             ניתן לבטל אותה או לטפל בתיעוד הביצוע.
           </Notice>
         )}
-        <TransferOffer state={state} action={action} duty={duty} />
-        <SwapOffer state={state} action={action} duty={duty} />
-        <CancellationRequestButton state={state} action={action} duty={duty} />
+        <div className="duty-offers">
+          <TransferOffer state={state} action={action} duty={duty} />
+          <SwapOffer state={state} action={action} duty={duty} />
+          <CancellationRequestButton
+            state={state}
+            action={action}
+            duty={duty}
+          />
+        </div>
         {manager && (
           <div className="panel-actions">
             <AuditLink id={id} label="יומן הפעולות של התורנות" />
