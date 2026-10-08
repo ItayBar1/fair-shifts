@@ -83,7 +83,7 @@ if [ "$migrations" = yes ]; then
     # In the worker of the version still live, before anything changes.
     log "$(short "$target") changes the database; taking a verified backup first"
     if ! APP_VERSION=$(short "$previous") sh "$production" exec -T worker \
-      node_modules/.bin/tsx scripts/backup-before-deploy.ts "$(short "$target")"; then
+      node scripts/run-runtime.mjs scripts/backup-before-deploy.ts "$(short "$target")"; then
       log "no verified backup, so $(short "$target") is not deployed. See docs/operations.md"
       stop_at "$target"
     fi

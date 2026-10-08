@@ -582,6 +582,9 @@
 
 ### 34. התאוששות משליחה ומגיבוי — הודעות ותיעוד; תפעול — מכוסה
 
+- [supply-chain.test.ts](../tests/unit/supply-chain.test.ts): `blocks high and critical findings`; `requires actual approval`; `fails closed for empty`
+- [repository-rules.test.ts](../tests/unit/repository-rules.test.ts): `verifies effective GitHub rules`; `pins external Docker images`
+- [braces-depth.test.ts](../tests/unit/braces-depth.test.ts): `rejects the published stack-exhaustion input`
 - [database-permissions.test.ts](../tests/integration/database-permissions.test.ts): `verifies real non-superuser logins`; `lets pg-boss initialize and work only`
 - [auth.test.ts](../tests/integration/auth.test.ts): `shows worker backup presence to the site`
 - [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `retries with growing delays, then fails visibly while the site notice stays`

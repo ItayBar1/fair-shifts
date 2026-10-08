@@ -1,0 +1,11 @@
+FROM postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+# Alpine's C privilege switch replaces the Go runtime bundled by gosu.
+RUN apk add --no-cache su-exec=0.3-r0 \
+    && rm /usr/local/bin/gosu \
+    && sed -i 's/exec gosu postgres /exec su-exec postgres /' /usr/local/bin/docker-entrypoint.sh \
+    && grep -q 'exec su-exec postgres ' /usr/local/bin/docker-entrypoint.sh
+COPY scripts/database-entrypoint.sh /usr/local/bin/fair-shifts-database-entrypoint.sh
+RUN chmod 755 /usr/local/bin/fair-shifts-database-entrypoint.sh
+LABEL org.fair-shifts.database-runtime="alpine-pg18-v1"
+ENTRYPOINT ["fair-shifts-database-entrypoint.sh"]
+CMD ["postgres"]

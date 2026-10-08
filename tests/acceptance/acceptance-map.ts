@@ -1517,6 +1517,21 @@ export const scenarios: Record<number, Entry> = {
   34: covered(
     [
       ...t(
+        "tests/unit/supply-chain.test.ts",
+        "blocks high and critical findings",
+        "requires actual approval",
+        "fails closed for empty"
+      ),
+      ...t(
+        "tests/unit/repository-rules.test.ts",
+        "verifies effective GitHub rules",
+        "pins external Docker images"
+      ),
+      ...t(
+        "tests/unit/braces-depth.test.ts",
+        "rejects the published stack-exhaustion input"
+      ),
+      ...t(
         "tests/integration/database-permissions.test.ts",
         "verifies real non-superuser logins",
         "lets pg-boss initialize and work only"

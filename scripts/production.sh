@@ -23,12 +23,12 @@ case "${1:-}" in
     shift
     mkdir -p "$FAIR_SHIFTS_CONFIG_DIR"
     chmod 700 "$FAIR_SHIFTS_CONFIG_DIR"
-    compose build app
+    compose build app db cloudflared
     # Plain docker run: Compose refuses to start before the env files exist.
     . scripts/docker-env.sh
     "$docker_bin" run --rm --user "$(id -u):$(id -g)" \
       -v "$FAIR_SHIFTS_CONFIG_DIR:/config" "fair-shifts:$APP_VERSION" \
-      node_modules/.bin/tsx scripts/init-production-config.ts /config "$@"
+      node scripts/run-runtime.mjs scripts/init-production-config.ts /config "$@"
     echo "Configuration directory: $FAIR_SHIFTS_CONFIG_DIR"
     ;;
   deploy)
@@ -38,14 +38,14 @@ case "${1:-}" in
       echo "TUNNEL_TOKEN is missing in $FAIR_SHIFTS_CONFIG_DIR/tunnel.env" >&2
       exit 1
     fi
-    compose build app
+    compose build app db cloudflared
     compose up -d --wait db
     compose stop worker app
     compose --profile operations run --rm --no-deps operations
     compose up -d --wait --remove-orphans "$@"
     ;;
   health)
-    compose exec -T app node_modules/.bin/tsx scripts/system-health.ts
+    compose exec -T app node scripts/run-runtime.mjs scripts/system-health.ts
     ;;
   *)
     compose "$@"

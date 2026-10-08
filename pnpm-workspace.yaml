@@ -1,4 +1,9 @@
 saveExact: true
+overrides:
+  sharp: 0.35.5
+  source-map-js: 1.2.2
+patchedDependencies:
+  braces@3.0.3: patches/braces@3.0.3.patch
 allowBuilds:
   esbuild: true
   unrs-resolver: true

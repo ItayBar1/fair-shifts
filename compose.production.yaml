@@ -28,7 +28,10 @@ x-app: &app
 services:
   db:
     <<: *service
-    image: postgres:18.6-bookworm
+    image: fair-shifts-database:${APP_VERSION:?APP_VERSION is required}
+    build:
+      context: .
+      dockerfile: Dockerfile.database
     env_file:
       - path: ${FAIR_SHIFTS_CONFIG_DIR}/db.env
         required: true
@@ -60,7 +63,7 @@ services:
       [
         sh,
         -c,
-        "pnpm --silent config:check && pnpm --silent db:permissions check && pnpm --silent security:secrets verify && exec node_modules/.bin/next start --hostname 0.0.0.0",
+        "node scripts/run-command.mjs config:check && node scripts/run-command.mjs db:permissions check && node scripts/run-command.mjs security:secrets verify && exec node_modules/.bin/next start --hostname 0.0.0.0",
       ]
     healthcheck:
       test:
@@ -100,7 +103,7 @@ services:
       [
         sh,
         -c,
-        "pnpm --silent config:check && pnpm --silent db:permissions check && pnpm --silent security:log verify && exec node_modules/.bin/tsx src/worker.ts",
+        "node scripts/run-command.mjs config:check && node scripts/run-command.mjs db:permissions check && node scripts/run-command.mjs security:log verify && exec node scripts/run-runtime.mjs src/worker.ts",
       ]
     # The worker touches this file after each maintenance run (every minute).
     healthcheck:
@@ -131,12 +134,15 @@ services:
       [
         sh,
         -c,
-        "pnpm --silent config:check && pnpm --silent db:permissions check && pnpm --silent db:migrate && pnpm --silent db:permissions apply && pnpm --silent security:secrets verify",
+        "node scripts/run-command.mjs config:check && node scripts/run-command.mjs db:permissions check && node scripts/run-command.mjs db:migrate && node scripts/run-command.mjs db:permissions apply && node scripts/run-command.mjs security:secrets verify",
       ]
 
   cloudflared:
     <<: *service
-    image: cloudflare/cloudflared:2026.9.3
+    image: fair-shifts-tunnel:${APP_VERSION:?APP_VERSION is required}
+    build:
+      context: .
+      dockerfile: Dockerfile.tunnel
     command: [tunnel, --no-autoupdate, run]
     env_file:
       - path: ${FAIR_SHIFTS_CONFIG_DIR}/tunnel.env
