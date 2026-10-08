@@ -260,6 +260,8 @@ for (const width of [1280, 390]) {
     await expect(page.locator("#my-score")).toBeFocused();
     await expect(page.locator("#my-score")).toContainText("חייל המשבצות");
     await expect(page.locator("#my-score .score-number")).toHaveText("12");
+    // No military rank on record: the rank column says so, not the place (#153).
+    await expect(page.locator("#my-score td").nth(3)).toHaveText("—");
     await expect(page.locator("tbody")).not.toContainText("אחראי");
     expect(await fits(page)).toBe(true);
     await page.screenshot({

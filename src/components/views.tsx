@@ -538,6 +538,7 @@ export function FairnessView({ state }: { state: AppState }) {
                 </tr>
               </thead>
               <tbody>
+                {/* "rank" here is the place in this table, never a military rank. */}
                 {filtered.map((s) => (
                   <tr
                     key={s.id}
@@ -563,7 +564,7 @@ export function FairnessView({ state }: { state: AppState }) {
                       </span>
                     </td>
                     <td>{population(s.population)}</td>
-                    <td>{str(s.rankName ?? s.rank, "—")}</td>
+                    <td>{str(s.rankName, "—")}</td>
                     <td>
                       <strong className="score-number">
                         {num(s.currentScore ?? s.score)}
@@ -599,7 +600,7 @@ export function FairnessView({ state }: { state: AppState }) {
                       </span>
                     </td>
                     <td>{population(s.population)}</td>
-                    <td>{str(s.rankName ?? s.rank, "—")}</td>
+                    <td>{str(s.rankName, "—")}</td>
                     <td>
                       <strong className="score-number">
                         {num(s.currentScore ?? s.score)}
