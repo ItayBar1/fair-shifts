@@ -11,7 +11,7 @@
   /* Brand: the one hue that marks what can be pressed or is selected. */
   --accent: #2f5bd3;
   --accent-hover: color-mix(in oklab, var(--accent) 86%, black);
-  --accent-soft: color-mix(in oklab, var(--accent) 9%, white);
+  --accent-soft: color-mix(in oklab, var(--accent) 9%, var(--surface));
   --accent-text: color-mix(in oklab, var(--accent) 82%, black);
   --on-accent: #fff;
   --focus-ring: var(--accent);
@@ -122,6 +122,62 @@
     --separator-strong: #6f7f85;
   }
 }
+
+/* Dark theme, from the system setting (decision 218). Only tokens change. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --accent: #3d68e0;
+    --accent-hover: color-mix(in oklab, var(--accent) 85%, white);
+    --accent-soft: color-mix(in oklab, var(--accent) 22%, var(--surface));
+    --accent-text: #8fa9f5;
+    --brand-deep: color-mix(in oklab, var(--accent) 22%, #070c12);
+    --brand-highlight: #b9c9f8;
+
+    --bg: #0f1518;
+    --surface: #182124;
+    --surface-2: #1f2a2e;
+    --fill: #26333a;
+    --fill-hover: #212c31;
+    --fill-strong: #2f3e45;
+    --surface-inverse: #e8eef0;
+    --on-inverse: #0f1518;
+    --text: #e8eef0;
+    --text-2: #a9b6bb;
+    --text-3: #8d9ba1;
+    --separator: #2a363b;
+    --separator-strong: #3a484e;
+    --neutral-fill: #6b7a80;
+
+    --success: #4cc38a;
+    --success-soft: color-mix(in oklab, #4cc38a 16%, var(--surface));
+    --success-fill: #3fae7a;
+    --warning: #e2b04a;
+    --warning-soft: color-mix(in oklab, #e2b04a 14%, var(--surface));
+    --warning-fill: #d9a23a;
+    --danger: #f27a80;
+    --danger-soft: color-mix(in oklab, #f27a80 15%, var(--surface));
+    --danger-border: color-mix(in oklab, #f27a80 35%, var(--surface));
+    --danger-fill: #f05a5a;
+    --info: #8fb0ee;
+    --info-soft: color-mix(in oklab, #8fb0ee 15%, var(--surface));
+
+    --cal-unit: #6b7a80;
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 8px 24px rgb(0 0 0 / 0.5);
+    --shadow-3: 0 24px 64px rgb(0 0 0 / 0.6);
+    --scrim: rgb(0 0 0 / 0.55);
+  }
+}
+@media (prefers-color-scheme: dark) and (prefers-contrast: more) {
+  :root {
+    --text-2: #c9d3d7;
+    --text-3: #b3bfc4;
+    --separator: #6b7a80;
+    --separator-strong: #8d9ba1;
+  }
+}
 html {
   font-size: 100%;
 }
@@ -132,6 +188,9 @@ body {
   margin: 0;
   color: var(--text);
   background: var(--bg);
+  transition:
+    background-color var(--duration-slow) var(--ease-out),
+    color var(--duration-slow) var(--ease-out);
   font-family: var(--font-sans);
   font-size: var(--text-callout);
   line-height: var(--leading-body);
@@ -273,7 +332,7 @@ small {
 }
 .text-link,
 .text-button {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 .text-button {
@@ -430,7 +489,7 @@ small {
 }
 .profile-account {
   font-size: var(--text-caption);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 500;
 }
 .profile-account:hover {
@@ -576,7 +635,7 @@ small {
   margin-bottom: var(--space-6);
 }
 .eyebrow {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--text-caption);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -613,7 +672,7 @@ small {
   transform: scale(0.94);
 }
 .tab.active {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 .tab-icon {
@@ -1082,7 +1141,7 @@ form + .notice {
   height: 42px;
   border-radius: var(--radius-md);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   flex-shrink: 0;
 }
 .task-symbol.amber {
@@ -1111,7 +1170,7 @@ form + .notice {
   border-radius: var(--radius-sm);
 }
 .shortcut-grid svg {
-  color: var(--accent);
+  color: var(--accent-text);
   margin-bottom: var(--space-1-5);
 }
 .shortcut-grid small {
@@ -1154,7 +1213,7 @@ form + .notice {
 .large-symbol {
   padding: var(--space-5);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   border-radius: var(--radius-lg);
 }
 .meta-line {
@@ -1710,7 +1769,7 @@ tbody tr:last-child td {
 }
 .score-number {
   font-size: var(--text-title-3);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .rank-number {
   color: var(--text-2);
@@ -1887,7 +1946,7 @@ tbody tr:last-child td {
 }
 .price-line strong {
   font-size: var(--text-title-1);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .price-line span {
   color: var(--text-2);
@@ -2239,7 +2298,7 @@ tbody tr:last-child td {
 }
 .login-icon {
   display: inline-flex;
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
   padding: var(--space-4);
   border-radius: var(--radius-md);
@@ -2322,7 +2381,7 @@ tbody tr:last-child td {
   border: 0;
   background: none;
   font-size: var(--text-caption);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .login-privacy {
   margin-top: var(--space-12);
