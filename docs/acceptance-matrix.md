@@ -582,7 +582,7 @@
 
 ### 34. התאוששות משליחה ומגיבוי — הודעות ותיעוד; תפעול — מכוסה
 
-- [deployment-preflight.test.ts](../tests/unit/deployment-preflight.test.ts): `rejects an existing legacy database before building`; `continues a fresh deployment`
+- [deployment-preflight.test.ts](../tests/unit/deployment-preflight.test.ts): `rejects an existing legacy database before building`; `continues a fresh deployment`; `rejects missing runtime or operations env files`; `rejects invalid configuration for each service`; `checks all three service configurations`
 - [supply-chain.test.ts](../tests/unit/supply-chain.test.ts): `blocks high and critical findings`; `requires actual approval`; `fails closed for empty`
 - [repository-rules.test.ts](../tests/unit/repository-rules.test.ts): `verifies effective GitHub rules`; `pins external Docker images`
 - [braces-depth.test.ts](../tests/unit/braces-depth.test.ts): `rejects the published stack-exhaustion input`

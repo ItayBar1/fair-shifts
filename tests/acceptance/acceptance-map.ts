@@ -1519,7 +1519,10 @@ export const scenarios: Record<number, Entry> = {
       ...t(
         "tests/unit/deployment-preflight.test.ts",
         "rejects an existing legacy database before building",
-        "continues a fresh deployment"
+        "continues a fresh deployment",
+        "rejects missing runtime or operations env files",
+        "rejects invalid configuration for each service",
+        "checks all three service configurations"
       ),
       ...t(
         "tests/unit/supply-chain.test.ts",
