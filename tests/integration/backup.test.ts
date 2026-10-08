@@ -744,11 +744,12 @@ describe("a verified backup before a deployment changes the database (card #36)"
         child.once("close", (code) => resolve({ code: code ?? -1, output }));
       });
 
+    // The run is due at the database's microsecond clock; a JavaScript "now"
+    // taken right after can fall just before it, so look a little ahead (#155).
+    const soon = () => new Date(Date.now() + 5_000);
     const passing = cli("good1234");
     await until(async () => (await runs()).length === 1);
-    expect((await runBackupCycle(new Date(), config())).status).toBe(
-      "verified"
-    );
+    expect((await runBackupCycle(soon(), config())).status).toBe("verified");
     const passed = await passing;
     expect(passed.code).toBe(0);
     expect(passed.output).toMatch(/requested; waiting for the worker\n/);
@@ -756,7 +757,7 @@ describe("a verified backup before a deployment changes the database (card #36)"
 
     const refused = cli("bad12345");
     await until(async () => (await runs()).length === 2);
-    await runBackupCycle(new Date(), config({ AGE_RECIPIENT: "" }));
+    await runBackupCycle(soon(), config({ AGE_RECIPIENT: "" }));
     const failed = await refused;
     expect(failed.code).toBe(1);
     expect(failed.output).toMatch(

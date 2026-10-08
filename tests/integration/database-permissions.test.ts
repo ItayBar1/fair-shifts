@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
+import { Client } from "pg";
 import { PgBoss } from "pg-boss";
 import { connectDatabase, db, pool } from "../../src/server/db";
 import {
@@ -64,8 +65,45 @@ const bootstrap = (ack: string) => {
     }
   );
 };
+/**
+ * Earlier test files can leave idle pool connections in this database, and the
+ * bootstrap rightly refuses to change permissions while any are open (#155).
+ * Wait for them to close on their own (node-postgres ends an idle connection
+ * after 10 s); killing them could crash a pool that has no error listener.
+ * Our own watching connection leaves the server a moment after it ends, so the
+ * bootstrap retries briefly, and only for that refusal.
+ */
+async function bootstrapAlone(ack: string) {
+  const watcher = new Client({ connectionString: baseUrl.toString() });
+  await watcher.connect();
+  try {
+    for (const deadline = Date.now() + 30_000; ;) {
+      const { rows } = await watcher.query<{ open: number }>(
+        `select count(*)::int as open from pg_stat_activity
+         where datname = current_database() and pid <> pg_backend_pid()
+           and backend_type = 'client backend'
+           and usename in ('fair_shifts_app', 'fair_shifts_worker', current_user)`
+      );
+      if (rows[0].open === 0 || Date.now() > deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  } finally {
+    await watcher.end();
+  }
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return bootstrap(ack);
+    } catch (error) {
+      const busy = String((error as { stderr?: unknown }).stderr).includes(
+        "Stop site and worker before changing database permissions"
+      );
+      if (!busy || attempt === 20) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+}
 beforeAll(async () => {
-  bootstrap("services stopped and backup verified");
+  await bootstrapAlone("services stopped and backup verified");
   await applyDatabaseGrants(clients.operations.db);
 });
 afterAll(async () => {
