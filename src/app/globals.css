@@ -935,7 +935,7 @@ form + .notice {
 }
 .two-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-6);
 }
 .stats-grid {
@@ -982,9 +982,26 @@ form + .notice {
   min-width: 0;
   cursor: pointer;
 }
-.stat-button > strong,
-.stat-button > small {
+.stat > strong,
+.stat > small {
   display: block;
+}
+.stat > strong {
+  font-size: var(--text-title-2);
+  line-height: var(--leading-tight);
+  margin-top: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+.stat > small {
+  color: var(--text-2);
+  font-size: var(--text-caption);
+}
+/* The care centre's shortcuts: one quiet row above the numbers. */
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 .stat-button:hover,
 .stat-button.active {
@@ -1082,7 +1099,7 @@ form + .notice {
 }
 .shortcut-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
 }
 .shortcut-grid a {
@@ -1229,7 +1246,7 @@ select:focus-visible {
 }
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-5);
 }
 .form-grid > .full {
@@ -1545,6 +1562,52 @@ td {
 tbody tr:last-child td {
   border-bottom: 0;
 }
+/* A panel head with only a subtitle left (its title repeats the page). */
+.panel-head.quiet {
+  margin-bottom: var(--space-4);
+}
+/* On a phone the soldiers table is a list: name, then number, population and
+   rank, then status and the profile button. */
+@media (max-width: 760px) {
+  .soldiers-table thead {
+    display: none;
+  }
+  .soldiers-table,
+  .soldiers-table tbody {
+    display: block;
+  }
+  .soldiers-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-3) var(--space-1);
+    border-bottom: 1px solid var(--separator);
+  }
+  .soldiers-table td {
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    color: var(--text-2);
+    font-size: var(--text-caption);
+  }
+  .soldiers-table td:first-child {
+    flex-basis: 100%;
+    color: var(--text);
+    font-size: var(--text-callout);
+  }
+  .soldiers-table td:nth-child(3)::before,
+  .soldiers-table td:nth-child(4)::before,
+  .soldiers-table td:nth-child(6)::before {
+    content: "· ";
+  }
+  .soldiers-table td:nth-child(5)::before {
+    content: "· שחרור ";
+  }
+  .soldiers-table td:last-child {
+    margin-inline-start: auto;
+  }
+}
 /* On a phone the fairness table is a ranked list: place, name, then
    population and rank on a second line, points at the side. */
 @media (max-width: 760px) {
@@ -1802,7 +1865,7 @@ tbody tr:last-child td {
 }
 .catalog-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-5);
 }
 .catalog-card {
@@ -2094,7 +2157,7 @@ tbody tr:last-child td {
 }
 .login-page {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-height: 100vh;
   background: var(--surface);
 }
@@ -2324,7 +2387,7 @@ tbody tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .catalog-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .topbar {
     padding: 0 var(--space-6);
@@ -2474,12 +2537,24 @@ tbody tr:last-child td {
     min-width: 9.5rem;
     scroll-snap-align: start;
   }
+  .quick-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: calc(-1 * var(--space-4));
+    padding: 0 var(--space-4) var(--space-1);
+    scrollbar-width: none;
+  }
+  .quick-actions .btn {
+    flex: 0 0 auto;
+  }
   .stat-top .stat-icon {
     display: none;
   }
   .calendar-toolbar .toolbar-controls {
     width: 100%;
   }
+  .search,
+  .toolbar-controls .search,
   .calendar-toolbar .search {
     flex: 1 1 100%;
   }

@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { type AppState, type Action, str, obj } from "@/client/types";
 import { unreadCount } from "@/client/notifications";
-import { Notice, Empty, Modal } from "./ui";
+import { Notice, Empty, Modal, PageTitle } from "./ui";
 import { CalendarView, DutyDetail, FairnessView, Dashboard } from "./views";
 import { MyAssignmentsView } from "./my-assignments";
 import { PublishDrafts } from "./publish-drafts";
@@ -608,7 +608,7 @@ export function Workspace({
               </Link>
             )}
           </div>
-          {content()}
+          <PageTitle.Provider value={pageTitle}>{content()}</PageTitle.Provider>
           {/* Shown above the bottom edge, wherever the page is scrolled. */}
           <div className="toast-stack">
             {error && (
