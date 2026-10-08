@@ -42,6 +42,6 @@ export async function POST(request: Request) {
       }),
     });
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, { request });
   }
 }
