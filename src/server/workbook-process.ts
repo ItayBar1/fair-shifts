@@ -1,5 +1,6 @@
 import { fork } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { AppError } from "./errors";
 import { COMPRESSED_WORKBOOK_LIMIT } from "./workbook-archive";
@@ -10,7 +11,7 @@ export const WORKBOOK_HEAP_MIB = 128;
 export const WORKBOOK_RSS_LIMIT = 256 * 1024 * 1024;
 // Bound concurrent parsers as well as each parser. Reject excess work for retry.
 let running = false;
-// The Docker image ships the TS child and tsx. Keep this runtime launch out of
+// Production ships a compiled child. Tooling can use TS. Keep this launch out of
 // Turbopack's fork-path rewriting; the child is deliberately not a Next bundle.
 const forkChild = fork.bind(undefined);
 
@@ -23,16 +24,22 @@ export async function parseWorkbookInProcess(
     throw new AppError("import_busy", "קובץ אחר בבדיקה. נסו שוב בעוד רגע", 429);
   running = true;
   try {
+    const compiledChild = join(
+      process.cwd(),
+      "runtime/src/server/import-workbook-child.mjs"
+    );
+    const compiled = existsSync(compiledChild);
     return await new Promise<ImportRow[]>((resolve, reject) => {
       const child = forkChild(
-        join(process.cwd(), "src/server/import-workbook-child.ts"),
+        compiled
+          ? compiledChild
+          : join(process.cwd(), "src/server/import-workbook-child.ts"),
         [],
         {
           execArgv: [
             `--max-old-space-size=${WORKBOOK_HEAP_MIB}`,
             "--max-semi-space-size=4",
-            "--import",
-            "tsx",
+            ...(compiled ? [] : ["--import", "tsx"]),
           ],
           env: { NODE_ENV: "production" },
           serialization: "advanced",

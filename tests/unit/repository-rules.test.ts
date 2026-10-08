@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { verifyEffectiveMainRules } from "../../src/domain/repository-rules";
 
 // The rulesets are imported into the repository settings by hand (decision 184).
 // These checks keep the files in line with the CI workflow and the agreed policy.
@@ -21,6 +22,56 @@ const baseline = ruleset("main-baseline");
 const review = ruleset("main-review");
 
 describe("main branch rules", () => {
+  it("verifies effective GitHub rules and fails closed if a matching ruleset permits bypass", () => {
+    const effective = [baseline, review].flatMap((set, index) =>
+      set.rules.map((value) => ({ ...value, ruleset_id: index + 1 }))
+    );
+    const details = [baseline, review].map((set, index) => ({
+      ...set,
+      id: index + 1,
+      enforcement: "active",
+    }));
+    expect(verifyEffectiveMainRules(effective, details)).toMatchObject({
+      bypass: false,
+      latestPushApproval: true,
+      staleReviewsDismissed: true,
+    });
+    expect(() =>
+      verifyEffectiveMainRules(effective, [
+        { ...details[0], bypass_actors: [{ actor_id: 5 }] },
+        details[1],
+      ])
+    ).toThrow();
+    expect(() =>
+      verifyEffectiveMainRules(effective, details.slice(0, 1))
+    ).toThrow();
+    expect(() =>
+      verifyEffectiveMainRules(
+        effective.filter((value) => value.type !== "required_status_checks"),
+        details
+      )
+    ).toThrow();
+  });
+  it("pins external Docker images and every workflow action and keeps the security scan inside verify", () => {
+    for (const file of [
+      "Dockerfile",
+      "Dockerfile.e2e",
+      "Dockerfile.database",
+      "Dockerfile.tunnel",
+    ]) {
+      const lines = readFileSync(file, "utf8")
+        .split("\n")
+        .filter((line) => /^FROM [^ ]+[:/]/.test(line));
+      expect(lines.length).toBeGreaterThan(0);
+      for (const line of lines)
+        expect(line).toMatch(/@sha256:[a-f0-9]{64}(?:\s|$)/);
+    }
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    for (const action of workflow.matchAll(/uses:\s*([^\s#]+)/g))
+      expect(action[1]).toMatch(/@[a-f0-9]{40}$/);
+    expect(workflow).toContain("run: sh scripts/security-scan.sh");
+    expect(workflow).not.toContain("continue-on-error:");
+  });
   it("requires the CI job that the workflow actually runs, on an up-to-date branch", () => {
     const checks = rule(baseline, "required_status_checks")!.parameters!;
     expect(checks.strict_required_status_checks_policy).toBe(true);
@@ -42,17 +93,13 @@ describe("main branch rules", () => {
     expect(rule(baseline, "non_fast_forward")).toBeDefined();
     expect(rule(baseline, "pull_request")).toBeDefined();
   });
-  it("lets only an admin skip the second developer's approval, through a PR", () => {
+  it("requires another developer's approval of the latest changes without bypass", () => {
     expect(rule(review, "pull_request")!.parameters).toMatchObject({
       required_approving_review_count: 1,
+      dismiss_stale_reviews_on_push: true,
+      require_last_push_approval: true,
     });
-    expect(review.bypass_actors).toEqual([
-      {
-        actor_type: "RepositoryRole",
-        actor_id: 5,
-        bypass_mode: "pull_request",
-      },
-    ]);
+    expect(review.bypass_actors).toEqual([]);
     expect(review.rules.map((candidate) => candidate.type)).toEqual([
       "pull_request",
     ]);

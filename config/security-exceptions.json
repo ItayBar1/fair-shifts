@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "scope": "dependencies",
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "version": "3.0.3",
+      "reason": "No patched upstream release exists. Hash-locked local patch limits parsing and AST walkers to depth 128; exploit inputs and ordinary glob behavior are tested. Remove after a fixed upstream release.",
+      "expiresAt": "2026-10-22T00:00:00Z",
+      "review": {
+        "pullRequest": 143,
+        "reviewId": 5457387337,
+        "commit": "edb392e33ca3bdc4f7fdf98a1c978b6b35db119f"
+      },
+      "patch": {
+        "file": "patches/braces@3.0.3.patch",
+        "sha256": "6b1062f2eded778c83cf5f6377e0547d1364a3439daa7e817f0e7766c3278027"
+      }
+    },
+    {
+      "scope": "dependencies",
+      "id": "CVE-2026-93687",
+      "package": "braces",
+      "version": "3.0.3",
+      "reason": "No patched upstream release exists. Hash-locked local patch limits parsing and AST walkers to depth 128; exploit inputs and ordinary glob behavior are tested. Remove after a fixed upstream release.",
+      "expiresAt": "2026-10-22T00:00:00Z",
+      "review": {
+        "pullRequest": 143,
+        "reviewId": 5457387337,
+        "commit": "edb392e33ca3bdc4f7fdf98a1c978b6b35db119f"
+      },
+      "patch": {
+        "file": "patches/braces@3.0.3.patch",
+        "sha256": "6b1062f2eded778c83cf5f6377e0547d1364a3439daa7e817f0e7766c3278027"
+      }
+    },
+    {
+      "scope": "image",
+      "id": "CVE-2026-93687",
+      "package": "braces",
+      "version": "3.0.3",
+      "reason": "No patched upstream release exists. Hash-locked local patch limits parsing and AST walkers to depth 128; exploit inputs and ordinary glob behavior are tested. Remove after a fixed upstream release.",
+      "expiresAt": "2026-10-22T00:00:00Z",
+      "review": {
+        "pullRequest": 143,
+        "reviewId": 5457387337,
+        "commit": "edb392e33ca3bdc4f7fdf98a1c978b6b35db119f"
+      },
+      "patch": {
+        "file": "patches/braces@3.0.3.patch",
+        "sha256": "6b1062f2eded778c83cf5f6377e0547d1364a3439daa7e817f0e7766c3278027"
+      }
+    }
+  ]
+}

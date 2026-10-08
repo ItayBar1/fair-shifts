@@ -6,7 +6,7 @@
 
 PostgreSQL יוצר logins נפרדים ללא superuser. מנהל האשכול וסיסמאות bootstrap נשארים ב־db.env בלבד. האתר והעובד אינם בעלי סכמת היישום; רק התפעול מבצע DDL ושחזור. לעובד בעלות בסכמת pgboss בלבד. `production deploy` בונה, מפעיל מסד, עוצר אתר ועובד, מריץ שירות operations חד־פעמי (config, הרשאות, מיגרציות, החלת grants ואימות סודות), ורק אז מפעיל runtime. מיגרציה חדשה במסד קיים דורשת גיבוי מאומת מהיממה האחרונה שנקרא שוב באחסון; חיבור runtime פעיל עוצר אותה. כשל משאיר שירותים עצורים לטיפול. הפעלה ישירה של app אינה מבצעת מיגרציות.
 
-**מעבר מערכת קיימת:** משהים את טיימר הפריסה; משלימים את מעבר v2 להלן וגיבוי מאומת. עוצרים אתר ועובד ושומרים מחוץ לשרת את הגיבוי, היומן והתצורה התואמים. בכלי Docker של הגרסה החדשה, עם התצורה הישנה וספריית התצורה ממופה ל־/config, מריצים `pnpm security:configuration /config`. נדרשים `SECURITY_BACKUP_RUN_ID` ו־`SECURITY_CONVERSION_ACKNOWLEDGEMENT="services stopped and backup verified"`; הגודל וה־hash נבדקים שוב מול האחסון. הכלי יוצר app.next.env, db.next.env, worker.env ו־operations.env בלי לדרוס מקור. ציבוריים חייבים להימצא במפת DELETION_LOG_PUBLIC_KEYS; תצורת קובץ ציבורי ישנה יש להמיר למפה לפני הכלי. אינו מפרש משתני shell או מריץ תוכן env.
+**מעבר מערכת קיימת:** משהים את טיימר הפריסה; משלימים את מעבר v2 להלן וגיבוי מאומת. עוצרים אתר ועובד ושומרים מחוץ לשרת את הגיבוי, היומן והתצורה התואמים. בכלי Docker של הגרסה החדשה, עם התצורה הישנה וספריית התצורה ממופה ל־/config, מריצים `node scripts/run-command.mjs security:configuration /config`. נדרשים `SECURITY_BACKUP_RUN_ID` ו־`SECURITY_CONVERSION_ACKNOWLEDGEMENT="services stopped and backup verified"`; הגודל וה־hash נבדקים שוב מול האחסון. הכלי יוצר app.next.env, db.next.env, worker.env ו־operations.env בלי לדרוס מקור. ציבוריים חייבים להימצא במפת DELETION_LOG_PUBLIC_KEYS; תצורת קובץ ציבורי ישנה יש להמיר למפה לפני הכלי. אינו מפרש משתני shell או מריץ תוכן env.
 
 בודקים את הקבצים ומחליפים app/db בקבצים החדשים תוך שמירת עותקי ההתאוששות. יוצרים מחדש **רק את קונטיינר המסד, ללא מחיקת volume**, כדי שיקרא db.env ואת mounts של כלי ה־bootstrap. בתצורה קיימת ה־init אינו רץ שוב: מבצעים במפורש את המעבר הבא עם מנהל האשכול הקיים, כשהאתר והעובד עצורים:
 
@@ -25,15 +25,15 @@ sh scripts/production.sh health
 
 ## מעבר מבוקר לסודות וליומן גרסה 2 — #128
 
-בתצורה קיימת שעדיין אין בה מפתחות חתימה, יוצרים אותם בכלי Docker של הגרסה החדשה עם `pnpm security:keys /config`, כשספריית התצורה החיצונית ממופה ל־`/config` ובבעלות משתמש הכלי. הוא מסרב לדרוס קבצים קיימים ויוצר `worker-secrets.env` ו־`deletion-public-keys.env` בהרשאה 600, בלי להדפיס מפתח. מוסיפים את השורה הציבורית בלבד מ־`deletion-public-keys.env` ל־`app.env`; אין להוסיף לאתר את קובץ העובד. שומרים עותק התאוששות של הפרטי מחוץ לשרת ומאשרים אותו בקובץ העובד לפני המשך. אין להריץ init רגיל על תצורה קיימת. בזמן החלפת מפתח שומרים את הציבוריים ההיסטוריים במפה; כלי האתחול אינו כלי החלפת מפתחות.
+בתצורה קיימת שעדיין אין בה מפתחות חתימה, יוצרים אותם בכלי Docker של הגרסה החדשה עם `node scripts/run-command.mjs security:keys /config`, כשספריית התצורה החיצונית ממופה ל־`/config` ובבעלות משתמש הכלי. הוא מסרב לדרוס קבצים קיימים ויוצר `worker-secrets.env` ו־`deletion-public-keys.env` בהרשאה 600, בלי להדפיס מפתח. מוסיפים את השורה הציבורית בלבד מ־`deletion-public-keys.env` ל־`app.env`; אין להוסיף לאתר את קובץ העובד. שומרים עותק התאוששות של הפרטי מחוץ לשרת ומאשרים אותו בקובץ העובד לפני המשך. אין להריץ init רגיל על תצורה קיימת. בזמן החלפת מפתח שומרים את הציבוריים ההיסטוריים במפה; כלי האתחול אינו כלי החלפת מפתחות.
 
 סודות מייל ו־Calendar קשורים למטרה ולרשומה באמצעות AES-GCM/AAD עם תג מלא. האתר אינו קורא פורמט ישן. יומן המחיקות דורש Ed25519 עם `keyId`; גם שני עותקים זהים אינם מתקבלים בלי חתימה תקפה במפתח ציבורי מוכר. מצב העובד נבדק לפני תחילת עבודה, והאתר בודק את פורמט הסודות לפני פתיחה.
 
 בהקמה חדשה `production init` יוצר מפתח חתימה אקראי ב־`worker-secrets.env` בלבד ואת מפת הציבוריים ב־`app.env`. שמרו עותק התאוששות של הפרטי מחוץ לשרת, בדקו שניתן לקרוא אותו, ורק אז הגדירו `DELETION_LOG_KEY_RECOVERY_CONFIRMED=true`. הדגל הוא הצהרת מפעיל; אין בדיקה אוטומטית למיקום העותק החיצוני. מפתח פרטי אינו מגיע לאתר. בהחלפת מפתח מוסיפים את הציבורי החדש בלי להסיר ציבוריים המאמתים היסטוריה ישנה. גם בפיתוח יומן אינו נחתם בלי מפתח שהוגדר במפורש; אין מפתח קבוע במאגר.
 
-במערכת קיימת: לפני המעבר בצעו גיבוי מאומת, ושמרו בנפרד שני עותקים מאומתים של היומן הישן ואת התצורה. עצרו אתר ועובד. בכלי Docker בלבד הגדירו `SECURITY_BACKUP_RUN_ID` של גיבוי מהיממה האחרונה ו־`SECURITY_CONVERSION_ACKNOWLEDGEMENT="services stopped and backup verified"`. הכלים בודקים שוב שהגיבוי קיים באחסון וגודלו ו־hash תואמים. הריצו `pnpm security:secrets convert`, אחריו `pnpm security:secrets verify`; ההסבה אטומית וניתנת להרצה חוזרת, ו־v2 קיים נבדק ולא נכתב מחדש.
+במערכת קיימת: לפני המעבר בצעו גיבוי מאומת, ושמרו בנפרד שני עותקים מאומתים של היומן הישן ואת התצורה. עצרו אתר ועובד. בכלי Docker בלבד הגדירו `SECURITY_BACKUP_RUN_ID` של גיבוי מהיממה האחרונה ו־`SECURITY_CONVERSION_ACKNOWLEDGEMENT="services stopped and backup verified"`. הכלים בודקים שוב שהגיבוי קיים באחסון וגודלו ו־hash תואמים. הריצו `node scripts/run-command.mjs security:secrets convert`, אחריו `node scripts/run-command.mjs security:secrets verify`; ההסבה אטומית וניתנת להרצה חוזרת, ו־v2 קיים נבדק ולא נכתב מחדש.
 
-ליומן ישן הריצו `pnpm security:log convert` בכלי תפעולי שקיבל זמנית את מפתח החתימה של העובד, ציבוריים, תיקיית היומן ומתאם האחסון. הסבה מחייבת עותקים זהים, שרשרת v1 תקינה, ראש מסד תואם וללא מחיקה חסרה. אין להפעיל מחדש אתר או עובד לפני `pnpm security:log verify` והשלמת ההסבה. כשל באמצע החלפת העותקים עוצר שימוש; כשהשירותים עדיין עצורים, מחזירים **את שני העותקים המאומתים מלפני ההסבה** ואת מצב המסד התואם מהגיבוי, ואז מנסים שוב. אין לבחור עותק שאינו מאומת או להחליף ראש במסד כדי להשתיק שגיאה. לא להסב בזמן שעובד פועל.
+ליומן ישן הריצו `node scripts/run-command.mjs security:log convert` בכלי תפעולי שקיבל זמנית את מפתח החתימה של העובד, ציבוריים, תיקיית היומן ומתאם האחסון. הסבה מחייבת עותקים זהים, שרשרת v1 תקינה, ראש מסד תואם וללא מחיקה חסרה. אין להפעיל מחדש אתר או עובד לפני `node scripts/run-command.mjs security:log verify` והשלמת ההסבה. כשל באמצע החלפת העותקים עוצר שימוש; כשהשירותים עדיין עצורים, מחזירים **את שני העותקים המאומתים מלפני ההסבה** ואת מצב המסד התואם מהגיבוי, ואז מנסים שוב. אין לבחור עותק שאינו מאומת או להחליף ראש במסד כדי להשתיק שגיאה. לא להסב בזמן שעובד פועל.
 
 חזרה מותרת רק לתמונה שתומכת בסודות וביומן v2 ובציבוריים ההיסטוריים. אין חזרה לקורא ללא חתימה או ללא AAD; במקרה שאין תמונה תואמת נשארים עצורים ומבצעים התאוששות מבודדת. אחרי המעבר בודקים staging סינתטי: כניסה, שינוי מייל, Calendar, גיבוי ומחיקה/שחזור. בדיקות Docker אינן ראיה לתרגיל זה. חתימה אינה מגינה מהשתלטות על עובד ומפתח יחד, ואינה מוכיחה ששני עותקים חתומים ישנים לא הוחזרו לאחור.
 
@@ -51,18 +51,18 @@ sh scripts/production.sh health
 
 בתיקון אבטחה #124 נוספו מיגרציה `0013_auth_protection`, מצב OTP מתמיד ומכסות יום. לפני מיגרציה על מסד שאינו בדיקות נדרש גיבוי מאומת לפי הנוהל שבהמשך. אין שינוי בסודות הנדרשים. `TRUST_CLOUDFLARE_IP=true` מתאים רק ל־staging/production כשהאתר נגיש בלעדית דרך Tunnel וה־Compose אינו חושף פורט אתר; בכותרת לקוח בכניסה ישירה לא נותנים אמון. בהיעדר אמון, הבקשות הישירות חולקות מונה אחד, ולכן יש לוודא זאת לפני שימוש של כל היחידה. `MAIL_QUOTA_TIME_ZONE` קובע גם את יום מכסת הנפקת הקודים וניסיונות מסירתם. חזרה לגרסה מחייבת תמונת יישום תואמת המכילה את מדיניות השריפה והמכסות, בלי מחיקת טבלאות המונים ובלי איפוסן; החזרה לקוד הנעילה הישן אינה מסלול חזרה מאושר. לא בוצעה פריסה או בדיקת Tunnel חי בסשן המימוש.
 
-| קובץ                                | תפקיד                                                                                                                  |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `compose.production.yaml`           | ההפעלה: מסד, אתר, עובד ו־cloudflared. נפרד מ־`compose.yaml` של הפיתוח, שכולל סודות סינתטיים ואסור לחשוף אותו לאינטרנט. |
-| `scripts/production.sh`             | עטיפה ל־Compose: `init`, `deploy`, `health` וכל פקודת Compose אחרת (`ps`, `logs`, `stop`, `down`).                     |
-| `scripts/init-production-config.ts` | יוצר את קובצי התצורה עם סודות אקראיים. רץ בתוך תמונת היישום, ואינו דורס קבצים קיימים.                                  |
-| `scripts/check-config.ts`           | בודק את המשתנים לפני מיגרציה ולפני עליית האתר או העובד. שגיאה עוצרת את הקונטיינר; ההודעות מציינות שם משתנה בלי ערך.    |
-| `scripts/production-smoke.sh`       | בדיקת התצורה ב־Docker עם נתונים וסודות סינתטיים (פירוט בהמשך). רצה גם ב־CI.                                            |
-| `scripts/auto-deploy.sh`            | פריסה אוטומטית של main אחרי שהבדיקות עברו, מטיימר systemd (`scripts/systemd`). פירוט בהמשך.                            |
-| `scripts/restore.ts`                | שחזור מבודד מגיבוי, תרגיל רבעוני והחלפת המסד החי (`pnpm restore`). פירוט בסעיף ״שחזור מבודד ותרגיל רבעוני״.            |
-| `scripts/technical-email.ts`        | החלפת כתובת המנהל הטכני דרך השרת כשאין גישה לכתובת הנוכחית (`pnpm technical-email`). פירוט בסעיף ״סביבת ה־staging״.    |
-| `scripts/calendar-recover.ts`       | התאוששות מיצירת יומן שתוצאתה אינה ידועה, עם אימות מזהה קיים או אישור מפורש לנסות שוב.                                  |
-| `/api/health`                       | מוכנות ציבורית בסיסית בלבד. פירוט גרסה/עובד זמין לטכני ולפקודת Docker בשרת.                                            |
+| קובץ                                | תפקיד                                                                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compose.production.yaml`           | ההפעלה: מסד, אתר, עובד ו־cloudflared. נפרד מ־`compose.yaml` של הפיתוח, שכולל סודות סינתטיים ואסור לחשוף אותו לאינטרנט.                      |
+| `scripts/production.sh`             | עטיפה ל־Compose: `init`, `deploy`, `health` וכל פקודת Compose אחרת (`ps`, `logs`, `stop`, `down`).                                          |
+| `scripts/init-production-config.ts` | יוצר את קובצי התצורה עם סודות אקראיים. רץ בתוך תמונת היישום, ואינו דורס קבצים קיימים.                                                       |
+| `scripts/check-config.ts`           | בודק את המשתנים לפני מיגרציה ולפני עליית האתר או העובד. שגיאה עוצרת את הקונטיינר; ההודעות מציינות שם משתנה בלי ערך.                         |
+| `scripts/production-smoke.sh`       | בדיקת התצורה ב־Docker עם נתונים וסודות סינתטיים (פירוט בהמשך). רצה גם ב־CI.                                                                 |
+| `scripts/auto-deploy.sh`            | פריסה אוטומטית של main אחרי שהבדיקות עברו, מטיימר systemd (`scripts/systemd`). פירוט בהמשך.                                                 |
+| `scripts/restore.ts`                | שחזור מבודד מגיבוי, תרגיל רבעוני והחלפת המסד החי (`node scripts/run-command.mjs restore`). פירוט בסעיף ״שחזור מבודד ותרגיל רבעוני״.         |
+| `scripts/technical-email.ts`        | החלפת כתובת המנהל הטכני דרך השרת כשאין גישה לכתובת הנוכחית (`node scripts/run-command.mjs technical-email`). פירוט בסעיף ״סביבת ה־staging״. |
+| `scripts/calendar-recover.ts`       | התאוששות מיצירת יומן שתוצאתה אינה ידועה, עם אימות מזהה קיים או אישור מפורש לנסות שוב.                                                       |
+| `/api/health`                       | מוכנות ציבורית בסיסית בלבד. פירוט גרסה/עובד זמין לטכני ולפקודת Docker בשרת.                                                                 |
 
 ## מבנה ההפעלה
 
@@ -70,7 +70,7 @@ sh scripts/production.sh health
 - **app** — Next.js במצב production. בכל עלייה נבדקים תצורה, הרשאות ופורמט סודות. מיגרציות רצות לפניו בשירות operations בלבד. גם לו אין פורט פתוח; הגישה אליו עוברת רק דרך cloudflared ברשת הפנימית של Compose.
 - **worker** — אותה תמונה ואותה גרסה של האתר. הוא עולה רק אחרי שהאתר תקין, כלומר אחרי המיגרציות. כל דקה הוא רושם פעימה במסד ובקובץ שבודקת בדיקת הבריאות של הקונטיינר.
 - **נפח `deletion-log`** — נפח נפרד שהעובד כותב אליו את יומן המחיקות העצמאי (בסעיף הבא). הוא אינו חלק מהמסד ולא מהגיבויים, ואסור למחוק אותו: `down --volumes` מוחק גם אותו.
-- **cloudflared** — `cloudflare/cloudflared:2026.9.3`, בחיבור יוצא בלבד. אין צורך לפתוח פורטים נכנסים בחומת האש.
+- **cloudflared** — בינארי רשמי 2026.10.0 נעול ב־Dockerfile.tunnel ובסיס Alpine מצומצם, בחיבור יוצא בלבד. אין צורך לפתוח פורטים נכנסים בחומת האש.
 
 לכל השירותים `restart: unless-stopped`, ‏`init` שמעביר אותות וזמן חסד לעצירה: 30 שניות לאתר ולעובד ו־60 למסד. היומנים מוגבלים ל־5 קבצים של 10MB לכל שירות. האתר והעובד רצים כמשתמש שאינו root.
 
@@ -192,19 +192,19 @@ rm /opt/fair-shifts/deploy-state/stopped            # retry a stopped commit, e.
 cd /opt/fair-shifts/app
 sh scripts/production.sh exec -T -e TECHNICAL_EMAIL=<address> -e TECHNICAL_NAME="Technical admin" \
   -e MANAGER_EMAIL=<address> -e MANAGER_NAME="Test manager" -e MANAGER_PERSONAL_NUMBER=0000001 \
-  app node_modules/.bin/tsx scripts/bootstrap.ts
+  app node scripts/run-runtime.mjs scripts/bootstrap.ts
 ```
 
-- **קודי שחזור חדשים לטכני:** `production.sh exec -T -e RECOVERY_EMAIL=<address> -e RECOVERY_REASON="<reason>" app node_modules/.bin/tsx scripts/recover.ts`.
+- **קודי שחזור חדשים לטכני:** `production.sh exec -T -e RECOVERY_EMAIL=<address> -e RECOVERY_REASON="<reason>" app node scripts/run-runtime.mjs scripts/recover.ts`.
 - **החלפת כתובת המנהל הטכני (#90, הכרעה 204):** בדרך כלל באתר, במסך ״החשבון שלי״ של הטכני: נשלחים שני קודים, אחד לכל כתובת. כשאין גישה לכתובת הנוכחית (למשל הטכני עזב), מי שיש לו גישה לשרת מריץ שתי פקודות. הראשונה שולחת קוד לכתובת החדשה בלבד, והמייל יוצא מהעובד, ולכן הוא חייב לרוץ:
 
 ```sh
 cd /opt/fair-shifts/app
 sh scripts/production.sh exec -T -e TECHNICAL_CURRENT_EMAIL=<current address> -e TECHNICAL_NEW_EMAIL=<new address> \
-  -e TECHNICAL_CHANGE_REASON="<reason, at least 5 characters>" app node_modules/.bin/tsx scripts/technical-email.ts request
+  -e TECHNICAL_CHANGE_REASON="<reason, at least 5 characters>" app node scripts/run-runtime.mjs scripts/technical-email.ts request
 # the code arrives at the new address and is valid for 10 minutes; then:
 sh scripts/production.sh exec -T -e TECHNICAL_CURRENT_EMAIL=<current address> -e TECHNICAL_CHANGE_CODE=<code> \
-  app node_modules/.bin/tsx scripts/technical-email.ts confirm
+  app node scripts/run-runtime.mjs scripts/technical-email.ts confirm
 ```
 
 אחרי האישור: ההחלפה מבטלת את כל החיבורים של החשבון ואת קישור Google, מבטלת את קודי השחזור הישנים ומדפיסה קודים חדשים פעם אחת, שנשמרים מחוץ למאגר. היא אינה משחררת חשבון נעול (`recover`), וכתובת לבדיקות שמורה (הכרעה 190) אינה מקבלת מייל. אחרי ההחלפה נכנסים עם הכתובת החדשה, בקוד או ב־Google. אותה פקודה מעבירה את החשבון הטכני של ה־staging לחשבון הייעודי של הפרויקט.
@@ -227,7 +227,7 @@ sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tool
 
 `GET /api/health` ציבורי מחזיר רק `{"status":"ok"}` או `{"status":"unavailable"}`. הוא בודק זמינות מסד; מצב עובד או גרסה אינם נחשפים. התשובה היא 503 רק כשהמסד אינו זמין ו־200 אחרת, גם כשהעובד מתעכב; `Cache-Control: no-store` מונע שימוש בתשובה שמורה.
 
-הפירוט זמין במסך ״תמונת מצב״ למנהל הטכני בלבד ובפקודת שרת `sh scripts/production.sh health` (מריצה `pnpm system:health` ב־Docker). הפירוט כולל `status`, ‏`version`, ‏`checkedAt`, ‏`database` ו־`worker`; בתוך `worker`: ‏`status`, ‏`lastBeatAt`, ‏`lastSuccessAt`, ‏`version` ו־`sameVersion`. פריסה אוטומטית ובדיקת ההפעלה קוראות את פקודת השרת לצורך התאמת גרסאות ופעימות. אין בפירוט מידע אישי.
+הפירוט זמין במסך ״תמונת מצב״ למנהל הטכני בלבד ובפקודת שרת `sh scripts/production.sh health` (מריצה `node scripts/run-command.mjs system:health` ב־Docker). הפירוט כולל `status`, ‏`version`, ‏`checkedAt`, ‏`database` ו־`worker`; בתוך `worker`: ‏`status`, ‏`lastBeatAt`, ‏`lastSuccessAt`, ‏`version` ו־`sameVersion`. פריסה אוטומטית ובדיקת ההפעלה קוראות את פקודת השרת לצורך התאמת גרסאות ופעימות. אין בפירוט מידע אישי.
 
 | מצב העובד | משמעות                                                                  |
 | --------- | ----------------------------------------------------------------------- |
@@ -325,9 +325,9 @@ sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && 
 ```sh
 export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
 # 1. Read only: is the log whole, do its copies agree, does the database know anything it lacks?
-sh scripts/production.sh run --rm --no-deps worker node_modules/.bin/tsx scripts/deletion-log.ts verify
+sh scripts/production.sh run --rm --no-deps worker node scripts/run-runtime.mjs scripts/deletion-log.ts verify
 # 2. Verify again and apply the deletions the restored database does not show yet.
-sh scripts/production.sh run --rm --no-deps worker node_modules/.bin/tsx scripts/deletion-log.ts apply
+sh scripts/production.sh run --rm --no-deps worker node scripts/run-runtime.mjs scripts/deletion-log.ts apply
 ```
 
 - `verify` מדפיס מצב כל עותק (מקומי ובאחסון), את הסיבות לאי־אימות ואזהרות (עותק שחסר או מפגר). קוד יציאה 0 רק כשהיומן מאומת.
@@ -338,7 +338,7 @@ sh scripts/production.sh run --rm --no-deps worker node_modules/.bin/tsx scripts
 DELETION_LOG_REASON="no log copy exists; deletions since the backup were checked by hand" \
 DELETION_LOG_ACKNOWLEDGE="deleted data may return" \
 sh scripts/production.sh run --rm --no-deps -e DELETION_LOG_REASON -e DELETION_LOG_ACKNOWLEDGE \
-  worker node_modules/.bin/tsx scripts/deletion-log.ts acknowledge
+  worker node scripts/run-runtime.mjs scripts/deletion-log.ts acknowledge
 ```
 
 הפקודה נרשמת ביומן הפעולות עם הסיבה ועם סיבות אי־האימות, והאחראים מקבלים הודעה שמידע שנמחק עלול לחזור. היא אינה מחילה מחיקות: מחיקות שנעשו אחרי הגיבוי ואינן ביומן חוזרות על ידי אחראי.
@@ -352,7 +352,7 @@ sh scripts/production.sh run --rm --no-deps -e DELETION_LOG_REASON -e DELETION_L
 ```sh
 # All commands run in a one-off worker container; the database must be up.
 export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
-fsr() { sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts "$@"; }
+fsr() { sh scripts/production.sh --profile operations run --rm --no-deps -T operations node scripts/run-runtime.mjs scripts/restore.ts "$@"; }
 fsr list                      # the encrypted backups in the storage; before-update marks the one taken before a migration
 fsr fetch > backup.dump.age   # newest verified backup (or --backup <name>) to the standard output
 fsr drill ...                 # restore into <database>_drill, check, report, drop it
@@ -388,9 +388,9 @@ fsr promote                   # swap it in place of the live database (site and 
 
 ```sh
 # On the technical admin's computer. <name> is a file name from "restore list".
-ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts fetch --backup <name>' > backup.dump.age
+ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node scripts/run-runtime.mjs scripts/restore.ts fetch --backup <name>' > backup.dump.age
 age --decrypt -i ~/fair-shifts-backup.key backup.dump.age |
-  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts drill --dump - --point <name>'
+  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node scripts/run-runtime.mjs scripts/restore.ts drill --dump - --point <name>'
 ```
 
 אפשר גם להוריד את הקובץ ידנית מ־Drive (החשבון הייעודי מציג את הקבצים שהיישום יצר), או להשתמש ב־`--file` וב־`--identity` כשהטכני בוחר להניח מפתח זמני בשרת: הקבצים צריכים להיות מחוברים לקונטיינר של הריצה (`run -v <path>:/run/identity:ro`, ו־`--identity /run/identity`), ולהימחק אחריה. בלי `--dump`, `--file` או גיבוי מוגדר ב־Drive, הפקודה מסרבת.
@@ -417,7 +417,7 @@ export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
 sh scripts/production.sh stop app worker
 # On the technical admin's computer: decrypt, and pipe the plaintext into the restore.
 age --decrypt -i ~/fair-shifts-backup.key backup.dump.age |
-  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node_modules/.bin/tsx scripts/restore.ts restore --dump - --point <name>'
+  ssh server 'cd /opt/fair-shifts/app && FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config sh scripts/production.sh --profile operations run --rm --no-deps -T operations node scripts/run-runtime.mjs scripts/restore.ts restore --dump - --point <name>'
 # On the server: swap it in, start, check.
 fsr promote                                           # renames the live database aside, the copy into its place
 sh scripts/production.sh up -d --wait --no-build app worker
@@ -524,14 +524,14 @@ sh scripts/production.sh run --rm --no-deps \
   -e CALENDAR_ACCOUNT_ID="<internal-account-id>" \
   -e CALENDAR_CREATED_ID="<verified-app-created-calendar-id>" \
   -e CALENDAR_RECOVERY_REASON="<reason, at least 5 characters>" \
-  app node_modules/.bin/tsx scripts/calendar-recover.ts adopt
+  app node scripts/run-runtime.mjs scripts/calendar-recover.ts adopt
 
 # Only after checking that no calendar was created; this permits a new create attempt.
 sh scripts/production.sh run --rm --no-deps \
   -e CALENDAR_ACCOUNT_ID="<internal-account-id>" \
   -e CALENDAR_RECOVERY_REASON="<reason, at least 5 characters>" \
   -e CALENDAR_RECOVERY_ACKNOWLEDGE="no calendar was created" \
-  app node_modules/.bin/tsx scripts/calendar-recover.ts retry
+  app node scripts/run-runtime.mjs scripts/calendar-recover.ts retry
 ```
 
 ממתינים לסיום חכירת העובד (עד חמש דקות) לפני הטיפול. בהחלפת כתובת מייל מוסרים האסימון וקישורי היומן הישן, ומנסים להסיר אירועים עתידיים ולבטל הרשאה אחרי העסקה. מיגרציה 0012 מנקה גם אסימוני Google לא מוצפנים שנשמרו בגרסאות הקודמות; הרשאת יומן חדשה מתקבלת בכניסה ב־Google.
@@ -550,3 +550,17 @@ sh scripts/production-smoke.sh
 - staging (#25), כניסת Google (#26) ו־Brevo (#28) נבדקו בחשבונות בדיקה, והתוצאות מתועדות בכרטיסים. חריגה מהמכסה של הספק נבדקה רק ב־Docker.
 - הגיבוי נבדק מול Drive אמיתי ב־01.10.2026 (ראו "חיבור Drive וחידוש הרשאה"), חוץ מנפח שנגמר באמת. עדיין לא נבדקו: עותק יומן המחיקות ב־Drive, שנוצר רק עם המחיקה הראשונה, ושחזור מבודד מגיבוי שהורד מ־Drive אמיתי (#37). השחזור המבודד, הבדיקות, החלפת המסד והתרגיל נבדקו ב־Docker מול מסד ואחסון תיקייה (#35); נוהל החזרה אחרי מיגרציה שנכשלה טרם הודגם בשרת.
 - פריסה אוטומטית (#36): רצה בשרת, ותקלה וחזרה הודגמו שם ב־30.09.2026. הגיבוי לפני מיגרציה נבדק ב־Docker בלבד (`scripts/auto-deploy-test.sh` ו־`tests/integration/backup.test.ts`), הגיבוי ב־staging מחובר ל־Drive מ־01.10.2026, ולכן ההדגמה בשרת תהיה במיזוג הראשון שמשנה את המסד. נוהל שחזור אחרי מיגרציה שנכשלה שייך ל־#35.
+
+## שרשרת אספקה וסקירת חריגה — #131
+
+סריקה: sh scripts/security-scan.sh על checkout מלא; כל הסורקים והאימות רצים ב־Docker. נסרקים pnpm audit, כל תלויות הפיתוח והייצור ב־Trivy, והתמונות הסופיות של האתר/העובד/התפעול, PostgreSQL ו־Tunnel. security-reports/ אינו נכנס ל־Git; ב־CI נשמר 30 יום עם commit ומזהי התמונות. High/Critical, שגיאת סורק, דוח חסר או אישור חריגה חסר חוסמים verify. תמונת הייצור אינה כוללת npm/pnpm או קומפיילר TS; פקודות הריצה הן node scripts/run-runtime.mjs scripts/<name>.ts או node scripts/run-command.mjs <command>. בפיתוח נשאר pnpm דרך Docker.
+
+ב־config/security-exceptions.json כל חריגה ממוקדת למזהה, חבילה, גרסה והיקף, עם נימוק ותפוגה של עד 30 יום. patch חייב להתאים ל־SHA256 שאושר. review:null הוא הצעה ללא אישור. המפתח השני צריך לסקור ולאשר את ראש ה־PR הנוכחי; לאחר האישור מריצים מחדש את verify ללא push נוסף. השער קורא אישור GitHub אמיתי ממפתח בעל write שאינו המחבר, ומוודא שהתוכן זהה ב־commit שאושר. אישור לדחיפה ישנה או מבוטל אינו מספיק. אחרי מיזוג ניתן להצמיד מזהי PR/review/commit של אישור שנשאר תקף. ב־push חדש נדרש אישור חדש; אין לעקוף את ההגנה. חריגות braces הנוכחיות אושרו ב־PR #143 (review 5457387337 של IshaiZigdon על edb392e), והאישור הוצמד בקובץ אחרי המיזוג, כך ש־PR אחר אינו צריך אישור משלו כדי לעבור את השער. הן פגות 22.10.2026 וכוללות הגבלת עומק מקומית שנבדקה מול השחזור. אין טענה לשחרור upstream מתוקן.
+
+### מעבר תמונת מסד קיימת לבסיס Alpine
+
+למערכת חדשה ההקמה רגילה. במסד קיים אין להחליף בסיס libc ולעלות על נפח הנתונים הפיזי הישן, גם כשהגרסה היא PostgreSQL 18.6. ה־entrypoint החדש מסרב לנפח לא מסומן שיש בו PG_VERSION. לפני המעבר משהים פריסה, יוצרים ומאמתים גיבוי לוגי מוצפן בגרסה הישנה, מאמתים שני עותקי יומן ועותק מפתח חיצוני, ומשלימים תרגיל שחזור. עוצרים את השירותים; שומרים את נפח המסד המקורי ואת תמונת הגרסה הישנה. מפעילים את הגרסה החדשה מול נפח postgres-data חדש וריק דרך Compose נפרד, מפעילים operations ומבצעים restore מן הגיבוי המאומת לפי הנוהל לעיל. אין להעתיק את PGDATA הישן ואין ליצור marker ידנית. בודקים כניסה, מייל, Calendar, גיבוי ושחזור ב־staging סינתטי לפני ניתוב התנועה. חזרה: מחזירים את הגרסה ואת נפח המסד המקוריים כשהשירותים עצורים; הנתונים שנוצרו אחרי ההחלפה אינם חוזרים אוטומטית. אין כרגע ראיה למעבר בשרת חי.
+
+תמונת PostgreSQL הסופית משתמשת ב־su-exec 0.3 במקום gosu ובאותו entrypoint רשמי. תמונת Tunnel משמרת את הבינארי הרשמי המדויק, שנבנה עם CGO_ENABLED=0, בתוך Alpine עם תעודות CA, UID/GID 65532 ו־no-autoupdate. גם OS וגם בינארי Go נשארים בסריקה. בדיקת version ללא אסימון אינה הוכחה לחיבור Tunnel חי. [מקור cloudflared](https://github.com/cloudflare/cloudflared/blob/2026.10.0/Dockerfile), [חלופת su-exec הרשמית](https://github.com/tianon/gosu#su-exec).
+
+בדיקת deploy קוראת תחילה את label של קונטיינר המסד הקיים. בסיס שאינו alpine-pg18-v1 נעצר לפני build/stop/up, ומשאיר את השירותים הישנים פועלים; הפעילו את המעבר הלוגי בסביבת Compose חדשה עם נפח ריק. בנוסף ה־entrypoint מסרב ל־PG_VERSION בנפח לא מסומן. תיקיית cache של הסורק צריכה להיות בבעלות המשתמש המפעיל; Docker מריץ Trivy באותו UID/GID ובנתיב /cache כדי לעבוד גם ב־Linux עם cap-drop ALL. אין צורך במתן DAC_OVERRIDE או הרשאות root לסורק.

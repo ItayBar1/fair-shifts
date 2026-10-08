@@ -9,6 +9,8 @@ node_modules
 coverage
 test-results
 playwright-report
+security-reports
+runtime
 backups
 *.tsbuildinfo
 .claude

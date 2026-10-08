@@ -1,0 +1,10 @@
+FROM cloudflare/cloudflared:2026.10.0@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07 AS upstream
+# Upstream builds with CGO_ENABLED=0. Keep its exact binary and CA trust while
+# removing unused OpenSSL/glibc libraries from the production tunnel runtime.
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+RUN apk add --no-cache ca-certificates \
+    && addgroup -g 65532 cloudflared && adduser -D -u 65532 -G cloudflared cloudflared
+COPY --from=upstream /usr/local/bin/cloudflared /usr/local/bin/cloudflared
+USER 65532:65532
+ENTRYPOINT ["cloudflared", "--no-autoupdate"]
+CMD ["version"]
