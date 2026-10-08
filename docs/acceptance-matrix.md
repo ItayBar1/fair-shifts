@@ -582,6 +582,7 @@
 
 ### 34. התאוששות משליחה ומגיבוי — הודעות ותיעוד; תפעול — מכוסה
 
+- [deployment-preflight.test.ts](../tests/unit/deployment-preflight.test.ts): `rejects missing runtime or operations env files`; `rejects invalid configuration for each service`; `checks all three service configurations`
 - [database-permissions.test.ts](../tests/integration/database-permissions.test.ts): `verifies real non-superuser logins`; `lets pg-boss initialize and work only`
 - [auth.test.ts](../tests/integration/auth.test.ts): `shows worker backup presence to the site`
 - [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `retries with growing delays, then fails visibly while the site notice stays`

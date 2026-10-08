@@ -36,10 +36,18 @@ echo "${APP_VERSION:-} $*" >>"$STUB/calls"
 case "$1" in
   deploy)
     version=$(git -C "$STUB/host" rev-parse --short=12 HEAD)
+    [ ! -e "$STUB/fail-preflight" ] || exit 78
+    if [ -e "$STUB/change-config-on-failure" ]; then
+      echo incompatible >"$FAIR_SHIFTS_CONFIG_DIR/compatibility"
+    fi
     [ ! -e "$STUB/fail-deploy" ] || exit 1
     echo "$version" >"$STUB/running" ;;
   up)
     [ ! -e "$STUB/fail-up" ] || exit 1
+    if [ -e "$STUB/require-legacy-context" ]; then
+      [ "$(cat "$(dirname "$0")/../compatibility")" = legacy ] || exit 1
+      [ "$(cat "$FAIR_SHIFTS_CONFIG_DIR/compatibility")" = legacy ] || exit 1
+    fi
     echo "$APP_VERSION" >"$STUB/running" ;;
   health)
     version=$(cat "$STUB/running")
@@ -59,7 +67,7 @@ esac
 EOF
 chmod +x "$work/bin/curl"
 export STUB="$work" PATH="$work/bin:$PATH"
-export FAIR_SHIFTS_PRODUCTION_SCRIPT="$work/production.sh"
+unset FAIR_SHIFTS_PRODUCTION_SCRIPT
 export FAIR_SHIFTS_STATE_DIR="$work/state" FAIR_SHIFTS_CONFIG_DIR="$work/config"
 export FAIR_SHIFTS_HEALTH_TRIES=2 FAIR_SHIFTS_HEALTH_WAIT=0
 configure() {
@@ -71,8 +79,12 @@ configure staging
 git init -q --bare -b main "$work/origin.git"
 git clone -q "$work/origin.git" "$work/seed" 2>/dev/null
 git -C "$work/seed" symbolic-ref HEAD refs/heads/main
-mkdir -p "$work/seed/scripts" "$work/seed/drizzle"
+mkdir -p "$work/seed/scripts" "$work/seed/drizzle" "$work/seed/config/memory"
+echo synthetic >"$work/seed/config/memory/state.md"
 cp "$source_script" "$work/seed/scripts/auto-deploy.sh"
+cp "$work/production.sh" "$work/seed/scripts/production.sh"
+echo legacy >"$work/seed/compatibility"
+echo legacy >"$work/config/compatibility"
 echo "-- 0000" >"$work/seed/drizzle/0000_initial.sql"
 git -C "$work/seed" add -A
 git -C "$work/seed" commit -q -m initial
@@ -159,14 +171,21 @@ expect_status 0 "בדיקות נכשלו, סבב שני"
 [ ! -s "$work/curl-calls" ] || fail "בדיקות נכשלו: אותו commit נבדק שוב"
 
 step 'פריסה שנכשלה בלי שינוי מסד: חזרה לגרסה הקודמת'
+echo incompatible >"$work/seed/compatibility"
 fourth=$(push fourth)
 ci "$fourth" success
 touch "$work/fail-deploy"
+touch "$work/require-legacy-context" "$work/change-config-on-failure"
 tick
-rm "$work/fail-deploy"
+rm "$work/fail-deploy" "$work/require-legacy-context" "$work/change-config-on-failure"
 expect_status 1 "פריסה נכשלה"
 expect_call "^$(short "$second") up -d --wait --no-build" "פריסה נכשלה: חזרה"
 expect_running "$second" "פריסה נכשלה"
+expect_output "is live again" "פריסה נכשלה: תצורה וקוד קודמים"
+retained=$(cat "$work/state/rollback-context")
+[ -f "$retained/source/compatibility" ] || fail "rollback context disappeared after exit"
+[ "$(cat "$retained/configuration/compatibility")" = legacy ] || fail "rollback configuration was not preserved"
+echo legacy >"$work/config/compatibility"
 [ "$(cat "$work/state/stopped")" = "$fourth" ] || fail "פריסה נכשלה: לא נרשמה עצירה"
 tick
 expect_status 0 "פריסה נכשלה, סבב שני"
@@ -176,10 +195,28 @@ step 'בריאות לא תקינה אחרי פריסה: חזרה לגרסה הק
 fifth=$(push fifth)
 ci "$fifth" success
 touch "$work/unhealthy-$(git -C "$work/seed" rev-parse --short=12 HEAD)"
+echo incompatible >"$work/config/compatibility"
+touch "$work/require-legacy-context"
 tick
+rm "$work/require-legacy-context"
+echo legacy >"$work/config/compatibility"
 expect_status 1 "בריאות לא תקינה"
 expect_call "deploy" "בריאות לא תקינה"
 expect_running "$second" "בריאות לא תקינה"
+[ ! -d "$retained" ] || fail "the previous context was retained after a healthy replacement rollback"
+retained=$(cat "$work/state/rollback-context")
+
+step 'בדיקת קדם שנכשלה: הגרסה הפעילה אינה מוחלפת או מופעלת מחדש'
+preflight=$(push preflight)
+ci "$preflight" success
+touch "$work/fail-preflight"
+tick
+rm "$work/fail-preflight"
+expect_status 1 "preflight rejected"
+expect_running "$second" "preflight rejected"
+if grep -q " up " "$work/calls"; then fail "preflight restarted the live deployment"; fi
+expect_output "preflight failed; live services were not changed" "preflight rejected"
+[ -d "$retained" ] || fail "preflight removed the active rollback context"
 
 step 'שינוי מסד ב־staging בלי גיבוי: פורסים ומציינים זאת'
 sixth=$(push sixth 0001_change)
@@ -187,6 +224,8 @@ ci "$sixth" success
 tick
 expect_status 0 "מיגרציה ב־staging"
 expect_running "$sixth" "מיגרציה ב־staging"
+[ ! -e "$work/state/rollback-context" ] || fail "healthy new deployment left a stale context pointer"
+[ ! -d "$retained" ] || fail "healthy new deployment did not clean the old private context"
 expect_output "staging without backups" "מיגרציה ב־staging"
 
 step 'פריסה שנכשלה אחרי שינוי מסד: אין חזרה אוטומטית'
@@ -201,6 +240,8 @@ expect_output "no automatic rollback" "מיגרציה נכשלה"
 
 step 'שינוי מסד כשהגיבוי מוגדר: גיבוי מאומת בגרסה הפעילה ואז פריסה'
 configure staging drive
+cp "$work/config/worker.env" "$work/config/app.env"
+rm "$work/config/worker.env"
 live=$(running)
 eighth=$(push eighth 0003_change)
 ci "$eighth" success
