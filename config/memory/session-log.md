@@ -1,5 +1,9 @@
 # יומן סשנים
 
+## 08.10.2026 — בדיקות מסד וגיבוי לסירוגין (#155)
+
+`backup.test.ts`: הבדיקה של backup-before-deploy מריצה את מחזור הגיבוי חמש שניות קדימה, כי `next_attempt_at` בשעון המסד (מיקרו־שניות) עלול להיות מאוחר מ־`new Date()`; 3 הרצות רצופות עברו. `database-permissions.test.ts`: לפני ה־bootstrap הבדיקה מחכה עד 30 שניות שחיבורים סרק מקבצים קודמים ייסגרו (node-postgres סוגר אחרי 10 שניות), ומנסה שוב רק על "Stop site and worker"; בלי pg_terminate_backend, כי ה־pool המשותף ב־`src/server/db.ts` נשמר ב־globalThis ואין לו מאזין error. נמצא גם: הבדיקה "refuses runtime migration…" נכשלת כשהקובץ רץ לבדו גם ב־main ("The verified backup is missing or changed in storage") ועוברת בסוויטה המלאה — תלות סדר נפרדת, תועדה ב־#155 ולא תוקנה כאן.
+
 ## 08.10.2026 — CI של #148 נכשל בשער האבטחה
 
 הכשל אינו בקוד הרידיזיין: מיזוג main (#143) הכניס את שער שרשרת האספקה, ועם `review:null` הוא דורש אישור על ראש ה־PR. המשתמש בחר בהצמדת האישור הקיים של #143; ‏#150 עבר כי ענף הבסיס שלו עוד לא כלל את השער. נבדק מול סכמת `verifyExceptionReviews`: מצב APPROVED על edb392e, אינו המחבר, האחרון של המאשר, הרשאת write, ואותן חריגות בקובץ באותו commit.
