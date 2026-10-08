@@ -23,12 +23,12 @@ case "${1:-}" in
     shift
     mkdir -p "$FAIR_SHIFTS_CONFIG_DIR"
     chmod 700 "$FAIR_SHIFTS_CONFIG_DIR"
-    compose build app
+    compose build app db cloudflared
     # Plain docker run: Compose refuses to start before the env files exist.
     . scripts/docker-env.sh
     "$docker_bin" run --rm --user "$(id -u):$(id -g)" \
       -v "$FAIR_SHIFTS_CONFIG_DIR:/config" "fair-shifts:$APP_VERSION" \
-      node_modules/.bin/tsx scripts/init-production-config.ts /config "$@"
+      node scripts/run-runtime.mjs scripts/init-production-config.ts /config "$@"
     echo "Configuration directory: $FAIR_SHIFTS_CONFIG_DIR"
     ;;
   deploy)
@@ -36,15 +36,25 @@ case "${1:-}" in
     # Without services named, cloudflared starts too and needs a token.
     if [ $# -eq 0 ] && ! grep -Eq '^TUNNEL_TOKEN=.+' "$FAIR_SHIFTS_CONFIG_DIR/tunnel.env" 2>/dev/null; then
       echo "TUNNEL_TOKEN is missing in $FAIR_SHIFTS_CONFIG_DIR/tunnel.env" >&2
-      exit 1
+      exit 78
     fi
     # Resolve every required env file before building or touching live services.
     compose --profile operations config --quiet || exit 78
-    compose build app || exit 78
+    # Reject a libc image cutover before Compose can stop the existing database.
+    database_container=$(compose ps -a -q db)
+    if [ -n "$database_container" ]; then
+      . scripts/docker-env.sh
+      database_runtime=$("$docker_bin" inspect --format '{{ index .Config.Labels "org.fair-shifts.database-runtime" }}' "$database_container")
+      if [ "$database_runtime" != alpine-pg18-v1 ]; then
+        echo 'Database image migration required before deployment: preserve the running services and original volume; restore a verified logical backup into a new Alpine deployment.' >&2
+        exit 78
+      fi
+    fi
+    compose build app db cloudflared || exit 78
     # Entrypoints do not run: these checks neither migrate nor start runtime.
     for service in app worker operations; do
       compose --profile operations run --rm --no-deps --entrypoint node "$service" \
-        --import tsx scripts/check-config.ts || exit 78
+        scripts/run-runtime.mjs scripts/check-config.ts || exit 78
     done
     compose up -d --wait db
     compose stop worker app
@@ -52,7 +62,7 @@ case "${1:-}" in
     compose up -d --wait --remove-orphans "$@"
     ;;
   health)
-    compose exec -T app node_modules/.bin/tsx scripts/system-health.ts
+    compose exec -T app node scripts/run-runtime.mjs scripts/system-health.ts
     ;;
   *)
     compose "$@"

@@ -4,6 +4,8 @@ node_modules/
 out/
 coverage/
 playwright-report/
+security-reports/
+runtime/
 test-results/
 .env
 .env.*

@@ -51,3 +51,7 @@
 - [yauzl](https://github.com/thejoshwolfe/yauzl)
 - [Next.js — CSP](https://nextjs.org/docs/app/guides/content-security-policy)
 - [GitHub — rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+
+## מצב 08.10.2026 — קבוצה 10
+
+קבוצות 1–9 מוזגו ל־main; קונפליקטי #138 נפתרו ומוזגו. #142 מוזג, ובסיס קבוצה 10 הוא 6b4a361. מימוש #131 כולל סריקת כל תמונות הייצור, runtime מקומפל והגנת main שהוחלה ואומתה מול GitHub. [ראיות הסריקה ומגבלותיה](../docs/security-supply-chain-evidence.md). חריגות braces הן הצעה ללא אישור; verify נשאר חסום עד סקירה עצמאית בתוקף. הכרטיסים וראיות הספק/שרת נשארים פתוחים; דוח הניצול לא נמחק.

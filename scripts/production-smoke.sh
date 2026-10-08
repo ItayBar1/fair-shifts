@@ -21,7 +21,7 @@ cleanup() {
   trap - EXIT HUP INT TERM
   [ "$status" -eq 0 ] || production logs --tail 40 app worker db || true
   production down --volumes --remove-orphans >/dev/null 2>&1 || true
-  "$docker_bin" image rm "fair-shifts:$APP_VERSION" >/dev/null 2>&1 || true
+  "$docker_bin" image rm "fair-shifts:$APP_VERSION" "fair-shifts-database:$APP_VERSION" "fair-shifts-tunnel:$APP_VERSION" >/dev/null 2>&1 || true
   rm -rf "$FAIR_SHIFTS_CONFIG_DIR"
   exit "$status"
 }
@@ -30,6 +30,16 @@ trap 'exit 130' HUP INT TERM
 
 step 'Building one application image'
 production build app
+production build db
+production build cloudflared
+step 'Pinned Tunnel binary executes without a connection token'
+"$docker_bin" run --rm "fair-shifts-tunnel:$APP_VERSION" version | grep -q '2026.10.0' || fail 'Tunnel binary version or runtime is wrong'
+step 'Rejecting an unmarked existing physical database volume'
+if output=$("$docker_bin" run --rm --entrypoint sh --tmpfs /var/lib/postgresql "fair-shifts-database:$APP_VERSION" \
+  -c 'mkdir -p "$PGDATA"; echo 18 > "$PGDATA/PG_VERSION"; exec fair-shifts-database-entrypoint.sh postgres' 2>&1); then
+  fail 'Legacy physical database directory was accepted'
+fi
+case "$output" in *'Database image migration required:'*) ;; *) fail 'Database migration preflight did not run' ;; esac
 
 step 'Rejecting development secrets without printing their values'
 bad_env="$FAIR_SHIFTS_CONFIG_DIR/development.env"
@@ -43,7 +53,7 @@ MAIL_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab
 MAIL_TRANSPORT=brevo
 EOF
 if output=$("$docker_bin" run --rm --env-file "$bad_env" "fair-shifts:$APP_VERSION" \
-  pnpm --silent config:check 2>&1); then
+  node scripts/run-command.mjs config:check 2>&1); then
   fail 'Configuration validation accepted development secrets'
 fi
 echo "$output"
@@ -88,7 +98,7 @@ check_health() {
         if (response.headers.get('strict-transport-security') !== 'max-age=31536000')
           throw new Error('HSTS is missing or unexpectedly applies to subdomains/preload');
         const body = JSON.parse(execFileSync(process.execPath,
-          ['--import','tsx','scripts/system-health.ts'], {encoding:'utf8'}));
+          ['scripts/run-runtime.mjs','scripts/system-health.ts'], {encoding:'utf8'}));
         const extra = [...Object.keys(body).filter(k => !allowed.includes(k)),
           ...Object.keys(body.worker).filter(k => !workerKeys.includes(k))];
         if (extra.length) throw new Error('unexpected fields: ' + extra);
@@ -162,11 +172,40 @@ production up -d --wait db app worker
 production exec -T worker test -f "$log_file" || fail 'Deletion log volume lost its file'
 check_health
 
+step 'Compiled workbook child parses a synthetic XLSX without a runtime compiler'
+production exec -T app node --input-type=module <<'NODE'
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import { fork, execFileSync } from 'node:child_process';
+assert.equal(process.getuid(), 999);
+assert.equal(execFileSync('find', ['node_modules', '-type', 'f', '-path', '*/esbuild/bin/esbuild'], {encoding:'utf8'}), '');
+const workbook = new ExcelJS.Workbook();
+const sheet = workbook.addWorksheet('\u05d7\u05d9\u05d9\u05dc\u05d9\u05dd');
+sheet.addRow(['\u05de\u05e1\u05e4\u05e8 \u05d0\u05d9\u05e9\u05d9']);
+sheet.addRow(['0000002']);
+const child = fork('runtime/src/server/import-workbook-child.mjs', [], {
+  execArgv: ['--max-old-space-size=128', '--max-semi-space-size=4'],
+  env: {NODE_ENV:'production'}, serialization:'advanced', stdio:['ignore','ignore','ignore','ipc']
+});
+const timeout = setTimeout(() => { child.kill('SIGKILL'); process.exit(1); }, 10000);
+const result = await new Promise((resolve,reject) => {
+  child.once('error',reject);
+  child.once('exit',code => {if(code) reject(new Error('Workbook child failed'));});
+  child.once('message',resolve);
+  workbook.xlsx.writeBuffer().then(buffer => child.send(Buffer.from(buffer),error => {if(error) reject(error);})).catch(reject);
+});
+clearTimeout(timeout);
+child.kill('SIGKILL');
+assert.equal(result.error, undefined, 'Compiled workbook parser rejected the synthetic template');
+assert.equal(result.rows?.[0]?.values.personalNumber, '0000002');
+console.log('Compiled workbook IPC and runtime UID verified');
+NODE
+
 step 'Operations restores an encrypted backup; decryption key stays outside server containers'
 # Synthetic accounts: a restore without a technical account does not pass its checks.
 production exec -T -e TECHNICAL_EMAIL=technical@example.invalid -e TECHNICAL_NAME="Technical admin" \
   -e MANAGER_EMAIL=manager@example.invalid -e MANAGER_NAME="Test manager" \
-  -e MANAGER_PERSONAL_NUMBER=0000001 app node_modules/.bin/tsx scripts/bootstrap.ts >/dev/null
+  -e MANAGER_PERSONAL_NUMBER=0000001 app node scripts/run-runtime.mjs scripts/bootstrap.ts >/dev/null
 # The identity lives on this computer only; the server gets the public key.
 key_dir=$(mktemp -d "${TMPDIR:-/tmp}/fair-shifts-smoke-key.XXXXXX")
 chmod 755 "$key_dir"
@@ -181,17 +220,17 @@ for service in worker operations; do
 done
 production up -d --wait --force-recreate app worker
 check_health
-production exec -T worker node_modules/.bin/tsx scripts/backup-before-deploy.ts smoke ||
+production exec -T worker node scripts/run-runtime.mjs scripts/backup-before-deploy.ts smoke ||
   fail 'No verified backup was created'
-backup_name=$(production --profile operations run --rm -T --no-deps operations node_modules/.bin/tsx scripts/restore.ts list | awk '{print $1; exit}')
+backup_name=$(production --profile operations run --rm -T --no-deps operations node scripts/run-runtime.mjs scripts/restore.ts list | awk '{print $1; exit}')
 case "$backup_name" in *.dump.age) ;; *) fail 'Backup listing is empty' ;; esac
-production --profile operations run --rm -T --no-deps operations node_modules/.bin/tsx scripts/restore.ts fetch --backup "$backup_name" \
+production --profile operations run --rm -T --no-deps operations node scripts/run-runtime.mjs scripts/restore.ts fetch --backup "$backup_name" \
   >"$key_dir/backup.dump.age" 2>/dev/null
 [ "$(head -c 21 "$key_dir/backup.dump.age")" = 'age-encryption.org/v1' ] ||
   fail 'Downloaded backup is not age ciphertext'
 "$docker_bin" run --rm -i -v "$key_dir:/key:ro" "fair-shifts:$APP_VERSION" \
   age --decrypt -i /key/identity.txt <"$key_dir/backup.dump.age" >"$key_dir/plain.dump"
-if ! output=$(production --profile operations run --rm -T --no-deps operations node_modules/.bin/tsx scripts/restore.ts drill \
+if ! output=$(production --profile operations run --rm -T --no-deps operations node scripts/run-runtime.mjs scripts/restore.ts drill \
   --dump - --point "$backup_name" <"$key_dir/plain.dump" 2>&1); then
   echo "$output"
   fail 'Restore drill failed'

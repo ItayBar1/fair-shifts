@@ -127,7 +127,8 @@ if [ "$migrations" = yes ]; then
     # In the worker of the version still live, before anything changes.
     log "$(short "$target") changes the database; taking a verified backup first"
     if ! run_previous exec -T worker \
-      node_modules/.bin/tsx scripts/backup-before-deploy.ts "$(short "$target")"; then
+      sh -c 'if [ -f scripts/run-runtime.mjs ]; then exec node scripts/run-runtime.mjs "$@"; else exec node --import tsx "$@"; fi' \
+      sh scripts/backup-before-deploy.ts "$(short "$target")"; then
       log "no verified backup, so $(short "$target") is not deployed. See docs/operations.md"
       stop_at "$target"
     fi
