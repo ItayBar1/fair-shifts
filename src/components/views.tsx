@@ -714,8 +714,33 @@ export function Dashboard({
   } = handlingSummary(state);
   const transfers = requests.filter((r) => r.type === "transfer");
   const swaps = requests.filter((r) => r.type === "swap");
+  // The agenda lists only what waits for a decision; an idle unit says so once.
+  const waiting =
+    urgent.length +
+    transfers.length +
+    swaps.length +
+    referred.length +
+    departed.length +
+    concerns.length +
+    pending.length +
+    requests.length +
+    drafts.length;
   return (
     <>
+      <nav className="quick-actions" aria-label="פעולות מהירות">
+        <Link className="btn secondary" href="/manage/planning">
+          <CalendarDays size={16} aria-hidden="true" /> תכנון תורנות
+        </Link>
+        <Link className="btn secondary" href="/manage/soldiers">
+          <UsersRound size={16} aria-hidden="true" /> קליטת חייל
+        </Link>
+        <Link className="btn secondary" href="/manage/imports">
+          <CheckCircle2 size={16} aria-hidden="true" /> ייבוא Excel
+        </Link>
+        <Link className="btn secondary" href="/manage/scores">
+          <Scale size={16} aria-hidden="true" /> ניקוד
+        </Link>
+      </nav>
       <div className="stats-grid">
         <Stat
           label="חיילים ביחידה"
@@ -751,30 +776,36 @@ export function Dashboard({
           tone="violet"
         />
       </div>
-      <div className="two-columns">
-        <Panel title="על סדר היום" subtitle="החלטות שיקדמו את התכנון">
-          {urgent.map((a) => (
-            <Link
-              className="task-item"
-              href={`/duties/${a.dutyId}`}
-              key={`deleted-${a.id}`}
-            >
-              <span className="task-symbol red">
-                <AlertTriangle size={20} />
-              </span>
-              <span>
-                <strong>
-                  דחוף: {personName(state, a.soldierId)} נמחק באמצע{" "}
-                  {dutyName(state, a.dutyId)}
-                </strong>
-                <small>
-                  יש לרשום עד מתי ביצע בפועל, מי מחליף אותו בהמשך ומה הניקוד.
-                  הזקיפה האוטומטית של השיבוץ עצורה עד ההכרעה.
-                </small>
-              </span>
-              <ChevronLeft size={18} />
-            </Link>
-          ))}
+      <Panel title="על סדר היום" subtitle="מה מחכה להחלטה, הדחוף ראשון">
+        {waiting === 0 && (
+          <Empty
+            title="אין כרגע החלטות ממתינות"
+            text="בקשות, אילוצים ושיבוצים שידרשו החלטה יופיעו כאן."
+          />
+        )}
+        {urgent.map((a) => (
+          <Link
+            className="task-item"
+            href={`/duties/${a.dutyId}`}
+            key={`deleted-${a.id}`}
+          >
+            <span className="task-symbol red">
+              <AlertTriangle size={20} />
+            </span>
+            <span>
+              <strong>
+                דחוף: {personName(state, a.soldierId)} נמחק באמצע{" "}
+                {dutyName(state, a.dutyId)}
+              </strong>
+              <small>
+                יש לרשום עד מתי ביצע בפועל, מי מחליף אותו בהמשך ומה הניקוד.
+                הזקיפה האוטומטית של השיבוץ עצורה עד ההכרעה.
+              </small>
+            </span>
+            <ChevronLeft size={18} />
+          </Link>
+        ))}
+        {pending.length > 0 && (
           <Link className="task-item" href="/manage/constraints">
             <span className="task-symbol amber">
               <Clock3 size={20} />
@@ -785,6 +816,8 @@ export function Dashboard({
             </span>
             <ArrowLeft size={18} />
           </Link>
+        )}
+        {requests.length > 0 && (
           <Link className="task-item" href="/requests">
             <span className="task-symbol blue">
               <UsersRound size={20} />
@@ -795,143 +828,119 @@ export function Dashboard({
             </span>
             <ArrowLeft size={18} />
           </Link>
-          <Link className="task-item" href="/manage/planning">
+        )}
+        {drafts.length > 0 && (
+          <Link className="task-item" href="/manage/publish">
             <span className="task-symbol teal">
               <CalendarDays size={20} />
             </span>
             <span>
-              <strong>להשלים את הלוח</strong>
-              <small>{drafts.length} טיוטות בתכנון</small>
+              <strong>טיוטות שטרם פורסמו</strong>
+              <small>{drafts.length} טיוטות ממתינות לבדיקה ופרסום</small>
             </span>
             <ArrowLeft size={18} />
           </Link>
-          {transfers.map((r) => (
+        )}
+        {transfers.map((r) => (
+          <Link className="task-item" href="/requests" key={r.id}>
+            <span className="task-symbol amber">
+              <Clock3 size={20} />
+            </span>
+            <span>
+              <strong>העברה ממתינה להחלטה: {str(r.dutyName)}</strong>
+              <small>
+                {personName(state, r.fromSoldierId)} ←{" "}
+                {personName(state, r.acceptedBy)}. עד ההחלטה השיבוץ המקורי בתוקף
+              </small>
+            </span>
+            <ChevronLeft size={18} />
+          </Link>
+        ))}
+        {swaps.map((r) => {
+          const accepted = rows(r.candidates).find(
+            (item) => item.assignmentId === r.acceptedAssignmentId
+          );
+          return (
             <Link className="task-item" href="/requests" key={r.id}>
               <span className="task-symbol amber">
                 <Clock3 size={20} />
               </span>
               <span>
-                <strong>העברה ממתינה להחלטה: {str(r.dutyName)}</strong>
+                <strong>
+                  החלפה ממתינה להחלטה: {str(r.dutyName)} ⇄{" "}
+                  {str(accepted?.dutyName)}
+                </strong>
                 <small>
-                  {personName(state, r.fromSoldierId)} ←{" "}
-                  {personName(state, r.acceptedBy)}. עד ההחלטה השיבוץ המקורי
+                  {personName(state, r.fromSoldierId)} ⇄{" "}
+                  {personName(state, r.acceptedBy)}. עד ההחלטה השיבוצים המקוריים
                   בתוקף
                 </small>
               </span>
               <ChevronLeft size={18} />
             </Link>
-          ))}
-          {swaps.map((r) => {
-            const accepted = rows(r.candidates).find(
-              (item) => item.assignmentId === r.acceptedAssignmentId
-            );
-            return (
-              <Link className="task-item" href="/requests" key={r.id}>
-                <span className="task-symbol amber">
-                  <Clock3 size={20} />
-                </span>
-                <span>
-                  <strong>
-                    החלפה ממתינה להחלטה: {str(r.dutyName)} ⇄{" "}
-                    {str(accepted?.dutyName)}
-                  </strong>
-                  <small>
-                    {personName(state, r.fromSoldierId)} ⇄{" "}
-                    {personName(state, r.acceptedBy)}. עד ההחלטה השיבוצים
-                    המקוריים בתוקף
-                  </small>
-                </span>
-                <ChevronLeft size={18} />
-              </Link>
-            );
-          })}
-          {referred.map((r) => (
+          );
+        })}
+        {referred.map((r) => (
+          <Link
+            className="task-item"
+            href={`/duties/${str(r.dutyId)}`}
+            key={r.id}
+          >
+            <span className="task-symbol amber">
+              <Clock3 size={20} />
+            </span>
+            <span>
+              <strong>טיפול בביצוע: {str(r.dutyName)}</strong>
+              <small>
+                בקשת {personName(state, r.soldierId)} הופנתה אחרי תחילת התורנות.
+                יש לרשום את תקופות הביצוע של המקום
+              </small>
+            </span>
+            <ChevronLeft size={18} />
+          </Link>
+        ))}
+        {departed.map((s) => {
+          const notice = rows(state.departures).find(
+            (row) => row.subjectId === s.id && row.releaseDate === s.releaseDate
+          );
+          return (
             <Link
               className="task-item"
-              href={`/duties/${str(r.dutyId)}`}
-              key={r.id}
+              href="/manage/soldiers"
+              key={`departed-${s.id}`}
             >
               <span className="task-symbol amber">
-                <Clock3 size={20} />
+                <UserX size={20} />
               </span>
               <span>
-                <strong>טיפול בביצוע: {str(r.dutyName)}</strong>
+                <strong>{str(s.name)} — השירות הסתיים</strong>
                 <small>
-                  בקשת {personName(state, r.soldierId)} הופנתה אחרי תחילת
-                  התורנות. יש לרשום את תקופות הביצוע של המקום
+                  יום אחרון {displayDate(s.releaseDate)} · הגישה חסומה
+                  {notice
+                    ? ` · הודעה נשלחה ${displayDate(notice.detectedAt, true)}`
+                    : ""}
+                  . הרשומה נשמרת עד החלטת אחראי.
                 </small>
               </span>
               <ChevronLeft size={18} />
             </Link>
-          ))}
-          {departed.map((s) => {
-            const notice = rows(state.departures).find(
-              (row) =>
-                row.subjectId === s.id && row.releaseDate === s.releaseDate
-            );
-            return (
-              <Link
-                className="task-item"
-                href="/manage/soldiers"
-                key={`departed-${s.id}`}
-              >
-                <span className="task-symbol amber">
-                  <UserX size={20} />
-                </span>
-                <span>
-                  <strong>{str(s.name)} — השירות הסתיים</strong>
-                  <small>
-                    יום אחרון {displayDate(s.releaseDate)} · הגישה חסומה
-                    {notice
-                      ? ` · הודעה נשלחה ${displayDate(notice.detectedAt, true)}`
-                      : ""}
-                    . הרשומה נשמרת עד החלטת אחראי.
-                  </small>
-                </span>
-                <ChevronLeft size={18} />
-              </Link>
-            );
-          })}
-          {concerns.map((a) => (
-            <Link className="task-item" href={`/duties/${a.dutyId}`} key={a.id}>
-              <span className="task-symbol amber">
-                <AlertTriangle size={20} />
-              </span>
-              <span>
-                <strong>
-                  {personName(state, a.soldierId)} — שיבוץ דורש טיפול
-                </strong>
-                <small>{concernReason(a)}</small>
-              </span>
-              <ChevronLeft size={18} />
-            </Link>
-          ))}
-        </Panel>
-        <Panel title="המשך עבודה" subtitle="גישה מהירה לכלים של היחידה">
-          <div className="shortcut-grid">
-            <Link href="/manage/planning">
-              <CalendarDays />
-              <strong>תכנון תורנות</strong>
-              <small>מופע חדש או מילוי חוסרים</small>
-            </Link>
-            <Link href="/manage/soldiers">
-              <UsersRound />
-              <strong>קליטת חייל</strong>
-              <small>הוספה והזמנה למערכת</small>
-            </Link>
-            <Link href="/manage/scores">
-              <Scale />
-              <strong>ניקוד</strong>
-              <small>יתרות ותיקוני היסטוריה</small>
-            </Link>
-            <Link href="/manage/imports">
-              <CheckCircle2 />
-              <strong>ייבוא Excel</strong>
-              <small>תצוגה מקדימה לפני החלה</small>
-            </Link>
-          </div>
-        </Panel>
-      </div>
+          );
+        })}
+        {concerns.map((a) => (
+          <Link className="task-item" href={`/duties/${a.dutyId}`} key={a.id}>
+            <span className="task-symbol amber">
+              <AlertTriangle size={20} />
+            </span>
+            <span>
+              <strong>
+                {personName(state, a.soldierId)} — שיבוץ דורש טיפול
+              </strong>
+              <small>{concernReason(a)}</small>
+            </span>
+            <ChevronLeft size={18} />
+          </Link>
+        ))}
+      </Panel>
       {decisions.length > 0 && <ScoreDecisions state={state} action={action} />}
       {returns.length > 0 && <ManagerReturns state={state} action={action} />}
       <Panel

@@ -274,7 +274,7 @@ export function SoldiersView({
         </p>
         {filtered.length ? (
           <div className="table-scroll">
-            <table>
+            <table className="soldiers-table">
               <thead>
                 <tr>
                   <th>שם</th>

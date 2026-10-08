@@ -1,5 +1,13 @@
 "use client";
-import { useId, useRef, useState, useEffect, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useId,
+  useRef,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react";
 import { X, Check, AlertCircle, Inbox, Plus, ChevronDown } from "lucide-react";
 import { str, type Action } from "@/client/types";
 export function Badge({
@@ -122,6 +130,8 @@ export function Notice({
     </div>
   );
 }
+/** The screen's own title, so a panel does not repeat it on screen. */
+export const PageTitle = createContext("");
 export function Panel({
   title,
   subtitle,
@@ -135,12 +145,17 @@ export function Panel({
   children: ReactNode;
   className?: string;
 }) {
+  // The same words as the page's h1 stay for screen readers, not on screen.
+  const pageTitle = useContext(PageTitle);
+  const repeatsPage = !!title && title === pageTitle;
   return (
     <section className={`panel ${className}`}>
       {(title || actions) && (
-        <div className="panel-head">
+        <div className={`panel-head ${repeatsPage && !actions ? "quiet" : ""}`}>
           <div>
-            <h2>{title}</h2>
+            <h2 className={repeatsPage ? "visually-hidden" : undefined}>
+              {title}
+            </h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
           {actions}
