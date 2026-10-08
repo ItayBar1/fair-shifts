@@ -1517,6 +1517,12 @@ export const scenarios: Record<number, Entry> = {
   34: covered(
     [
       ...t(
+        "tests/unit/deployment-preflight.test.ts",
+        "rejects missing runtime or operations env files",
+        "rejects invalid configuration for each service",
+        "checks all three service configurations"
+      ),
+      ...t(
         "tests/integration/database-permissions.test.ts",
         "verifies real non-superuser logins",
         "lets pg-boss initialize and work only"
