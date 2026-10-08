@@ -7842,7 +7842,7 @@ describe("deployment health and worker heartbeat", () => {
     const response = await healthRoute();
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
-    expect((await response.json()).database).toBe("ok");
+    expect(await response.json()).toEqual({ status: "ok" });
   });
   it("tracks beats, keeps the last success while paused and marks delays", async () => {
     await recordWorkerHeartbeat(db, {

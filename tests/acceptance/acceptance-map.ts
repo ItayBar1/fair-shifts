@@ -1074,6 +1074,12 @@ export const scenarios: Record<number, Entry> = {
       "gives soldiers no log and the technical account only operations within its authority"
     ),
     ...t(E.sweep, "and sees nothing of it"),
+    ...t(
+      "tests/e2e/browser-security.spec.ts",
+      "each HTML response gets a fresh server nonce",
+      "the production browser boots normally and blocks injected inline script and eval",
+      "public health exposes readiness only"
+    ),
   ]),
   3: covered([
     ...t(

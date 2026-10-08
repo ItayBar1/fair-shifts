@@ -13,6 +13,7 @@
     "start": "next start",
     "worker": "tsx src/worker.ts",
     "config:check": "tsx scripts/check-config.ts",
+    "system:health": "tsx scripts/system-health.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run tests/unit",

@@ -75,13 +75,20 @@ mv "$worker_key_file.tmp" "$worker_key_file"
 # carries operational fields only.
 check_health() {
   production exec -T app node -e "
+    const { execFileSync } = require('node:child_process');
     const expected = process.env.APP_VERSION;
     const allowed = ['status','version','checkedAt','database','worker'];
     const workerKeys = ['status','lastBeatAt','lastSuccessAt','version','sameVersion'];
     (async () => {
       for (let attempt = 0; attempt < 45; attempt++) {
         const response = await fetch('http://127.0.0.1:3000/api/health');
-        const body = await response.json();
+        const publicBody = await response.json();
+        if (JSON.stringify(publicBody) !== JSON.stringify({status:'ok'}))
+          throw new Error('public health leaked details or was not ready');
+        if (response.headers.get('strict-transport-security') !== 'max-age=31536000')
+          throw new Error('HSTS is missing or unexpectedly applies to subdomains/preload');
+        const body = JSON.parse(execFileSync(process.execPath,
+          ['--import','tsx','scripts/system-health.ts'], {encoding:'utf8'}));
         const extra = [...Object.keys(body).filter(k => !allowed.includes(k)),
           ...Object.keys(body.worker).filter(k => !workerKeys.includes(k))];
         if (extra.length) throw new Error('unexpected fields: ' + extra);

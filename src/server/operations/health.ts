@@ -8,6 +8,17 @@ const HEARTBEAT_KEY = "worker";
 
 export const appVersion = () => process.env.APP_VERSION || "development";
 
+/** Public readiness reveals no version, heartbeat or worker state. */
+export async function readPublicHealth(executor: Executor = db) {
+  try {
+    await executor.execute(sql`select 1`);
+    return { status: "ok" as const };
+  } catch {
+    console.error("Public health check failed");
+    return { status: "unavailable" as const };
+  }
+}
+
 type Executor = typeof db | DbTransaction;
 export type WorkerHealth = {
   status: "ok" | "paused" | "stale" | "missing";
