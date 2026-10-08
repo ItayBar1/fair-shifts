@@ -1,9 +1,6 @@
-import {
-  randomUUID,
-  randomBytes,
-  createCipheriv,
-  createDecipheriv,
-} from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { openSecret, sealSecret } from "../secrets";
+export { openSecret, sealSecret } from "../secrets";
 import {
   and,
   desc,
@@ -29,7 +26,6 @@ import {
   operationsState,
   user,
 } from "../auth-schema";
-import { invariant } from "../errors";
 import { effectivePreferences } from "../notifications";
 import { roundEmailRelevant } from "../round-recipients";
 import { dutyReminderRelevant } from "../duty-reminder-checks";
@@ -61,37 +57,6 @@ import { reserveCodeBudget } from "../auth/budgets";
 import { quotaDay } from "./mail-quota-day";
 export { quotaDay } from "./mail-quota-day";
 
-function encryptionKey() {
-  const value = process.env.MAIL_ENCRYPTION_KEY ?? "";
-  invariant(
-    /^[a-f0-9]{64}$/i.test(value),
-    "mail_configuration",
-    "חסר מפתח הצפנת הודעות",
-    503
-  );
-  return Buffer.from(value, "hex");
-}
-export function sealSecret(value: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const encrypted = Buffer.concat([
-    cipher.update(value, "utf8"),
-    cipher.final(),
-  ]);
-  return [iv, cipher.getAuthTag(), encrypted]
-    .map((part) => part.toString("base64url"))
-    .join(".");
-}
-export function openSecret(value: string): string {
-  const [iv, tag, encrypted] = value
-    .split(".")
-    .map((part) => Buffer.from(part, "base64url"));
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString(
-    "utf8"
-  );
-}
 type EnqueueInput = {
   recipientAccountId: string;
   eventKey: string;
@@ -108,6 +73,7 @@ type EnqueueInput = {
 };
 export async function enqueueEmail(tx: DbTransaction, input: EnqueueInput) {
   const { secret, ...values } = input;
+  const id = randomUUID();
   const singleDuty = /^\/duties\/([0-9a-f-]{36})$/.exec(values.href ?? "");
   const requestEvent =
     /^(transfer|swap|execution|cancellation):([0-9a-f-]{36}):(.+):([0-9a-f-]{36})$/.exec(
@@ -116,13 +82,15 @@ export async function enqueueEmail(tx: DbTransaction, input: EnqueueInput) {
   await tx
     .insert(emailOutbox)
     .values({
-      id: randomUUID(),
+      id,
       ...values,
       requestScope: requestEvent?.[1] ?? null,
       requestId: requestEvent?.[2] ?? null,
       requestEvent: requestEvent?.[3] ?? null,
       dutyIds: values.dutyIds ?? (singleDuty ? [singleDuty[1]] : []),
-      encryptedSecret: secret ? sealSecret(secret) : null,
+      encryptedSecret: secret
+        ? sealSecret(secret, { purpose: "mail-code", recordId: id })
+        : null,
     })
     .onConflictDoNothing({ target: emailOutbox.eventKey });
   // A code is sent within seconds once committed; other mail waits for the
@@ -508,7 +476,13 @@ export async function deliverNextEmail(
         return { status: "skipped" as const };
       }
       const body = current.encryptedSecret
-        ? current.body.replace("{{CODE}}", openSecret(current.encryptedSecret))
+        ? current.body.replace(
+            "{{CODE}}",
+            openSecret(current.encryptedSecret, {
+              purpose: "mail-code",
+              recordId: current.id,
+            })
+          )
         : current.body;
       const providerId = await (transport ?? brevoTransport)({
         to: current.destination ?? recipient.email,

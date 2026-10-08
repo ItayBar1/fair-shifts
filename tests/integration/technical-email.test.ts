@@ -130,7 +130,13 @@ async function codesSent(accountId = ids.technical) {
       )
     );
   return Object.fromEntries(
-    rows.map((row) => [row.destination, openSecret(row.encryptedSecret!)])
+    rows.map((row) => [
+      row.destination,
+      openSecret(row.encryptedSecret!, {
+        purpose: "mail-code",
+        recordId: row.id,
+      }),
+    ])
   ) as Record<string, string>;
 }
 const requests = async () =>
@@ -685,7 +691,13 @@ describe("confirming with both codes", () => {
       .where(eq(emailOutbox.kind, "login-code"));
     expect(mail.recipientAccountId).toBe(ids.technical);
     await expect(
-      verifyCode(emails.next, openSecret(mail.encryptedSecret!))
+      verifyCode(
+        emails.next,
+        openSecret(mail.encryptedSecret!, {
+          purpose: "mail-code",
+          recordId: mail.id,
+        })
+      )
     ).resolves.toMatchObject({ epoch: 2 });
     await db.delete(loginCode);
   });
@@ -734,7 +746,10 @@ describe("the server route", () => {
         )
       );
     expect(rows.map((row) => row.destination)).toEqual([emails.next]);
-    return openSecret(rows[0].encryptedSecret!);
+    return openSecret(rows[0].encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: rows[0].id,
+    });
   }
 
   it("sends a code to the new address only and needs a reason", async () => {

@@ -38,7 +38,12 @@ try {
     )
     .orderBy(desc(emailOutbox.createdAt));
   if (!message?.encryptedSecret) throw new Error("קוד זמין לא נמצא");
-  console.log(openSecret(message.encryptedSecret));
+  console.log(
+    openSecret(message.encryptedSecret, {
+      purpose: "mail-code",
+      recordId: message.id,
+    })
+  );
 } finally {
   await pool.end();
 }

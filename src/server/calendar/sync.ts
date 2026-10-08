@@ -410,7 +410,10 @@ async function syncAccount(
     if (!claimed.refreshToken) throw new GoogleError("auth");
     let secret: string;
     try {
-      secret = openSecret(claimed.refreshToken);
+      secret = openSecret(claimed.refreshToken, {
+        purpose: "calendar-refresh",
+        recordId: claimed.accountId,
+      });
     } catch {
       throw new GoogleError("configuration");
     }

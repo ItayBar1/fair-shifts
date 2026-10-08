@@ -1,3 +1,4 @@
+import { nextEntry, parseLog, testLogKeys } from "../log-keys";
 import { randomUUID } from "node:crypto";
 import {
   appendFile,
@@ -57,12 +58,7 @@ import {
   applyLoggedDeletions,
 } from "../../src/server/restore-deletions";
 import { deliverNextEmail } from "../../src/server/operations/email";
-import {
-  nextEntry,
-  parseLog,
-  serializeEntry,
-  type LogEntry,
-} from "../../src/domain/deletion-log";
+import { serializeEntry, type LogEntry } from "../../src/domain/deletion-log";
 import { soldier } from "../fixtures";
 
 if (
@@ -83,6 +79,7 @@ const roots: string[] = [];
 
 const config = (): DeletionLogConfig => ({
   directory,
+  ...testLogKeys,
   storage: directoryStorage(store),
 });
 const localPath = () => join(directory, DELETION_LOG_FILE);
@@ -378,17 +375,53 @@ describe("the copy in storage", () => {
 });
 
 describe("a damaged or missing local file", () => {
+  it("never lowers the database witness when both signed copies are rolled back", async () => {
+    await remove(people[0]!);
+    await remove(people[1]!);
+    await drainDeletionLog(config());
+    const witness = await readLogState(db);
+    const [first] = await localEntries();
+    await writeLocal([first!]);
+    for (const name of await storedFiles()) await rm(join(store, name));
+    await remove(people[2]!);
+    expect(await drainDeletionLog(config())).toEqual({
+      status: "failed",
+      code: "storage_conflict",
+    });
+    expect(await readLogState(db)).toMatchObject({
+      headSeq: witness.headSeq,
+      headHash: witness.headHash,
+    });
+    expect(await pendingRecords()).toHaveLength(1);
+    expect(await localEntries()).toHaveLength(1);
+  });
+
+  it("does not repair a torn signed entry that the database already witnessed", async () => {
+    await remove(people[0]!);
+    await drainDeletionLog({ directory, ...testLogKeys });
+    const text = (await readFile(localPath(), "utf8")).slice(0, -20);
+    await writeFile(localPath(), text);
+    await remove(people[1]!);
+    expect(await drainDeletionLog({ directory, ...testLogKeys })).toEqual({
+      status: "failed",
+      code: "storage_conflict",
+    });
+    expect(await readFile(localPath(), "utf8")).toBe(text);
+    expect((await readLogState(db)).headSeq).toBe(1);
+    expect(await pendingRecords()).toHaveLength(1);
+  });
+
   it("is not appended to when a line was changed", async () => {
     await remove(people[0]!);
     await remove(people[1]!);
-    await drainDeletionLog({ directory });
+    await drainDeletionLog({ directory, ...testLogKeys });
     const text = (await readFile(localPath(), "utf8")).replace(
       people[0]!.soldierId!,
       randomUUID()
     );
     await writeFile(localPath(), text);
     await remove(people[2]!);
-    expect(await drainDeletionLog({ directory })).toEqual({
+    expect(await drainDeletionLog({ directory, ...testLogKeys })).toEqual({
       status: "failed",
       code: "log_broken",
     });
@@ -398,10 +431,12 @@ describe("a damaged or missing local file", () => {
 
   it("repairs a last line cut short by a crash and goes on", async () => {
     await remove(people[0]!);
-    await drainDeletionLog({ directory });
+    await drainDeletionLog({ directory, ...testLogKeys });
     await appendFile(localPath(), '{"v":1,"seq":2,"id":"half');
     await remove(people[1]!);
-    expect((await drainDeletionLog({ directory })).status).toBe("appended");
+    expect((await drainDeletionLog({ directory, ...testLogKeys })).status).toBe(
+      "appended"
+    );
     const entries = await localEntries();
     expect(entries.map((entry) => entry.seq)).toEqual([1, 2]);
     expect(parseLog(await readFile(localPath(), "utf8")).problems).toEqual([]);
@@ -444,7 +479,8 @@ describe("a damaged or missing local file", () => {
 describe("telling the technical account", () => {
   it("alerts once a day after ten minutes of failure, by site notice and email", async () => {
     await remove(people[0]!);
-    await drainDeletionLog({ directory });
+    await drainDeletionLog({ directory, ...testLogKeys });
+    const original = await readFile(localPath(), "utf8");
     await writeFile(localPath(), "not a log\n");
     const t0 = new Date("2026-10-01T10:00:00.000Z");
     const at = (minutes: number) => new Date(t0.getTime() + minutes * 60_000);
@@ -452,11 +488,11 @@ describe("telling the technical account", () => {
       (
         await db.select().from(records).where(eq(records.kind, "notification"))
       ).filter((row) => row.data.accountId === technical.id);
-    await drainDeletionLog({ directory }, t0);
-    await drainDeletionLog({ directory }, at(5));
+    await drainDeletionLog({ directory, ...testLogKeys }, t0);
+    await drainDeletionLog({ directory, ...testLogKeys }, at(5));
     expect(await notices()).toHaveLength(0);
-    await drainDeletionLog({ directory }, at(11));
-    await drainDeletionLog({ directory }, at(30));
+    await drainDeletionLog({ directory, ...testLogKeys }, at(11));
+    await drainDeletionLog({ directory, ...testLogKeys }, at(30));
     expect(await notices()).toHaveLength(1);
     const mail = await db
       .select()
@@ -464,12 +500,13 @@ describe("telling the technical account", () => {
       .where(eq(emailOutbox.recipientAccountId, technical.id));
     expect(mail).toHaveLength(1);
     expect(mail[0]!.kind).toBe("backup-alert");
-    await drainDeletionLog({ directory }, at(60 * 25));
+    await drainDeletionLog({ directory, ...testLogKeys }, at(60 * 25));
     expect(await notices()).toHaveLength(2);
-    // Mending the file clears the failure.
-    await writeFile(localPath(), "");
+    // Recover the verified original; an empty file cannot replace committed history.
+    await writeFile(localPath(), original);
     expect(
-      (await drainDeletionLog({ directory }, at(60 * 26))).status
+      (await drainDeletionLog({ directory, ...testLogKeys }, at(60 * 26)))
+        .status
     ).not.toBe("failed");
     expect((await readLogState(db)).lastError).toBeUndefined();
   });
@@ -500,7 +537,9 @@ describe("verifying the log", () => {
       status: "unverified",
       reasons: ["no_log"],
     });
-    expect(await verifyDeletionLog(db, { directory })).toMatchObject({
+    expect(
+      await verifyDeletionLog(db, { directory, ...testLogKeys })
+    ).toMatchObject({
       status: "unverified",
       reasons: ["no_log"],
     });
@@ -601,12 +640,18 @@ describe("verifying the log", () => {
     expect(
       await verifyDeletionLog(
         db,
-        { directory, storage: broken },
+        { directory, ...testLogKeys, storage: broken },
         { strict: false }
       )
     ).toMatchObject({ status: "verified" });
     expect(
-      (await verifyDeletionLog(db, { directory, storage: broken })).reasons
+      (
+        await verifyDeletionLog(db, {
+          directory,
+          ...testLogKeys,
+          storage: broken,
+        })
+      ).reasons
     ).toEqual(["remote_unreadable"]);
   });
 });
@@ -632,15 +677,18 @@ describe("what the technical screen sees", () => {
     // A second deletion is logged but not yet copied.
     await remove(people[1]!);
     await mergeState(db, { remoteSeq: 1 });
-    expect(await drainDeletionLog({ directory })).toMatchObject({
-      appended: 1,
-    });
+    expect(await drainDeletionLog({ directory, ...testLogKeys })).toMatchObject(
+      {
+        appended: 1,
+      }
+    );
     expect((await readDeletionLogStatus(db, config())).storageCopy).toBe(
       "behind"
     );
-    expect((await readDeletionLogStatus(db, { directory })).storageCopy).toBe(
-      "none"
-    );
+    expect(
+      (await readDeletionLogStatus(db, { directory, ...testLogKeys }))
+        .storageCopy
+    ).toBe("none");
     expect((await readDeletionLogStatus(db, {})).enabled).toBe(false);
   });
 
@@ -933,10 +981,10 @@ describe("applying the log after a restore", () => {
 describe("a restore with a missing or unverified log stays closed", () => {
   it("blocks access and mail when the log is damaged, and applies nothing", async () => {
     await remove(people[0]!);
-    await drainDeletionLog({ directory });
+    await drainDeletionLog({ directory, ...testLogKeys });
     await writeFile(localPath(), "garbage\n");
     await restoreLikeSoldier(people[1]!);
-    const result = await applyLoggedDeletions({ directory });
+    const result = await applyLoggedDeletions({ directory, ...testLogKeys });
     expect(result.status).toBe("blocked");
     const gate = await readRestoreGate(db);
     expect(gate).toMatchObject({
@@ -962,6 +1010,7 @@ describe("a restore with a missing or unverified log stays closed", () => {
   it("blocks when no log exists at all", async () => {
     const result = await applyLoggedDeletions({
       directory,
+      ...testLogKeys,
       storage: directoryStorage(store),
     });
     expect(result).toMatchObject({
@@ -974,18 +1023,22 @@ describe("a restore with a missing or unverified log stays closed", () => {
   });
 
   it("is released only by a person with a reason and the exact words, and the managers are told", async () => {
-    await applyLoggedDeletions({ directory, storage: directoryStorage(store) });
+    await applyLoggedDeletions({
+      directory,
+      ...testLogKeys,
+      storage: directoryStorage(store),
+    });
     await raiseRestoreBlocker(db, "other_check");
     await expect(
       acknowledgeUnverifiedLog(
         { reason: "ok", acknowledgement: ACKNOWLEDGEMENT },
-        { directory }
+        { directory, ...testLogKeys }
       )
     ).rejects.toMatchObject({ code: "reason_required" });
     await expect(
       acknowledgeUnverifiedLog(
         { reason: "הכונן נבדק ידנית מול הרשימה", acknowledgement: "yes" },
-        { directory }
+        { directory, ...testLogKeys }
       )
     ).rejects.toMatchObject({ code: "acknowledgement_required" });
     expect((await readRestoreGate(db)).blockers).toContain(
@@ -995,7 +1048,7 @@ describe("a restore with a missing or unverified log stays closed", () => {
     const reason = "אין עותק של היומן; נבדקו ידנית המחיקות מאז הגיבוי";
     const result = await acknowledgeUnverifiedLog(
       { reason, acknowledgement: ACKNOWLEDGEMENT },
-      { directory }
+      { directory, ...testLogKeys }
     );
     expect(result.status).toBe("unverified");
     // Only this check is clear; the other still holds the gate.
@@ -1023,13 +1076,13 @@ describe("a restore with a missing or unverified log stays closed", () => {
   });
 
   it("opens the gate after an acknowledgement when nothing else holds it", async () => {
-    await applyLoggedDeletions({ directory });
+    await applyLoggedDeletions({ directory, ...testLogKeys });
     await acknowledgeUnverifiedLog(
       {
         reason: "אין יומן, אין מחיקות מאז הגיבוי",
         acknowledgement: ACKNOWLEDGEMENT,
       },
-      { directory }
+      { directory, ...testLogKeys }
     );
     expect((await readRestoreGate(db)).blocked).toBe(false);
     await expect(readState(manager)).resolves.toBeTruthy();
@@ -1037,15 +1090,15 @@ describe("a restore with a missing or unverified log stays closed", () => {
 
   it("keeps a block set by hand, which only a person clears", async () => {
     await remove(people[0]!);
-    await drainDeletionLog({ directory });
+    await drainDeletionLog({ directory, ...testLogKeys });
     await rm(localPath());
     await db
       .insert(operationsState)
       .values({ key: "restore", data: { blocked: true } });
-    await applyLoggedDeletions({ directory });
+    await applyLoggedDeletions({ directory, ...testLogKeys });
     await acknowledgeUnverifiedLog(
       { reason: "מצב שחזור ידני נשאר", acknowledgement: ACKNOWLEDGEMENT },
-      { directory }
+      { directory, ...testLogKeys }
     );
     expect(await readRestoreGate(db)).toMatchObject({
       blocked: true,

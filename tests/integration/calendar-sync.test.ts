@@ -871,7 +871,12 @@ describe("when the permission is gone", () => {
       state: "active",
       permissionNoticeAt: null,
     });
-    expect(openSecret((await link(member)).refreshToken!)).toBe(fresh);
+    expect(
+      openSecret((await link(member)).refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: member.id,
+      })
+    ).toBe(fresh);
     expect(await sync()).toMatchObject({ updated: 1 });
     expect((await eventsOf(member))[0]).toMatchObject({ location: "מקום אחר" });
     // Losing it a second time is a new notice.
@@ -906,7 +911,12 @@ describe("when the permission is gone", () => {
     const token = await connect(member, "refresh-secret-value");
     const row = await link(member);
     expect(row.refreshToken).not.toContain(token);
-    expect(openSecret(row.refreshToken!)).toBe(token);
+    expect(
+      openSecret(row.refreshToken!, {
+        purpose: "calendar-refresh",
+        recordId: row.accountId,
+      })
+    ).toBe(token);
     const dump = JSON.stringify(
       await db.execute(sql`select * from calendar_link`)
     );

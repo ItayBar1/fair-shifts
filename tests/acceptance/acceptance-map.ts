@@ -1822,6 +1822,17 @@ export const scenarios: Record<number, Entry> = {
       ),
       ...t(I.auth, "encrypts codes and prioritizes them over reminders"),
       ...t(
+        "tests/unit/secrets.test.ts",
+        "authenticates purpose and record",
+        "rejects short tags, noncanonical encoding",
+        "rejects changed authenticated ciphertext"
+      ),
+      ...t(
+        "tests/integration/security-conversion.test.ts",
+        "converts existing mail and Calendar atomically",
+        "rolls back every conversion if one old secret is corrupt"
+      ),
+      ...t(
         E.mail,
         "technical admin sees mail failures, the pause and the quota without personal data"
       ),
@@ -2055,6 +2066,8 @@ export const scenarios: Record<number, Entry> = {
     ),
     ...t(
       I.delLog,
+      "never lowers the database witness when both signed copies are rolled back",
+      "does not repair a torn signed entry that the database already witnessed",
       "queues a deletion in its own commit and appends it once, with ids and a time only",
       "leaves nothing in the log for a deletion that rolled back",
       "appends each deletion once and in order when workers drain at the same time",
@@ -2133,6 +2146,20 @@ export const scenarios: Record<number, Entry> = {
   ]),
   63: covered(
     [
+      ...t(
+        "tests/integration/security-conversion.test.ts",
+        "requires stopped-service acknowledgement and a recent verified backup whose stored hash still matches",
+        "blocks restore when both copies contain a deletion with recomputed hashes but no valid signature",
+        "refuses unsigned logs during restore",
+        "refuses unequal old copies",
+        "refuses a database head mismatch"
+      ),
+      ...t(
+        "tests/unit/secrets.test.ts",
+        "verifies with public keys only",
+        "rejects an attacker who changes a deletion and recomputes every hash",
+        "rejects unsigned old lines"
+      ),
       ...t(
         I.securityErasure,
         "detects expired unpruned results and false tombstones in restore checks even without a deleted soldier"

@@ -79,9 +79,12 @@ async function login(page: Page, email: string, home: string) {
   const latest = messages
     .filter((row) => row.kind === "login-code")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-  await page
-    .getByLabel("קוד כניסה", { exact: true })
-    .fill(openSecret(latest.encryptedSecret!));
+  await page.getByLabel("קוד כניסה", { exact: true }).fill(
+    openSecret(latest.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: latest.id,
+    })
+  );
   await page.getByRole("button", { name: "כניסה לחשבון", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: home, exact: true })
@@ -96,7 +99,13 @@ async function codes() {
   return Object.fromEntries(
     rows
       .filter((row) => row.status === "pending")
-      .map((row) => [row.destination, openSecret(row.encryptedSecret!)])
+      .map((row) => [
+        row.destination,
+        openSecret(row.encryptedSecret!, {
+          purpose: "mail-code",
+          recordId: row.id,
+        }),
+      ])
   ) as Record<string, string>;
 }
 const noOverflow = (page: Page) =>

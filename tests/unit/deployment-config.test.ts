@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { generateKeyPairSync } from "node:crypto";
 import { validateDeploymentConfig } from "../../src/server/config";
 
 // Synthetic values only; generated at random in real deployments.
@@ -19,6 +20,53 @@ const errorsFor = (overrides: Record<string, string | undefined>) =>
   validateDeploymentConfig({ ...valid, ...overrides });
 
 describe("deployment configuration check", () => {
+  it("requires public verification keys and a matching worker-only signing key with acknowledged offline recovery", () => {
+    const first = generateKeyPairSync("ed25519"),
+      other = generateKeyPairSync("ed25519");
+    const signing = {
+      SERVICE_ROLE: "worker",
+      DELETION_LOG_DIRECTORY: "/tmp/synthetic-log",
+      DELETION_LOG_KEY_ID: "synthetic",
+      DELETION_LOG_PUBLIC_KEYS: Buffer.from(
+        JSON.stringify({
+          synthetic: first.publicKey.export({ type: "spki", format: "pem" }),
+        })
+      ).toString("base64url"),
+      DELETION_LOG_PRIVATE_KEY: Buffer.from(
+        first.privateKey.export({ type: "pkcs8", format: "pem" })
+      ).toString("base64url"),
+      DELETION_LOG_KEY_RECOVERY_CONFIRMED: "true",
+    };
+    expect(errorsFor(signing)).toEqual([]);
+    expect(
+      errorsFor({ ...signing, DELETION_LOG_PRIVATE_KEY: undefined })
+    ).toContain(
+      "DELETION_LOG_PRIVATE_KEY: matching Ed25519 signing key is required for the worker"
+    );
+    expect(
+      errorsFor({
+        ...signing,
+        DELETION_LOG_PRIVATE_KEY: Buffer.from(
+          other.privateKey.export({ type: "pkcs8", format: "pem" })
+        ).toString("base64url"),
+      })
+    ).toContain(
+      "DELETION_LOG_PRIVATE_KEY: matching Ed25519 signing key is required for the worker"
+    );
+    expect(
+      errorsFor({ ...signing, DELETION_LOG_KEY_RECOVERY_CONFIRMED: "false" })
+    ).toContain(
+      "DELETION_LOG_KEY_RECOVERY_CONFIRMED: confirm an offline recovery copy before deployment"
+    );
+    expect(
+      errorsFor({
+        ...signing,
+        SERVICE_ROLE: "app",
+        DELETION_LOG_PRIVATE_KEY: undefined,
+        DELETION_LOG_KEY_RECOVERY_CONFIRMED: undefined,
+      })
+    ).toEqual([]);
+  });
   it("accepts a complete configuration with real sending disabled", () => {
     expect(validateDeploymentConfig(valid)).toEqual([]);
     expect(errorsFor({ DEPLOYMENT_ENVIRONMENT: "production" })).toEqual([]);

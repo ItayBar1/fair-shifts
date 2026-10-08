@@ -68,9 +68,12 @@ async function login(page: Page, email: string) {
       .from(emailOutbox)
       .where(eq(emailOutbox.recipientAccountId, account.id))
   ).filter((row) => row.kind === "login-code");
-  await page
-    .getByLabel("קוד כניסה", { exact: true })
-    .fill(openSecret(message.encryptedSecret!));
+  await page.getByLabel("קוד כניסה", { exact: true }).fill(
+    openSecret(message.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: message.id,
+    })
+  );
   await submitAuth(
     page,
     "/api/auth/verify-code",

@@ -75,7 +75,10 @@ async function storedCode(accountId: string) {
   const latest = rows.sort(
     (a, b) => b.expiresAt.getTime() - a.expiresAt.getTime()
   )[0];
-  return openSecret(latest.encryptedSecret!);
+  return openSecret(latest.encryptedSecret!, {
+    purpose: "mail-code",
+    recordId: latest.id,
+  });
 }
 async function invite(
   name: string,
@@ -631,7 +634,10 @@ describe("first duty vertical slice", () => {
       "account.email.confirm",
       {
         soldierId: actor.soldierId,
-        code: openSecret(message.encryptedSecret!),
+        code: openSecret(message.encryptedSecret!, {
+          purpose: "mail-code",
+          recordId: message.id,
+        }),
         disconnectGoogle: true,
       },
       1

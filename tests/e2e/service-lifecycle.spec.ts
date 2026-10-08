@@ -74,9 +74,12 @@ async function login(page: Page, email: string) {
   );
   await expect(page.getByLabel("קוד כניסה", { exact: true })).toBeVisible();
   const [message] = await loginCodes(email);
-  await page
-    .getByLabel("קוד כניסה", { exact: true })
-    .fill(openSecret(message.encryptedSecret!));
+  await page.getByLabel("קוד כניסה", { exact: true }).fill(
+    openSecret(message.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: message.id,
+    })
+  );
   await submitAuth(
     page,
     "/api/auth/verify-code",

@@ -172,7 +172,13 @@ async function codeSignIn(email: string, accountId: string) {
   const latest = rows.sort(
     (a, b) => b.expiresAt.getTime() - a.expiresAt.getTime()
   )[0];
-  return verifyCode(email, openSecret(latest.encryptedSecret!));
+  return verifyCode(
+    email,
+    openSecret(latest.encryptedSecret!, {
+      purpose: "mail-code",
+      recordId: latest.id,
+    })
+  );
 }
 
 describe("Google sign-in for invited accounts, bound to Google's sub", () => {
@@ -392,7 +398,13 @@ describe("Google sign-in after the technical account changes its address (decisi
           .select()
           .from(emailOutbox)
           .where(eq(emailOutbox.kind, "email-change"))
-      ).map((row) => [row.destination, openSecret(row.encryptedSecret!)])
+      ).map((row) => [
+        row.destination,
+        openSecret(row.encryptedSecret!, {
+          purpose: "mail-code",
+          recordId: row.id,
+        }),
+      ])
     );
     await act("technical.email.confirm", {
       currentCode: codes[technical.email],

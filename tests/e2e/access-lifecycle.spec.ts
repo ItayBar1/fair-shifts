@@ -75,7 +75,10 @@ async function latestCode(email: string) {
   const message = rows
     .filter((row) => row.kind === "login-code")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-  return openSecret(message.encryptedSecret!);
+  return openSecret(message.encryptedSecret!, {
+    purpose: "mail-code",
+    recordId: message.id,
+  });
 }
 async function requestCode(page: Page, email: string) {
   await allowResend(email);

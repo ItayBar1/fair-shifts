@@ -7,7 +7,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.67](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.68](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [תוכנית תיקון האבטחה המאושרת](plans/2026-10-07-security-remediation.md), [מעקב #122](https://github.com/ItayBar1/fair-shifts/issues/122). שינוי עצמי של אחראי ב־`/manage/account`; חילוץ כתובתו בידי הטכני במסך ההרשאות, עם סיבה וקוד לכתובת החדשה.
@@ -40,6 +40,8 @@ sh scripts/docker.sh --profile test down
 Compose מיועד לפיתוח סינתטי: סודות מקומיים גלויים ומייל כבוי. Google ומשלוח אמיתי דורשים חשבונות ספקים והגדרות. בדיקות משתמשות במתאם מייל מדומה ובקוד מהמסד המבודד, ללא עוקף־אימות באתר. הקוד והתלויות מותקנים ורצים בתוך התמונות.
 
 ## תצורת הפעלה (staging/production)
+
+הצפנה ויומן חתום (#128): קודי מייל ואסימוני Calendar דורשים פורמט v2 עם AAD למטרה ולרשומה. `pnpm security:secrets verify` הוא שער פתיחת האתר; נתונים ישנים מוסבים רק ב־`pnpm security:secrets convert`, בתוך Docker ותחת נוהל הגיבוי והעצירה שב[תפעול](docs/operations.md). יומן גרסה 2 מאומת ב־Ed25519; `worker-secrets.env` מכיל את המפתח הפרטי לעובד בלבד, ו־`app.env` מכיל ציבוריים. את הפרטי מגבים מחוץ לשרת ומאשרים `DELETION_LOG_KEY_RECOVERY_CONFIRMED=true`. יצירת התצורה אינה מוכיחה שהגיבוי החיצוני נעשה. אין קורא לא חתום באתר או בשחזור. גם בסביבת פיתוח נדרשים מפתחות כדי לנקז יומן; אין מפתח פרטי קבוע במאגר.
 
 `compose.production.yaml` מפעיל מסד, אתר, עובד ו־cloudflared, עם סודות מחוץ למאגר ובדיקת תצורה לפני עלייה. ההוראות ב[מדריך ההפעלה](docs/operations.md). בדיקת התצורה ב־Docker עם סודות סינתטיים:
 

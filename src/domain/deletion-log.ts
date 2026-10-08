@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, sign, verify, type KeyObject } from "node:crypto";
 
 /**
  * The independent deletion log (decision 196). One line per deleted soldier:
@@ -9,8 +9,10 @@ import { createHash } from "node:crypto";
  *
  * The rules here are pure; the server module reads and writes the files.
  */
-export const LOG_VERSION = 1;
+export const LOG_VERSION = 2;
 export const GENESIS_HASH = "0".repeat(64);
+export type LogSigner = { keyId: string; privateKey: KeyObject };
+export type LogPublicKeys = Readonly<Record<string, KeyObject>>;
 
 export type LogEntry = {
   v: typeof LOG_VERSION;
@@ -24,17 +26,19 @@ export type LogEntry = {
   /** The hash of the previous line, or GENESIS_HASH for the first. */
   prev: string;
   hash: string;
+  keyId: string;
+  signature: string;
 };
 
 export type LogProblemCode =
   /** A line that is not a complete, well-formed entry, or a torn last line. */
-  "malformed" | "sequence" | "link" | "hash" | "duplicate";
+  "malformed" | "sequence" | "link" | "hash" | "duplicate" | "signature";
 export type LogProblem = { code: LogProblemCode; line: number };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
 
-export function entryHash(entry: Omit<LogEntry, "hash">) {
+export function entryHash(entry: Omit<LogEntry, "hash" | "signature">) {
   return createHash("sha256")
     .update(
       JSON.stringify([
@@ -44,6 +48,7 @@ export function entryHash(entry: Omit<LogEntry, "hash">) {
         entry.soldierId,
         entry.at,
         entry.prev,
+        entry.keyId,
       ])
     )
     .digest("hex");
@@ -52,8 +57,14 @@ export function entryHash(entry: Omit<LogEntry, "hash">) {
 /** The entry that follows `last` (or starts the log). */
 export function nextEntry(
   last: LogEntry | undefined,
-  input: { id: string; soldierId: string; at: string }
+  input: { id: string; soldierId: string; at: string },
+  signer: LogSigner
 ): LogEntry {
+  if (
+    !/^[A-Za-z0-9_-]{1,64}$/.test(signer.keyId) ||
+    signer.privateKey.asymmetricKeyType !== "ed25519"
+  )
+    throw new Error("Deletion log signing key is invalid");
   const body = {
     v: LOG_VERSION,
     seq: (last?.seq ?? 0) + 1,
@@ -61,9 +72,20 @@ export function nextEntry(
     soldierId: input.soldierId,
     at: input.at,
     prev: last?.hash ?? GENESIS_HASH,
+    keyId: signer.keyId,
   } as const;
-  return { ...body, hash: entryHash(body) };
+  const hash = entryHash(body);
+  const signature = sign(
+    null,
+    signatureInput(body.keyId, hash),
+    signer.privateKey
+  ).toString("base64url");
+  return { ...body, hash, signature };
 }
+const signatureInput = (keyId: string, hash: string) =>
+  Buffer.from(
+    JSON.stringify(["fair-shifts-deletion-log", LOG_VERSION, keyId, hash])
+  );
 
 /** One line with a fixed key order, ended by a newline. */
 export function serializeEntry(entry: LogEntry) {
@@ -75,6 +97,8 @@ export function serializeEntry(entry: LogEntry) {
     at: entry.at,
     prev: entry.prev,
     hash: entry.hash,
+    keyId: entry.keyId,
+    signature: entry.signature,
   })}\n`;
 }
 
@@ -83,7 +107,7 @@ function shaped(value: unknown): value is LogEntry {
   const entry = value as Record<string, unknown>;
   const keys = Object.keys(entry).sort().join(",");
   return (
-    keys === "at,hash,id,prev,seq,soldierId,v" &&
+    keys === "at,hash,id,keyId,prev,seq,signature,soldierId,v" &&
     entry.v === LOG_VERSION &&
     Number.isSafeInteger(entry.seq) &&
     typeof entry.id === "string" &&
@@ -95,7 +119,11 @@ function shaped(value: unknown): value is LogEntry {
     typeof entry.prev === "string" &&
     HASH.test(entry.prev) &&
     typeof entry.hash === "string" &&
-    HASH.test(entry.hash)
+    HASH.test(entry.hash) &&
+    typeof entry.keyId === "string" &&
+    /^[A-Za-z0-9_-]{1,64}$/.test(entry.keyId) &&
+    typeof entry.signature === "string" &&
+    /^[A-Za-z0-9_-]{86}$/.test(entry.signature)
   );
 }
 
@@ -104,7 +132,10 @@ function shaped(value: unknown): value is LogEntry {
  * that breaks the chain stops the reading, and everything after it is
  * untrusted. A last line without its newline is a torn write.
  */
-export function parseLog(text: string): {
+export function parseLog(
+  text: string,
+  publicKeys: LogPublicKeys = {}
+): {
   entries: LogEntry[];
   problems: LogProblem[];
 } {
@@ -136,9 +167,21 @@ export function parseLog(text: string): {
       problems.push({ code: "link", line });
       return { entries, problems };
     }
-    const { hash, ...body } = value;
+    const { hash, signature, ...body } = value;
     if (entryHash(body) !== hash) {
       problems.push({ code: "hash", line });
+      return { entries, problems };
+    }
+    const key = publicKeys[value.keyId];
+    const bytes = Buffer.from(signature, "base64url");
+    if (
+      !key ||
+      key.asymmetricKeyType !== "ed25519" ||
+      bytes.length !== 64 ||
+      bytes.toString("base64url") !== signature ||
+      !verify(null, signatureInput(value.keyId, hash), key, bytes)
+    ) {
+      problems.push({ code: "signature", line });
       return { entries, problems };
     }
     if (seen.has(value.id)) {
