@@ -1,6 +1,0 @@
-source expression matches auto-deploy.sh line 60
-failure+escaped-spoof => [failure]
-null+escaped-spoof => [null]
-empty => []
-success-pretty => [success]
-failure+value-ends-conclusion => [failure]
