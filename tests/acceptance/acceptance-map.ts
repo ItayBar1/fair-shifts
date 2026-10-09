@@ -78,6 +78,7 @@ const I = {
   delLog: "tests/integration/deletion-log.test.ts",
   reminders: "tests/integration/duty-reminders.test.ts",
   exec: "tests/integration/execution-periods.test.ts",
+  fairness: "tests/integration/fairness-future.test.ts",
   google: "tests/integration/google-sign-in.test.ts",
   comp: "tests/integration/instance-composition.test.ts",
   intake: "tests/integration/soldier-intake.test.ts",
@@ -111,6 +112,7 @@ const E = {
   reminders: "tests/e2e/duty-reminders.spec.ts",
   conditions: "tests/e2e/eligibility-conditions.spec.ts",
   exec: "tests/e2e/execution-periods.spec.ts",
+  fairness: "tests/e2e/unified-fairness.spec.ts",
   first: "tests/e2e/first-duty.spec.ts",
   publish: "tests/e2e/publish-drafts.spec.ts",
   importCreate: "tests/e2e/import-restore-creations.spec.ts",
@@ -1458,7 +1460,20 @@ export const scenarios: Record<number, Entry> = {
     ),
     ...t(
       U.fairness,
-      "ranks soldiers by balance, with equal balances sharing a rank"
+      "ranks soldiers by balance, with equal balances sharing a rank",
+      "ranks by the current balance while the switch is off",
+      "ranks by the balance plus the points ahead while it is on"
+    ),
+    // The points ahead, by choice and published only for a soldier (decision 220).
+    ...t(
+      I.fairness,
+      "gives a manager every seat not yet credited, drafts included, and a soldier only published ones",
+      "shows a soldier their own ledger only, without the reasons"
+    ),
+    ...t(
+      E.fairness,
+      "a soldier sorts and adds published points ahead, and opens only their own row",
+      "a manager sorts the table, adds the points ahead and changes balances from it"
     ),
   ]),
   31: covered(
@@ -1987,7 +2002,8 @@ export const scenarios: Record<number, Entry> = {
     ...t(U.manager, "is not lifted by a specific approval"),
     ...t(
       E.manager,
-      "managers are outside the ranking, the pickers and a soldier's lists, and the calendar shows what fits each"
+      "managers are outside the ranking, the pickers and a soldier's lists, and the calendar shows what fits each",
+      "a manager's requests screen lists the unit's requests without offers of their own"
     ),
   ]),
   58: covered([

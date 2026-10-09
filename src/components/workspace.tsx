@@ -30,7 +30,8 @@ import {
 import { type AppState, type Action, str, obj } from "@/client/types";
 import { unreadCount } from "@/client/notifications";
 import { Notice, Empty, Modal, PageTitle } from "./ui";
-import { CalendarView, DutyDetail, FairnessView, Dashboard } from "./views";
+import { CalendarView, DutyDetail, Dashboard } from "./views";
+import { FairnessView } from "./fairness";
 import { MyAssignmentsView } from "./my-assignments";
 import { PublishDrafts } from "./publish-drafts";
 import { TechnicalAccount } from "./technical-account";
@@ -46,7 +47,6 @@ import {
   RequestsView,
   NotificationsView,
   SettingsView,
-  ScoresView,
   ImportsView,
   AuditView,
   TechnicalView,
@@ -69,7 +69,6 @@ const managementLinks = [
   { path: "/manage/catalog", title: "קטלוג תורנויות", icon: ClipboardList },
   { path: "/manage/planning", title: "תכנון ושיבוץ", icon: CalendarDays },
   { path: "/manage/publish", title: "פרסום טיוטות", icon: Send },
-  { path: "/manage/scores", title: "ניקוד והיסטוריה", icon: Scale },
   { path: "/manage/imports", title: "ייבוא חיילים", icon: Upload },
   { path: "/manage/audit", title: "יומן פעולות", icon: History },
 ];
@@ -130,7 +129,7 @@ const managerGroups = (ownDuties: boolean): NavGroup[] => [
   },
   {
     title: "הגדרות ונתונים",
-    paths: ["/manage/catalog", "/manage/scores", "/fairness", "/manage/audit"],
+    paths: ["/manage/catalog", "/fairness", "/manage/audit"],
   },
 ];
 const technicalGroups: NavGroup[] = [
@@ -302,7 +301,10 @@ export function Workspace({
   const soldier = !technical && !manager;
   // Each role starts where its work is; a manager at the care centre (decision 218).
   const home = technical ? "/technical" : manager ? "/manage" : "/calendar";
-  const effectivePath = path === "/" ? home : path;
+  // The score ledger lives in the fairness table now (decision 220); its old
+  // address keeps working.
+  const effectivePath =
+    path === "/" ? home : path === "/manage/scores" ? "/fairness" : path;
   const allLinks = [...linkByPath.values()];
   const pageTitle = effectivePath.startsWith("/duties/")
     ? "פרטי תורנות"
@@ -392,7 +394,8 @@ export function Workspace({
           id={effectivePath.split("/")[2]}
         />
       );
-    if (effectivePath === "/fairness") return <FairnessView state={state} />;
+    if (effectivePath === "/fairness")
+      return <FairnessView state={state} action={action} />;
     if (effectivePath === "/manage")
       return <Dashboard state={state} action={action} />;
     if (effectivePath === "/manage/soldiers")
@@ -431,8 +434,6 @@ export function Workspace({
       return <NotificationsView state={state} action={action} />;
     if (effectivePath === "/settings")
       return <SettingsView state={state} action={action} />;
-    if (effectivePath === "/manage/scores")
-      return <ScoresView state={state} action={action} />;
     if (effectivePath === "/manage/imports")
       return <ImportsView state={state} action={action} reload={reload} />;
     if (effectivePath === "/manage/audit") return <AuditView state={state} />;

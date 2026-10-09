@@ -482,142 +482,152 @@ export function SwapRequests({
   const outgoing = all.filter((row) => row.fromSoldierId === soldierId);
   return (
     <>
-      <Panel
-        title="הצעות החלפה שקיבלתי"
-        subtitle="בהסכמה שני השיבוצים מתחלפים יחד, וכל אחד מקבל את מלוא הניקוד של התורנות החדשה שלו"
-      >
-        {incoming.length ? (
-          incoming.map((row) => {
-            const mine = rows(row.candidates).filter(
-              (item) => item.soldierId === soldierId
-            );
-            const accepted = row.acceptedBy === soldierId;
-            return (
-              <article className="task-item" key={row.id}>
-                <div className="grow">
-                  <strong>
-                    {str(row.dutyName)} — מאת{" "}
-                    {personName(state, row.fromSoldierId)}
-                  </strong>
-                  <EntryLine state={state} entry={row} />
-                  {mine.map((entry) => (
-                    <div className="inline" key={str(entry.assignmentId)}>
-                      <small>
-                        במקום: {str(entry.dutyName)} · {num(entry.points)}{" "}
-                        נקודות ·{" "}
-                        {entryLabels[str(entry.status)] ?? str(entry.status)}
-                      </small>
-                      {row.status === "awaiting_consent" &&
-                        entry.status === "pending" && (
-                          <>
-                            <ActionDialog
-                              title="הסכמה להחלפה"
-                              buttonLabel="הסכמה"
-                              description={`התנאים של שני הצדדים ייבדקו שוב עכשיו. אם הכול תקין ושתי התורנויות טרם התחילו, תקבל/י את ${str(row.dutyName)} ו${personName(state, row.fromSoldierId)} יקבל את ${str(entry.dutyName)}.`}
-                              fields={[
-                                {
-                                  name: "confirmed",
-                                  label: "אני מסכים להחלפה",
-                                  type: "checkbox",
-                                  required: true,
-                                },
-                              ]}
-                              action={action}
-                              type="swap.respond"
-                              payload={{
-                                id: row.id,
-                                assignmentId: entry.assignmentId,
-                                decision: "accept",
-                              }}
-                              version={num(row.version)}
-                            />
-                            <QuickAction
-                              action={action}
-                              type="swap.respond"
-                              payload={{
-                                id: row.id,
-                                assignmentId: entry.assignmentId,
-                                decision: "decline",
-                              }}
-                              version={num(row.version)}
-                            >
-                              דחייה
-                            </QuickAction>
-                          </>
-                        )}
+      {/* A duty manager is never assigned, so has no offers of their own (decision 192). */}
+      {!manager && (
+        <>
+          <Panel
+            title="הצעות החלפה שקיבלתי"
+            subtitle="בהסכמה שני השיבוצים מתחלפים יחד, וכל אחד מקבל את מלוא הניקוד של התורנות החדשה שלו"
+          >
+            {incoming.length ? (
+              incoming.map((row) => {
+                const mine = rows(row.candidates).filter(
+                  (item) => item.soldierId === soldierId
+                );
+                const accepted = row.acceptedBy === soldierId;
+                return (
+                  <article className="task-item" key={row.id}>
+                    <div className="grow">
+                      <strong>
+                        {str(row.dutyName)} — מאת{" "}
+                        {personName(state, row.fromSoldierId)}
+                      </strong>
+                      <EntryLine state={state} entry={row} />
+                      {mine.map((entry) => (
+                        <div className="inline" key={str(entry.assignmentId)}>
+                          <small>
+                            במקום: {str(entry.dutyName)} · {num(entry.points)}{" "}
+                            נקודות ·{" "}
+                            {entryLabels[str(entry.status)] ??
+                              str(entry.status)}
+                          </small>
+                          {row.status === "awaiting_consent" &&
+                            entry.status === "pending" && (
+                              <>
+                                <ActionDialog
+                                  title="הסכמה להחלפה"
+                                  buttonLabel="הסכמה"
+                                  description={`התנאים של שני הצדדים ייבדקו שוב עכשיו. אם הכול תקין ושתי התורנויות טרם התחילו, תקבל/י את ${str(row.dutyName)} ו${personName(state, row.fromSoldierId)} יקבל את ${str(entry.dutyName)}.`}
+                                  fields={[
+                                    {
+                                      name: "confirmed",
+                                      label: "אני מסכים להחלפה",
+                                      type: "checkbox",
+                                      required: true,
+                                    },
+                                  ]}
+                                  action={action}
+                                  type="swap.respond"
+                                  payload={{
+                                    id: row.id,
+                                    assignmentId: entry.assignmentId,
+                                    decision: "accept",
+                                  }}
+                                  version={num(row.version)}
+                                />
+                                <QuickAction
+                                  action={action}
+                                  type="swap.respond"
+                                  payload={{
+                                    id: row.id,
+                                    assignmentId: entry.assignmentId,
+                                    decision: "decline",
+                                  }}
+                                  version={num(row.version)}
+                                >
+                                  דחייה
+                                </QuickAction>
+                              </>
+                            )}
+                        </div>
+                      ))}
+                      {accepted && <Reasons row={row} />}
+                      {accepted && <Outcome row={row} />}
                     </div>
-                  ))}
-                  {accepted && <Reasons row={row} />}
-                  {accepted && <Outcome row={row} />}
-                </div>
-                <div className="inline">
-                  <Status value={row.status} />
-                  {row.status === "awaiting_manager" && accepted && (
-                    <Retract
-                      action={action}
-                      row={row}
-                      label="ביטול ההסכמה"
-                      description="ההחלפה תיסגר לפני החלטת האחראי, ושני השיבוצים יישארו כפי שהיו."
-                    />
-                  )}
-                </div>
-              </article>
-            );
-          })
-        ) : (
-          <Empty title="אין הצעות החלפה שהתקבלו" />
-        )}
-      </Panel>
-      <Panel title="הצעות החלפה ששלחתי" subtitle="אפשר להציע החלפה מדף התורנות">
-        {outgoing.length ? (
-          outgoing.map((row) => (
-            <article className="task-item" key={row.id}>
-              <div className="grow">
-                <strong>{str(row.dutyName)}</strong>
-                <EntryLine state={state} entry={row} />
-                {row.mailLimited === true && (
-                  <small>
-                    ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה היומית.
-                  </small>
-                )}
-                <small>
-                  {rows(row.candidates)
-                    .map(
-                      (item) =>
-                        `${personName(state, item.soldierId)} (${str(item.dutyName)}): ${entryLabels[str(item.status)] ?? str(item.status)}`
-                    )
-                    .join(" · ")}
-                </small>
-                <Reasons row={row} />
-                <Outcome row={row} />
-              </div>
-              <div className="inline">
-                <Status value={row.status} />
-                {row.status === "awaiting_manager" && (
-                  <Retract
-                    action={action}
-                    row={row}
-                    label="ביטול ההחלפה"
-                    description="ההחלפה תיסגר לפני החלטת האחראי, ושני השיבוצים יישארו כפי שהיו."
-                  />
-                )}
-                {row.status === "awaiting_consent" && (
-                  <QuickAction
-                    action={action}
-                    type="swap.withdraw"
-                    payload={{ id: row.id }}
-                    version={num(row.version)}
-                  >
-                    ביטול ההצעה
-                  </QuickAction>
-                )}
-              </div>
-            </article>
-          ))
-        ) : (
-          <Empty title="לא שלחת הצעות החלפה" />
-        )}
-      </Panel>
+                    <div className="inline">
+                      <Status value={row.status} />
+                      {row.status === "awaiting_manager" && accepted && (
+                        <Retract
+                          action={action}
+                          row={row}
+                          label="ביטול ההסכמה"
+                          description="ההחלפה תיסגר לפני החלטת האחראי, ושני השיבוצים יישארו כפי שהיו."
+                        />
+                      )}
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <Empty title="אין הצעות החלפה שהתקבלו" />
+            )}
+          </Panel>
+          <Panel
+            title="הצעות החלפה ששלחתי"
+            subtitle="אפשר להציע החלפה מדף התורנות"
+          >
+            {outgoing.length ? (
+              outgoing.map((row) => (
+                <article className="task-item" key={row.id}>
+                  <div className="grow">
+                    <strong>{str(row.dutyName)}</strong>
+                    <EntryLine state={state} entry={row} />
+                    {row.mailLimited === true && (
+                      <small>
+                        ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה
+                        היומית.
+                      </small>
+                    )}
+                    <small>
+                      {rows(row.candidates)
+                        .map(
+                          (item) =>
+                            `${personName(state, item.soldierId)} (${str(item.dutyName)}): ${entryLabels[str(item.status)] ?? str(item.status)}`
+                        )
+                        .join(" · ")}
+                    </small>
+                    <Reasons row={row} />
+                    <Outcome row={row} />
+                  </div>
+                  <div className="inline">
+                    <Status value={row.status} />
+                    {row.status === "awaiting_manager" && (
+                      <Retract
+                        action={action}
+                        row={row}
+                        label="ביטול ההחלפה"
+                        description="ההחלפה תיסגר לפני החלטת האחראי, ושני השיבוצים יישארו כפי שהיו."
+                      />
+                    )}
+                    {row.status === "awaiting_consent" && (
+                      <QuickAction
+                        action={action}
+                        type="swap.withdraw"
+                        payload={{ id: row.id }}
+                        version={num(row.version)}
+                      >
+                        ביטול ההצעה
+                      </QuickAction>
+                    )}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <Empty title="לא שלחת הצעות החלפה" />
+            )}
+          </Panel>
+        </>
+      )}
       {manager && (
         <Panel
           title="החלפות ביחידה"

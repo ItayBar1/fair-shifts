@@ -244,6 +244,23 @@ export async function readState(actor: Actor) {
             .filter((person) => person.isManager)
             .map((person) => [person.id, person.name])
         );
+    // Points held by seats not yet credited, the F(i) of the scheduling score.
+    // A manager gets all of them, drafts included; a soldier only those on
+    // published duties, since a draft never reaches a soldier (decision 220).
+    const publishedIds = new Set(
+      state.duties
+        .filter((duty) => duty.status === "published")
+        .map((duty) => duty.id)
+    );
+    const futureScores = new Map<string, number>();
+    for (const seat of state.assignments) {
+      if (seat.status !== "reserved" && seat.status !== "held") continue;
+      if (!managing && !publishedIds.has(seat.dutyId)) continue;
+      futureScores.set(
+        seat.soldierId,
+        (futureScores.get(seat.soldierId) ?? 0) + seat.points
+      );
+    }
     const soldiers = state.soldiers
       .filter((person) => managing || !person.isManager)
       .map((person) => {
@@ -253,6 +270,7 @@ export async function readState(actor: Actor) {
           name: person.name,
           version: person.version,
           currentScore: person.currentScore,
+          futureScore: futureScores.get(person.id) ?? 0,
           deletedAt: person.deletedAt,
           population: populationAt(person, now),
           rankName:
@@ -409,11 +427,13 @@ export async function readState(actor: Actor) {
             .filter((row) => row.soldierId === actor.soldierId)
             .map((row) => ({
               id: row.id,
+              soldierId: row.soldierId,
               amount: row.amount,
               before: row.before,
               after: row.after,
               effectiveAt: row.effectiveAt,
               kind: row.kind,
+              // No reason: a soldier sees no manager's reasons (decision 168).
             })),
       audit: managing
         ? projectAudit({

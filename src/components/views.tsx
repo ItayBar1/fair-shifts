@@ -1,7 +1,7 @@
 "use client";
 import { DutyChanges } from "./duty-changes";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ManualAssignment } from "./manual-assignment";
 import {
@@ -42,7 +42,6 @@ import {
   num,
   rows,
   obj,
-  population,
   personName,
   displayDate,
   dutyName,
@@ -71,7 +70,6 @@ import {
   Notice,
 } from "./ui";
 import { AuditLink } from "./audit";
-import { fairnessTable } from "@/client/fairness";
 import {
   calendarBoard,
   selectCalendarCard,
@@ -473,155 +471,6 @@ export function DutyList({
     />
   );
 }
-export function FairnessView({ state }: { state: AppState }) {
-  const ownRow = useRef<HTMLTableRowElement>(null);
-  useEffect(() => {
-    if (window.location.hash === "#my-score") {
-      ownRow.current?.scrollIntoView({ block: "center" });
-      ownRow.current?.focus({ preventScroll: true });
-    }
-  }, []);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("");
-  const { ranked, managers } = fairnessTable(state.soldiers);
-  const matches = (s: Row) =>
-    str(s.name).includes(search) && (!filter || s.population === filter);
-  const filtered = ranked.filter(matches);
-  const outside = managers.filter(matches);
-  return (
-    <>
-      <Notice>
-        הטבלה מציגה נקודות מביצועים שכבר הסתיימו. שיבוצים עתידיים נשמרים בנפרד
-        ונכללים בבחירת המועמדים.
-        {managers.length > 0 &&
-          " אחראי תורנויות אינו משובץ לתורנויות, ולכן אינו מדורג והיתרה שלו מוקפאת."}
-      </Notice>
-      <Panel
-        title="טבלת הצדק היחידתית"
-        subtitle={`${ranked.length} חיילים · יתרה זהה מקבלת דירוג משותף${
-          managers.length ? ` · ${managers.length} אחראים מחוץ לדירוג` : ""
-        }`}
-        actions={
-          <div className="toolbar-controls">
-            <label className="search">
-              <Search size={17} />
-              <input
-                aria-label="חיפוש חייל"
-                placeholder="חיפוש לפי שם…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </label>
-            <select
-              aria-label="סינון אוכלוסייה"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              <option value="">כל האוכלוסיות</option>
-              <option value="mandatory">חובה</option>
-              <option value="career">קבע / קצינים</option>
-              <option value="academic">קמ״א</option>
-            </select>
-          </div>
-        }
-      >
-        {filtered.length || outside.length ? (
-          <div className="table-scroll">
-            <table className="fairness-table">
-              <thead>
-                <tr>
-                  <th>דירוג</th>
-                  <th>שם החייל</th>
-                  <th>אוכלוסייה</th>
-                  <th>דרגה</th>
-                  <th>נקודות</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* "rank" here is the place in this table, never a military rank. */}
-                {filtered.map((s) => (
-                  <tr
-                    key={s.id}
-                    id={s.id === state.actor.soldierId ? "my-score" : undefined}
-                    ref={s.id === state.actor.soldierId ? ownRow : undefined}
-                    tabIndex={s.id === state.actor.soldierId ? -1 : undefined}
-                    className={
-                      s.id === state.actor.soldierId ? "personal-row" : ""
-                    }
-                  >
-                    <td>
-                      <span className="rank-number">{s.rank}</span>
-                    </td>
-                    <td>
-                      <span className="person">
-                        <span className="avatar small">
-                          {str(s.name).slice(0, 1)}
-                        </span>
-                        <strong>{str(s.name)}</strong>
-                        {s.id === state.actor.soldierId && (
-                          <Badge tone="info">אני</Badge>
-                        )}
-                      </span>
-                    </td>
-                    <td>{population(s.population)}</td>
-                    <td>{str(s.rankName, "—")}</td>
-                    <td>
-                      <strong className="score-number">
-                        {num(s.currentScore ?? s.score)}
-                      </strong>
-                    </td>
-                  </tr>
-                ))}
-                {outside.map((s) => (
-                  <tr
-                    key={s.id}
-                    id={s.id === state.actor.soldierId ? "my-score" : undefined}
-                    ref={s.id === state.actor.soldierId ? ownRow : undefined}
-                    tabIndex={s.id === state.actor.soldierId ? -1 : undefined}
-                    className={`manager-row ${
-                      s.id === state.actor.soldierId ? "personal-row" : ""
-                    }`}
-                  >
-                    <td>
-                      <span className="rank-number" aria-label="ללא דירוג">
-                        —
-                      </span>
-                    </td>
-                    <td>
-                      <span className="person">
-                        <span className="avatar small">
-                          {str(s.name).slice(0, 1)}
-                        </span>
-                        <strong>{str(s.name)}</strong>
-                        {s.id === state.actor.soldierId && (
-                          <Badge tone="info">אני</Badge>
-                        )}
-                        <Badge>אחראי, לא משתתף</Badge>
-                      </span>
-                    </td>
-                    <td>{population(s.population)}</td>
-                    <td>{str(s.rankName, "—")}</td>
-                    <td>
-                      <strong className="score-number">
-                        {num(s.currentScore ?? s.score)}
-                      </strong>{" "}
-                      <small className="muted">מוקפאת</small>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty
-            title="לא נמצאו חיילים"
-            text="אפשר לשנות את הסינון או את החיפוש."
-          />
-        )}
-      </Panel>
-    </>
-  );
-}
 /** Everything the handling center lists, so the calendar's count always matches it. */
 function handlingSummary(state: AppState) {
   const drafts = state.duties.filter((d) => dutyStatus(d) === "draft");
@@ -738,7 +587,7 @@ export function Dashboard({
         <Link className="btn secondary" href="/manage/imports">
           <CheckCircle2 size={16} aria-hidden="true" /> ייבוא Excel
         </Link>
-        <Link className="btn secondary" href="/manage/scores">
+        <Link className="btn secondary" href="/fairness">
           <Scale size={16} aria-hidden="true" /> ניקוד
         </Link>
       </nav>

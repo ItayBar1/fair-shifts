@@ -557,7 +557,9 @@
 
 - [calendar-filters.test.ts](../tests/unit/calendar-filters.test.ts): `counts exactly the selected month and keeps cancellations only in the regular view`
 - [calendar-cards.spec.ts](../tests/e2e/calendar-cards.spec.ts): `soldier summary cards filter, restore and focus the score at width`
-- [fairness-table.test.ts](../tests/unit/fairness-table.test.ts): `ranks soldiers by balance, with equal balances sharing a rank`
+- [fairness-table.test.ts](../tests/unit/fairness-table.test.ts): `ranks soldiers by balance, with equal balances sharing a rank`; `ranks by the current balance while the switch is off`; `ranks by the balance plus the points ahead while it is on`
+- [fairness-future.test.ts](../tests/integration/fairness-future.test.ts): `gives a manager every seat not yet credited, drafts included, and a soldier only published ones`; `shows a soldier their own ledger only, without the reasons`
+- [unified-fairness.spec.ts](../tests/e2e/unified-fairness.spec.ts): `a soldier sorts and adds published points ahead, and opens only their own row`; `a manager sorts the table, adds the points ahead and changes balances from it`
 
 ### 31. תזמון התראות והעדפות — הודעות ותיעוד — מכוסה
 
@@ -746,7 +748,7 @@
 
 - [manager-exclusion.test.ts](../tests/integration/manager-exclusion.test.ts): `refuses a manual assignment with the reason, directly through the API`; `never draws a manager, and leaves one out of the draw's picture`; `takes no constraints from a manager and sends no round notice to one`; `marks the soldier's reservations, keeps them in force and tells the managers`; `clears the marks when the role is removed and opens one decision about the balance`; `never leaves an unmarked reservation of a manager, whichever comes first`
 - [manager-exclusion.test.ts](../tests/unit/manager-exclusion.test.ts): `is not lifted by a specific approval`
-- [manager-exclusion.spec.ts](../tests/e2e/manager-exclusion.spec.ts): `managers are outside the ranking, the pickers and a soldier's lists, and the calendar shows what fits each`
+- [manager-exclusion.spec.ts](../tests/e2e/manager-exclusion.spec.ts): `managers are outside the ranking, the pickers and a soldier's lists, and the calendar shows what fits each`; `a manager's requests screen lists the unit's requests without offers of their own`
 
 ### 58. בחירת חייל לשיבוץ — שיבוץ; כשירות; עברית ושימוש מעשי — מכוסה
 

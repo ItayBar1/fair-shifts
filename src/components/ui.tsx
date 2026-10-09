@@ -170,11 +170,14 @@ export function Modal({
   children,
   onClose,
   wide,
+  side,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  /** A drawer along the side of the screen, so the page behind stays in view. */
+  side?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -212,7 +215,7 @@ export function Modal({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      className={`modal ${wide ? "wide" : ""} ${closing ? "closing" : ""}`}
+      className={`modal ${wide ? "wide" : ""} ${side ? "side" : ""} ${closing ? "closing" : ""}`}
       onCancel={(e) => {
         e.preventDefault();
         requestClose();
