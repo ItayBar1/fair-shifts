@@ -20,7 +20,7 @@ async function handler(request: Request) {
     await enforceAuthRateLimit(request, path);
     return await getAuth().handler(request);
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, { request });
   }
 }
 export const GET = handler;

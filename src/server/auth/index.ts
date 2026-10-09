@@ -15,6 +15,7 @@ import { AppError } from "../errors";
 import { CALENDAR_SCOPE } from "../../domain/calendar-sync";
 import { calendarSyncEnabled } from "../calendar/config";
 import { recordGoogleGrant } from "../calendar/link";
+import { logGoogleRejection } from "../diagnostics";
 
 type GoogleProof = {
   userId: string;
@@ -467,7 +468,11 @@ export function getAuth() {
           });
         }
       }
-      return googleAttempt.run({}, () => handler(request));
+      return googleAttempt.run({}, async () => {
+        const response = await handler(request);
+        logGoogleRejection(request, response);
+        return response;
+      });
     };
   }
   return instance;

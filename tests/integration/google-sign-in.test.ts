@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { db, pool } from "../../src/server/db";
 import {
@@ -89,14 +97,14 @@ const cookiesOf = (response: Response) =>
     .join("; ");
 
 /** The login page's Google button, then Google's redirect back with a code. */
-async function googleSignIn(profile: GoogleProfile) {
+async function googleSignIn(profile: GoogleProfile, callbackURL = "/") {
   const start = await getAuth().handler(
     new Request(`${base}/api/auth/sign-in/social`, {
       method: "POST",
       headers: { origin: base, "content-type": "application/json" },
       body: JSON.stringify({
         provider: "google",
-        callbackURL: "/",
+        callbackURL,
         errorCallbackURL: "/login",
       }),
     })
@@ -150,6 +158,7 @@ afterAll(async () => {
   vi.unstubAllGlobals();
   await pool.end();
 });
+afterEach(() => vi.restoreAllMocks());
 
 const googleLinks = (userId: string) =>
   db
@@ -182,6 +191,129 @@ async function codeSignIn(email: string, accountId: string) {
 }
 
 describe("Google sign-in for invited accounts, bound to Google's sub", () => {
+  it("logs actual Google rejection codes without provider profiles, tokens, cookies or descriptions (#120)", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stranger = await googleSignIn({
+      sub: "private-sub",
+      email: "private@example.invalid",
+      email_verified: true,
+    });
+    expect(stranger).toMatchObject({
+      signedIn: false,
+      error: "signup_disabled",
+      cookie: "",
+    });
+    const unverified = await googleSignIn({
+      sub: "unverified-sub",
+      email: emails.member,
+      email_verified: false,
+    });
+    expect(unverified).toMatchObject({
+      signedIn: false,
+      error: "account_not_linked",
+      cookie: "",
+    });
+    expect(
+      (
+        await googleSignIn({
+          sub: "member-sub",
+          email: emails.member,
+          email_verified: true,
+        })
+      ).signedIn
+    ).toBe(true);
+    const secondIdentity = await googleSignIn({
+      sub: "second-sub",
+      email: emails.member,
+      email_verified: true,
+    });
+    expect(secondIdentity).toMatchObject({
+      signedIn: false,
+      error: "unable_to_link_account",
+      cookie: "",
+    });
+    const missingState = await getAuth().handler(
+      new Request(
+        `${base}/api/auth/callback/google?code=private-token&error_description=private@example.invalid`,
+        { headers: { cookie: "private-cookie=secret" } }
+      )
+    );
+    expect(
+      new URL(missingState.headers.get("location")!, base).searchParams.get(
+        "error"
+      )
+    ).toBe("state_not_found");
+    expect(warnings.mock.calls).toEqual([
+      ["Google sign-in rejected signup_disabled"],
+      ["Google sign-in rejected account_not_linked"],
+      ["Google sign-in rejected unable_to_link_account"],
+      ["Google sign-in rejected state_not_found"],
+    ]);
+    for (const call of errors.mock.calls)
+      expect(call).toEqual(["Authentication operation failed"]);
+    expect(
+      (
+        await googleSignIn(
+          {
+            sub: "member-sub",
+            email: emails.member,
+            email_verified: true,
+          },
+          "/?error=invalid_code"
+        )
+      ).signedIn
+    ).toBe(true);
+    expect(warnings).toHaveBeenCalledTimes(4);
+  });
+
+  it("logs invalid_code and maps an untrusted provider rejection to other (#120)", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const providerError of [
+      null,
+      "private@example.invalid token-secret",
+    ]) {
+      const start = await getAuth().handler(
+        new Request(`${base}/api/auth/sign-in/social`, {
+          method: "POST",
+          headers: { origin: base, "content-type": "application/json" },
+          body: JSON.stringify({
+            provider: "google",
+            callbackURL: "/",
+            errorCallbackURL: "/login",
+          }),
+        })
+      );
+      expect(start.status).toBe(200);
+      const { url } = (await start.json()) as { url: string };
+      const state = new URL(url).searchParams.get("state")!;
+      const query = new URLSearchParams({
+        state,
+        code: "private-token",
+        ...(providerError && {
+          error: providerError,
+          error_description: "private-cookie secret",
+        }),
+      });
+      const response = await getAuth().handler(
+        new Request(`${base}/api/auth/callback/google?${query}`, {
+          headers: { cookie: cookiesOf(start) },
+        })
+      );
+      expect(response.status).toBe(302);
+      expect(
+        new URL(response.headers.get("location")!, base).searchParams.get(
+          "error"
+        )
+      ).toBe(providerError ?? "invalid_code");
+    }
+    expect(warnings.mock.calls).toEqual([
+      ["Google sign-in rejected invalid_code"],
+      ["Google sign-in rejected other"],
+    ]);
+  });
+
   it("lets an invited person start with Google and then use either Google or an email code", async () => {
     expect(await person(memberId)).toMatchObject({
       emailVerified: false,

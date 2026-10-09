@@ -31,6 +31,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, { request });
   }
 }
