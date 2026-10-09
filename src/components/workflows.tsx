@@ -674,9 +674,10 @@ function AccountsPanel({
                 fields={[
                   {
                     name: "email",
-                    label: "הכתובת החדשה",
+                    label: "כתובת המייל החדשה",
                     type: "email",
                     required: true,
+                    hint: "כתובת מייל שבשליטת האחראי ושאינה רשומה באתר. קוד אימות יישלח אליה.",
                   },
                   { name: "reason", label: "סיבת החילוץ", required: true },
                 ]}

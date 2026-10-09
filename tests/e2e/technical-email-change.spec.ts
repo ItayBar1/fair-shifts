@@ -135,7 +135,7 @@ test("the technical account moves itself to a new address with a code from each 
 
   await change.getByRole("button", { name: "בקשת החלפת כתובת" }).click();
   const request = page.getByRole("dialog");
-  await request.getByLabel("הכתובת החדשה").fill(emails.next);
+  await request.getByLabel("כתובת המייל החדשה").fill(emails.next);
   await request.getByLabel("סיבת ההחלפה").fill("מעבר לחשבון הייעודי");
   await request.getByRole("button", { name: "שליחת הקודים" }).click();
   await expect(change.getByText(emails.next)).toBeVisible();
@@ -227,7 +227,7 @@ test("a manager changes its own email using two codes on desktop and mobile", as
   ).toBeVisible();
   await change.getByRole("button", { name: "בקשת החלפת כתובת" }).click();
   const request = page.getByRole("dialog");
-  await request.getByLabel("הכתובת החדשה").fill(next);
+  await request.getByLabel("כתובת המייל החדשה").fill(next);
   await request.getByLabel("סיבת ההחלפה").fill("החלפת תיבה אישית");
   await request.getByRole("button", { name: "שליחת הקודים" }).click();
   await expect(change.getByText(next)).toBeVisible();
@@ -267,7 +267,7 @@ test("the technical account recovers a manager email using a reason and the new 
     .getByRole("button", { name: "חילוץ כתובת מייל", exact: true })
     .click();
   const request = page.getByRole("dialog");
-  await request.getByLabel("הכתובת החדשה").fill(next);
+  await request.getByLabel("כתובת המייל החדשה").fill(next);
   await request.getByLabel("סיבת החילוץ").fill("התיבה הקודמת אינה זמינה");
   await request.getByRole("button", { name: "שליחת קוד אימות" }).click();
   await expect(request).not.toBeVisible();

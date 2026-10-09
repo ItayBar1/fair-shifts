@@ -28,6 +28,9 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
+step 'Runtime reads root-owned source copied with private host permissions'
+sh scripts/image-permissions-test.sh
+
 step 'Building one application image'
 production build app
 production build db

@@ -28,7 +28,11 @@ RUN pnpm build && node scripts/build-runtime.mjs
 
 FROM builder AS production
 ENV NODE_ENV=production
-RUN grep -q '^ping:x:999:' /etc/group && delgroup ping \
+# COPY preserves host modes, including source extracted under umask 077.
+# Image contents contain code only; secrets are supplied outside the image.
+# Give the runtime read/traverse access without granting write access to source.
+RUN chmod -R a+rX /app \
+    && grep -q '^ping:x:999:' /etc/group && delgroup ping \
     && addgroup -g 999 fair-shifts && adduser -D -u 999 -G fair-shifts fair-shifts \
     && chown -R fair-shifts:fair-shifts /app/.next \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/pnpm \
