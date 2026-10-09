@@ -12,6 +12,6 @@ export async function GET(request: Request) {
       headers: { "cache-control": "no-store" },
     });
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, { request });
   }
 }

@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { AppError } from "./errors";
+import { logRequestFailure, type RequestDiagnostics } from "./diagnostics";
 /** Drizzle wraps the driver's error, so the SQLSTATE can sit one or two causes down. */
 function uniqueViolation(error: unknown): boolean {
   let current = error;
@@ -13,7 +14,10 @@ function uniqueViolation(error: unknown): boolean {
   }
   return false;
 }
-export function errorResponse(error: unknown): Response {
+export function errorResponse(
+  error: unknown,
+  context?: RequestDiagnostics
+): Response {
   if (error instanceof AppError)
     return Response.json(
       {
@@ -46,10 +50,7 @@ export function errorResponse(error: unknown): Response {
       },
       { status: 409 }
     );
-  console.error(
-    "Request failed",
-    error instanceof Error ? error.name : "unknown"
-  );
+  logRequestFailure(error, context);
   return Response.json(
     {
       error: {
