@@ -36,7 +36,11 @@ production build app
 production build db
 production build cloudflared
 step 'Pinned Tunnel binary executes without a connection token'
-"$docker_bin" run --rm "fair-shifts-tunnel:$APP_VERSION" version | grep -q '2026.10.0' || fail 'Tunnel binary version or runtime is wrong'
+"$docker_bin" run --rm --network none "fair-shifts-tunnel:$APP_VERSION" version | grep -q '2026.10.0' || fail 'Tunnel binary version or runtime is wrong'
+"$docker_bin" run --rm --network none "fair-shifts-tunnel:$APP_VERSION" tunnel --help >/dev/null || fail 'Tunnel command failed'
+"$docker_bin" run --rm --network none --entrypoint sh "fair-shifts-tunnel:$APP_VERSION" \
+  -c 'test "$(id -u)" = 65532 && test -s /etc/ssl/certs/ca-certificates.crt && ! command -v go' \
+  || fail 'Tunnel runtime must retain non-root identity, CA trust and no compiler'
 step 'Rejecting an unmarked existing physical database volume'
 if output=$("$docker_bin" run --rm --entrypoint sh --tmpfs /var/lib/postgresql "fair-shifts-database:$APP_VERSION" \
   -c 'mkdir -p "$PGDATA"; echo 18 > "$PGDATA/PG_VERSION"; exec fair-shifts-database-entrypoint.sh postgres' 2>&1); then
