@@ -15,6 +15,7 @@
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [תוכנית תיקון האבטחה המאושרת](plans/2026-10-07-security-remediation.md), [מעקב #122](https://github.com/ItayBar1/fair-shifts/issues/122). שינוי עצמי של אחראי ב־`/manage/account`; חילוץ כתובתו בידי הטכני במסך ההרשאות, עם סיבה וקוד לכתובת החדשה.
+- [מפת ממצאי האבטחה, התיקונים והרגרסיות](docs/security-remediation-map.md) ו[ראיות המעבר החי](docs/security-live-transition-evidence.md). קבוצות התיקון נסגרו עם ראיות; דוח הניצול מוסר בנפרד, והרגרסיות וההיסטוריה נשמרות.
 - [מפת הדרך וחלוקת העבודה המקורית מ־28.09](docs/team-roadmap.md); מצב השלבים העדכני ב[ביקורת](docs/audits/2026-10-05/implementation.md).
 - [כרטיס המעקב ב־GitHub](https://github.com/ItayBar1/fair-shifts/issues/2), [אינדקס 37 ה־Stories המקוריים והתלויות](docs/github-backlog.md) ו[מצב הכרטיסים וההרחבות ב־05.10.2026](docs/audits/2026-10-05/backlog-operations.md).
 - [זיכרון בין סשנים](config/memory/README.md) ו[יומן סשנים](config/memory/session-log.md). הזיכרון מתועד ב־Git, אינו נטען אוטומטית ואינו מחליף את האפיון.

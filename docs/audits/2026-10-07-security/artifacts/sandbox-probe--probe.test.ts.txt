@@ -1,4 +1,0 @@
-import { it, expect } from "vitest";
-import { normalizeEmail } from "@/server/auth/policy";
-import { soldier } from "../tests/fixtures";
-it("probe", () => { expect(normalizeEmail(" A@B.C ")).toBe("a@b.c"); expect(typeof soldier).toBe("function"); });
