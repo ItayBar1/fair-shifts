@@ -45,6 +45,7 @@ export const diagnosticActionTypes = new Set([
   "import.preview",
   "import.get",
   "import.apply",
+  "import.invitations.publish",
   "technical.user.create",
   "soldier.create",
   "soldier.update.preview",
