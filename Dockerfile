@@ -2,8 +2,10 @@ FROM node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e
 FROM postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 AS base
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+# zlib and nghttp2 at least at Alpine's fixes for CVE-2026-85091 and
+# CVE-2026-58055 (#167); a floor, so a later Alpine revision still builds.
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && apk add --no-cache age ca-certificates \
+    && apk add --no-cache age ca-certificates 'zlib>=1.3.2-r1' 'nghttp2-libs>=1.70.0-r0' \
     && npm install --global pnpm@11.19.0
 WORKDIR /app
 ENTRYPOINT []
