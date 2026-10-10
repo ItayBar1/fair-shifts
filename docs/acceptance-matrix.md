@@ -590,7 +590,7 @@
 - [deployment-preflight.test.ts](../tests/unit/deployment-preflight.test.ts): `rejects an existing legacy database before building`; `continues a fresh deployment`; `rejects missing runtime or operations env files`; `rejects invalid configuration for each service`; `checks all three service configurations`
 - [supply-chain.test.ts](../tests/unit/supply-chain.test.ts): `blocks high and critical findings`; `requires actual approval`; `fails closed for empty`
 - [repository-rules.test.ts](../tests/unit/repository-rules.test.ts): `verifies effective GitHub rules`; `pins external Docker images`
-- [braces-depth.test.ts](../tests/unit/braces-depth.test.ts): `rejects the published stack-exhaustion input`
+- [dependency-overrides.test.ts](../tests/unit/dependency-overrides.test.ts): `keeps braces, its glob chain and the old esbuild loader out`; `resolves Next's lint root directories through tinyglobby`; `gives exceljs a fixed CommonJS uuid`
 - [database-permissions.test.ts](../tests/integration/database-permissions.test.ts): `verifies real non-superuser logins`; `lets pg-boss initialize and work only`
 - [auth.test.ts](../tests/integration/auth.test.ts): `shows worker backup presence to the site`
 - [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `retries with growing delays, then fails visibly while the site notice stays`
