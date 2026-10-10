@@ -15,6 +15,8 @@ const israelDate = (days = 0) =>
   DateTime.now().setZone("Asia/Jerusalem").plus({ days }).toISODate()!;
 const leaving = "leaving@example.invalid";
 const ids: Record<string, string> = {};
+/** The grace arrival as seeded; assertions reuse it instead of a later "today". */
+let graceArrival: string;
 
 test.beforeAll(async () => {
   if (
@@ -43,6 +45,7 @@ test.beforeAll(async () => {
       { arrivalDate: israelDate(-3), graceEligible: true },
     ],
   ] as const;
+  graceArrival = people[2][4].arrivalDate;
   for (const [name, email, role, personalNumber, service] of people) {
     const id = randomUUID();
     const data = soldier({ id, name, personalNumber });
@@ -94,23 +97,24 @@ test("release blocks the open session at the boundary, the managers get one depa
 }) => {
   const soldierContext = await browser.newContext();
   const member = await soldierContext.newPage();
-  // The last day of service still allows signing in.
-  await login(member, leaving);
-
-  // The day passes: the stored date is now yesterday, before any worker run.
   const [row] = await db
     .select()
     .from(soldiers)
     .where(eq(soldiers.id, ids["חייל משתחרר"]));
-  await db
-    .update(soldiers)
-    .set({
-      data: {
-        ...row.data,
-        service: { ...row.data.service, releaseDate: israelDate(-1) },
-      },
-    })
-    .where(eq(soldiers.id, row.id));
+  const releaseOn = (releaseDate: string) =>
+    db
+      .update(soldiers)
+      .set({
+        data: { ...row.data, service: { ...row.data.service, releaseDate } },
+      })
+      .where(eq(soldiers.id, row.id));
+  // The last day of service still allows signing in. The date is set again
+  // here, so a run that crossed midnight after the seed still signs in.
+  await releaseOn(israelDate());
+  await login(member, leaving);
+
+  // The day passes: the stored date is now yesterday, before any worker run.
+  await releaseOn(israelDate(-1));
   await member.goto("/calendar");
   await expect(member.getByLabel("כתובת המייל המאושרת")).toBeVisible();
   const before = (await loginCodes(leaving)).length;
@@ -145,7 +149,7 @@ test("release blocks the open session at the boundary, the managers get one depa
   const grace = page.locator("tr", { hasText: "חייל בחסד" });
   await expect(grace.getByText("בחודש חסד")).toBeVisible();
   await grace.getByRole("button", { name: "פרופיל ועריכה" }).click();
-  const returnDate = DateTime.fromISO(israelDate(-3), {
+  const returnDate = DateTime.fromISO(graceArrival, {
     zone: "Asia/Jerusalem",
   })
     .plus({ months: 1 })

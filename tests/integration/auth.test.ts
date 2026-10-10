@@ -7577,14 +7577,15 @@ describe("gender, capability and personal hours conditions", () => {
     ]);
     // Keeping the stored id edits the same limit instead of replacing it.
     const id = person.data.allowedHours![0].id;
+    const end = day(12);
     await saveConditions(
-      { soldierId, allowedHours: [{ ...limit, id, end: day(12) }] },
+      { soldierId, allowedHours: [{ ...limit, id, end }] },
       2
     );
     expect(
       (await db.select().from(soldiers).where(eq(soldiers.id, soldierId!)))[0]
         .data.allowedHours
-    ).toMatchObject([{ id, end: day(12) }]);
+    ).toMatchObject([{ id, end }]);
   });
 
   it("rejects a stale conditions preview and saves only one of two competing confirmations", async () => {

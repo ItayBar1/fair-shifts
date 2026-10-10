@@ -442,13 +442,10 @@ describe("service dates", () => {
       (fresh as Record<string, unknown> | undefined)?.graceUntil
     ).toBeUndefined();
 
-    await setService(member, {
-      arrivalDate: israelDate(-3),
-      graceEligible: true,
-    });
-    const arrival = DateTime.fromISO(israelDate(-3), {
-      zone: "Asia/Jerusalem",
-    });
+    // The stored arrival, not a later "today", so midnight cannot shift it.
+    const arrivalDate = israelDate(-3);
+    await setService(member, { arrivalDate, graceEligible: true });
+    const arrival = DateTime.fromISO(arrivalDate, { zone: "Asia/Jerusalem" });
     expect(
       (await readState(manager)).soldiers.find(
         (row) => row.id === member.soldierId
