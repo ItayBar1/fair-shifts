@@ -9,7 +9,7 @@ import {
   overlaps,
   releaseBoundary,
 } from "./time";
-import { executionPeriod } from "./execution";
+import { executionPeriod, executionPerformer } from "./execution";
 import type {
   Duty,
   DutySlot,
@@ -432,7 +432,7 @@ export function evaluateEligibility(
   const ignored = new Set(context.ignoreAssignmentIds ?? []);
   const active = context.assignments.filter(
     (assignment) =>
-      assignment.soldierId === soldier.id &&
+      executionPerformer(assignment) === soldier.id &&
       assignment.status !== "cancelled" &&
       !ignored.has(assignment.id)
   );

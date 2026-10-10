@@ -37,7 +37,11 @@ import {
   type FixedAllocation,
   type ExecutionPlan,
 } from "./execution";
-import { remainingPeriod } from "./transfers";
+import {
+  remainingPeriod,
+  performanceEnded,
+  PERFORMANCE_ENDED_MESSAGE,
+} from "./transfers";
 import { executionPeriod } from "../domain/execution";
 import {
   accountOf,
@@ -118,7 +122,8 @@ function afterSwap(
   soldierId: string,
   seat: Assignment,
   leaving: string,
-  approvals: SpecificApproval[] = []
+  approvals: SpecificApproval[] = [],
+  now = Date.now()
 ) {
   const person = state.soldiers.find((row) => row.id === soldierId);
   const duty = state.duties.find((row) => row.id === seat.dutyId);
@@ -126,7 +131,7 @@ function afterSwap(
   const slot = duty.slots.find((row) => row.id === seat.slotId);
   invariant(slot, "not_found", "המקום לא נמצא בתורנות", 404);
   // A seat that started can only be taken over for what is left of it (decision 183).
-  const rest = remainingPeriod(seat, duty);
+  const rest = remainingPeriod(seat, duty, now);
   return evaluateEligibility(person, rest ? { ...duty, ...rest } : duty, slot, {
     duties: state.duties,
     assignments: state.assignments,
@@ -142,7 +147,8 @@ function movable(seat: Assignment, duty: Duty, whose: string) {
   invariant(
     instant(executionPeriod(seat, duty).end).toMillis() > Date.now(),
     "performance_ended",
-    `הביצוע בתורנות ${whose} כבר הסתיים. תיקון ביצוע נעשה בידי אחראי`
+    `הביצוע בתורנות ${whose} כבר הסתיים. תיקון ביצוע נעשה בידי אחראי`,
+    409
   );
   if (!hasStarted(duty)) return;
 }
@@ -486,6 +492,9 @@ export async function respondSwap(
       "השיבוץ של המציע או התורנות שלו השתנו אחרי ההצעה",
       "swap_changed"
     );
+  const checkedAt = Date.now();
+  if (performanceEnded(seat, duty, checkedAt))
+    return expire(tx, row, PERFORMANCE_ENDED_MESSAGE, "performance_ended");
   const target = state.assignments.find(
     (item) => item.id === entry.assignmentId
   );
@@ -505,8 +514,23 @@ export async function respondSwap(
       "השיבוץ שלך או התורנות שלו השתנו אחרי ההצעה",
       "swap_changed"
     );
+  if (performanceEnded(target, other, checkedAt))
+    return closeEntry(
+      tx,
+      row,
+      entry,
+      PERFORMANCE_ENDED_MESSAGE,
+      "performance_ended"
+    );
   // Recheck at the moment of acceptance; the offer reserved nothing.
-  const mine = afterSwap(state, actor.soldierId, seat, target.id);
+  const mine = afterSwap(
+    state,
+    actor.soldierId,
+    seat,
+    target.id,
+    [],
+    checkedAt
+  );
   invariant(
     mine.status !== "blocked",
     "candidate_ineligible",
@@ -514,7 +538,14 @@ export async function respondSwap(
     422,
     mine
   );
-  const theirs = afterSwap(state, data.fromSoldierId, target, seat.id);
+  const theirs = afterSwap(
+    state,
+    data.fromSoldierId,
+    target,
+    seat.id,
+    [],
+    checkedAt
+  );
   if (theirs.status === "blocked") {
     // The offerer's reasons are private; the acceptor learns only that the swap is not possible.
     await notify(tx, data.fromSoldierId, {
@@ -1434,7 +1465,7 @@ async function decideStartedSwap(
   };
 }
 
-/** Read-only review for a manager: both sides' eligibility after the swap and the exceptions to approve. */
+/** Current review for a manager (ended offers expire): both sides' eligibility after the swap and the exceptions to approve. */
 export async function reviewSwap(
   tx: DbTransaction,
   actor: Actor,
@@ -1452,6 +1483,11 @@ export async function reviewSwap(
     .parse(payload);
   const { row, data, state, entry, seat, target, duty, other, changed } =
     await awaitingManager(tx, actor, input.id, expectedVersion);
+  if (
+    (seat && duty && performanceEnded(seat, duty)) ||
+    (target && other && performanceEnded(target, other))
+  )
+    return expire(tx, row, PERFORMANCE_ENDED_MESSAGE, "performance_ended");
   if (changed || !seat || !target || !duty || !other)
     return { valid: false, message: changed ?? "ההחלפה אינה תקפה עוד" };
   if (hasStarted(duty) || hasStarted(other)) {
@@ -1559,6 +1595,11 @@ export async function decideSwap(
     .parse(payload);
   const { row, data, state, entry, seat, target, duty, other, changed } =
     await awaitingManager(tx, actor, input.id, expectedVersion);
+  if (
+    (seat && duty && performanceEnded(seat, duty)) ||
+    (target && other && performanceEnded(target, other))
+  )
+    return expire(tx, row, PERFORMANCE_ENDED_MESSAGE, "performance_ended");
   const now = new Date().toISOString();
   const fromName = nameOf(state.soldiers, data.fromSoldierId);
   const toName = nameOf(state.soldiers, entry.soldierId);

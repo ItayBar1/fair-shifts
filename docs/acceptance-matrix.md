@@ -495,6 +495,7 @@
 
 ### 18. התנגשות חדשה בשיבוץ קיים — כשירות וזמינות; סבבי אילוצים — מכוסה
 
+- [performer-rest.test.ts](../tests/integration/performer-rest.test.ts): `releases the original assignee`; `blocks the actual performer during rest`; `moves overlap to the actual performer`; `uses corrected times when the performer stays the same`; `reassesses reservations and impact`; `allows the original assignee manually`; `checks corrected rest in a real`
 - [auth.test.ts](../tests/integration/auth.test.ts): `retains an assignment and flags it when a new inactivity period conflicts`; `requires current impact confirmation and keeps a conflicting assignment for treatment`
 - [cancellation-requests.test.ts](../tests/integration/cancellation-requests.test.ts): `submitting changes neither the seat, the calendar nor reserved points, and is visible only to its owner and managers`
 
@@ -526,11 +527,13 @@
 
 ### 24. תיקון עבר לפני נרמול — ניקוד — מכוסה
 
+- [performer-rest.test.ts](../tests/integration/performer-rest.test.ts): `releases the original assignee`; `blocks the actual performer during rest`; `moves overlap to the actual performer`; `uses corrected times when the performer stays the same`; `reassesses reservations and impact`; `allows the original assignee manually`; `checks corrected rest in a real`
 - [auth.test.ts](../tests/integration/auth.test.ts): `records the history but leaves the balance for a manager decision after a normalization, even when the corrected end moves past it`; `previews and applies a value correction once, keeping the draw value and hiding reasons from soldiers`; `shows the decision in the handling center, keeps the balance once and lets a later correction weigh only the new difference`
 - [domain.test.ts](../tests/unit/domain.test.ts): `waits for a manager after a barrier or while a decision is open`
 
 ### 25. החלפה בהסכמה לפני התחלה — החלפות ובקשות שינוי — מכוסה
 
+- [expired-transfer.test.ts](../tests/integration/expired-transfer.test.ts): `expires acceptance at or after the execution end`; `routes consent one millisecond before the end`; `expires a manager`; `rejects a new offer exactly at its execution end`; `expires at the performer's own end`; `when the target's period ends first`; `closes only an expired target`
 - [auth.test.ts](../tests/integration/auth.test.ts): `keeps the original until consent, moves the full value without a score check and completes once when candidates race`
 - [security-mail.test.ts](../tests/integration/security-mail.test.ts): `cancels old offers when completed but retains valid completion messages for both parties`
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `swaps both seats together with their full value, without a score check, and completes once when two acceptances race`
@@ -538,6 +541,7 @@
 
 ### 26. החלפה אטומית ובדיקה חוזרת — החלפות ובקשות שינוי — מכוסה
 
+- [expired-transfer.test.ts](../tests/integration/expired-transfer.test.ts): `expires acceptance at or after the execution end`; `routes consent one millisecond before the end`; `expires a manager`; `rejects a new offer exactly at its execution end`; `expires at the performer's own end`; `when the target's period ends first`; `closes only an expired target`
 - [auth.test.ts](../tests/integration/auth.test.ts): `rejects an unsuitable candidate without revealing why and rechecks at acceptance`
 - [security-mail.test.ts](../tests/integration/security-mail.test.ts): `retains a swap offer while another seat for that recipient is pending, then cancels it`
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `rechecks both sides at acceptance and keeps both seats when one side no longer fits, without revealing the offerer's reason`; `closes the entries of seats that moved or of a duty that changed, and competing moves of a seat end in one outcome`
@@ -655,6 +659,7 @@
 
 ### 44. העברת תוספת ורגע קבלה — החלפות — מכוסה
 
+- [expired-transfer.test.ts](../tests/integration/expired-transfer.test.ts): `expires acceptance at or after the execution end`; `routes consent one millisecond before the end`; `expires a manager`; `rejects a new offer exactly at its execution end`; `expires at the performer's own end`; `when the target's period ends first`; `closes only an expired target`
 - [auth.test.ts](../tests/integration/auth.test.ts): `keeps the original until consent, moves the full value without a score check and completes once when candidates race`; `hands an acceptance after the start to a manager without moving the seat`
 - [swaps.test.ts](../tests/integration/swaps.test.ts): `sends a swap whose duty started to a manager, who needs a handover time to approve it and may reject it with a visible reason`
 - [execution-periods.test.ts](../tests/integration/execution-periods.test.ts): `swaps a started seat at a handover for a whole seat that has not started`; `goes to a manager, who sets the handover, and the original seat binds until then`

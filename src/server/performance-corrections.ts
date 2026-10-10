@@ -25,6 +25,7 @@ import { id, text } from "./validation";
 import { parseMoment } from "./duty-service";
 import { postScore, settleDue } from "./scoring";
 import { calculatePerformedPrice } from "../domain/pricing";
+import { reassessAssignments } from "./personnel";
 import { interval, instant } from "../domain/time";
 import { evaluateEligibility } from "../domain/eligibility";
 import type { Performance } from "../domain/types";
@@ -403,6 +404,9 @@ export async function applyPerformanceCorrection(
     )
     .returning();
   invariant(updated, "stale_version", "המידע השתנה בזמן השמירה", 409);
+  // Moving a past performance also moves its overlap and rest to the actual performer.
+  for (const soldierId of new Set([current.performerId, proposed.performerId]))
+    await reassessAssignments(tx, soldierId);
   await tx.insert(records).values({
     id: correctionId,
     kind: "performance_correction",
