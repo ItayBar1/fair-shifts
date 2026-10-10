@@ -4709,7 +4709,7 @@ describe("first duty vertical slice", () => {
           .select()
           .from(emailOutbox)
           .where(eq(emailOutbox.recipientAccountId, login.id))
-      ).toHaveLength(1);
+      ).toHaveLength(0);
       // Only a candidate in a lottery picture: not activity (user decision).
       const draw = (await command(
         "duty.lottery",

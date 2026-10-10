@@ -83,7 +83,12 @@ import {
   discardDutyChange,
   previewCatalogImpact,
 } from "./duty-changes";
-import { previewImport, applyImport, getImport } from "./imports";
+import {
+  previewImport,
+  applyImport,
+  getImport,
+  publishImportInvitations,
+} from "./imports";
 import { previewImportRestore, applyImportRestore } from "./import-restores";
 import {
   decideTransfer,
@@ -183,6 +188,14 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "import.apply":
         result = await applyImport(tx, actor, payload, expectedVersion);
+        break;
+      case "import.invitations.publish":
+        result = await publishImportInvitations(
+          tx,
+          actor,
+          payload,
+          expectedVersion
+        );
         break;
       case "technical.user.create":
         result = await createTechnicalUser(tx, actor, payload);

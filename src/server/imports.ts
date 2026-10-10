@@ -31,7 +31,8 @@ import {
   populationChange,
   type DomainState,
 } from "./personnel";
-import { saveSoldier } from "./people";
+import { enqueueAccountInvitation, saveSoldier } from "./people";
+import { accountAvailable } from "./auth/accounts";
 import { setSoldierRank } from "./ranks";
 import { postScore, settleDue } from "./scoring";
 
@@ -582,7 +583,7 @@ export async function applyImport(
         actor,
         row.profile,
         row.personVersion,
-        { populationReviewed: true }
+        { populationReviewed: true, sendInvitation: false }
       );
       personId = result.id;
       version = result.version;
@@ -655,10 +656,65 @@ export async function applyImport(
     reason: input.reason,
     appliedBy: actor.id,
     appliedAt: new Date().toISOString(),
+    invitationsStatus:
+      Number(batch.data.created) > 0 ? "unpublished" : "not_needed",
   });
   await audit(tx, actor, "import.apply", batch.id, {
     created: batch.data.created,
     updated: batch.data.updated,
   });
   return present(updated, await batchRows(tx, batch.id));
+}
+
+/** Importing creates access immediately; only this explicit action queues mail. */
+export async function publishImportInvitations(
+  tx: DbTransaction,
+  actor: Actor,
+  payload: unknown,
+  expectedVersion?: number
+) {
+  manager(actor);
+  const input = z.object({ id, confirmed: z.literal(true) }).parse(payload);
+  const batch = await findRecord(tx, "import", input.id);
+  currentVersion(batch.version, expectedVersion);
+  invariant(
+    ["applied", "partially_restored"].includes(String(batch.data.status)) &&
+      batch.data.invitationsStatus === "unpublished",
+    "invitations_not_unpublished",
+    "אין באצווה הזמנות שממתינות לפרסום",
+    409
+  );
+  let queued = 0;
+  let skipped = 0;
+  for (const row of await batchRows(tx, batch.id)) {
+    if (row.data.mode !== "create") continue;
+    if (!row.subjectId || row.data.newRowRestored || row.data.erased) {
+      skipped++;
+      continue;
+    }
+    const [target] = await tx
+      .select()
+      .from(user)
+      .where(eq(user.soldierId, row.subjectId))
+      .for("update");
+    if (!target || !(await accountAvailable(target, tx))) {
+      skipped++;
+      continue;
+    }
+    await enqueueAccountInvitation(tx, target.id);
+    queued++;
+  }
+  await updateRecord(tx, batch, {
+    ...batch.data,
+    invitationsStatus: "published",
+    invitationsPublishedAt: new Date().toISOString(),
+    invitationsPublishedBy: actor.id,
+    invitationsQueued: queued,
+    invitationsSkipped: skipped,
+  });
+  await audit(tx, actor, "import.invitations.publish", batch.id, {
+    queued,
+    skipped,
+  });
+  return getImport(tx, actor, { id: batch.id });
 }

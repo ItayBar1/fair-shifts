@@ -31,6 +31,7 @@ export function ImportsView({
   const [overwrite, setOverwrite] = useState(false);
   const [populationConfirmed, setPopulationConfirmed] = useState(false);
   const [reason, setReason] = useState("");
+  const [invitationsConfirmed, setInvitationsConfirmed] = useState(false);
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -41,6 +42,7 @@ export function ImportsView({
     setOverwrite(false);
     setPopulationConfirmed(false);
     setReason("");
+    setInvitationsConfirmed(false);
     const form = new FormData(event.currentTarget);
     form.set("idempotencyKey", crypto.randomUUID());
     try {
@@ -69,6 +71,7 @@ export function ImportsView({
     setOverwrite(false);
     setPopulationConfirmed(false);
     setReason("");
+    setInvitationsConfirmed(false);
     try {
       setBatch(await action("import.get", { id }));
     } catch (error) {
@@ -104,6 +107,29 @@ export function ImportsView({
       setBusy(false);
     }
   }
+  async function publishInvitations(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!batch) return;
+    setBusy(true);
+    setError("");
+    try {
+      setBatch(
+        await action(
+          "import.invitations.publish",
+          {
+            id: batch.id,
+            confirmed: invitationsConfirmed,
+          },
+          num(batch.version)
+        )
+      );
+      setInvitationsConfirmed(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "ההזמנות לא פורסמו");
+    } finally {
+      setBusy(false);
+    }
+  }
   const details = rows(batch?.rows);
   const hasOverwrite = details.some(
     (row) => row.mode === "update" && rows(row.changes).length > 0
@@ -127,6 +153,10 @@ export function ImportsView({
         <p className="muted">
           תא ריק אינו מוחק מידע קיים. מספר אישי וטלפון נשמרים כטקסט; ניקוד נוכחי
           אינו כולל ניקוד שמור.
+        </p>
+        <p className="muted">
+          שמירת הייבוא קולטת את החיילים ומאפשרת להם להתחבר. הזמנות במייל יישלחו
+          רק לאחר פרסום הזמנות נפרד לאצווה; קודי כניסה נשלחים לפי בקשה גם קודם.
         </p>
         <form onSubmit={upload} className="form-grid">
           <label className="field full">
@@ -328,12 +358,56 @@ export function ImportsView({
                   : "הייבוא נשמר בשלמותו. שינויי היתרה מתועדים ביומן; השיבוצים והניקוד השמור נשמרו."}
             </Notice>
           )}
+          {batch.invitationsStatus === "unpublished" &&
+            ["applied", "partially_restored"].includes(str(batch.status)) && (
+              <form onSubmit={publishInvitations} className="form-grid">
+                <Notice tone="info">
+                  הזמנות טרם פורסמו. החיילים נקלטו ויכולים להתחבר. הפרסום שולח
+                  הזמנות לחיילים החדשים באצווה בלבד, לכתובת המייל העדכנית שלהם.
+                  קליטות שבוטלו וחשבונות שאינם זמינים ידולגו.
+                </Notice>
+                <label className="check-field full">
+                  <input
+                    type="checkbox"
+                    checked={invitationsConfirmed}
+                    onChange={(event) =>
+                      setInvitationsConfirmed(event.target.checked)
+                    }
+                    disabled={busy}
+                  />
+                  אני מאשר/ת לשלוח הזמנות לחיילים החדשים באצווה
+                </label>
+                <div className="form-actions full">
+                  <button
+                    className="btn primary"
+                    disabled={busy || !invitationsConfirmed}
+                  >
+                    פרסום הזמנות
+                  </button>
+                </div>
+              </form>
+            )}
+          {batch.invitationsStatus === "published" && (
+            <Notice tone="success">
+              ההזמנות פורסמו: {num(batch.invitationsQueued)} נוספו לתור המיילים,{" "}
+              {num(batch.invitationsSkipped)} דולגו. המשלוח כפוף למכסת המייל
+              ולבדיקת זמינות החשבון במועד המשלוח.
+            </Notice>
+          )}
+          {batch.invitationsStatus === "not_needed" && (
+            <p className="muted">
+              באצווה זו עודכנו חיילים קיימים בלבד; אין הזמנות חדשות לפרסום.
+            </p>
+          )}
           <ImportRestore
             key={`${str(batch.id)}:${num(batch.version)}`}
             batch={batch}
             state={state}
             action={action}
-            onChange={setBatch}
+            onChange={(next) => {
+              setBatch(next);
+              setInvitationsConfirmed(false);
+            }}
           />
         </Panel>
       )}
@@ -347,6 +421,13 @@ export function ImportsView({
                   {num(row.created)} חדשים · {num(row.updated)} מעודכנים ·{" "}
                   {displayDate(row.appliedAt ?? row.expiresAt, true)}
                 </p>
+                {row.invitationsStatus === "unpublished" &&
+                  ["applied", "partially_restored"].includes(
+                    str(row.status)
+                  ) && <p className="muted">הזמנות טרם פורסמו</p>}
+                {row.invitationsStatus === "published" && (
+                  <p className="muted">ההזמנות פורסמו</p>
+                )}
               </div>
               <Status value={row.status} />
               <button
