@@ -14,7 +14,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 FROM base AS dependencies
 ENV HUSKY=0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY patches ./patches
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS development

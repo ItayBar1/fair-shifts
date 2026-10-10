@@ -2,8 +2,13 @@ saveExact: true
 overrides:
   sharp: 0.35.5
   source-map-js: 1.2.2
-patchedDependencies:
-  braces@3.0.3: patches/braces@3.0.3.patch
+  # #168: Next's lint plugin only calls fast-glob's globSync(onlyDirectories);
+  # tinyglobby has the same call and no micromatch/braces underneath.
+  "@next/eslint-plugin-next>fast-glob": npm:tinyglobby@0.2.17
+  # #168: drizzle-kit never loads this deprecated loader; it pulled esbuild 0.18.
+  "drizzle-kit>@esbuild-kit/esm-loader": "-"
+  # #168: first uuid with the v3/v5/v6 bounds fix that still ships CommonJS.
+  "exceljs>uuid": 11.1.1
 allowBuilds:
   esbuild: true
   unrs-resolver: true
