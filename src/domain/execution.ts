@@ -10,6 +10,15 @@ import type {
 
 // Execution periods of one seat (decision 183): who actually covered which part of the duty.
 
+/** Actual performer for availability checks; the original assignee stays in the history. */
+export function executionPerformer(
+  assignment: Pick<Assignment, "soldierId" | "performance">
+): string {
+  return assignment.performance && !assignment.performance.removed
+    ? assignment.performance.performerId
+    : assignment.soldierId;
+}
+
 /**
  * The period an assignment covers: a credited performance as recorded, then an explicit
  * execution period, and otherwise the whole duty.

@@ -58,6 +58,8 @@ const U = {
   weekend: "tests/unit/weekend-surcharge.test.ts",
 } as const;
 const I = {
+  performerRest: "tests/integration/performer-rest.test.ts",
+  expiredTransfer: "tests/integration/expired-transfer.test.ts",
   invitations: "tests/integration/import-invitations.test.ts",
   securityErasure: "tests/integration/security-erasure.test.ts",
   securityMail: "tests/integration/security-mail.test.ts",
@@ -1319,6 +1321,16 @@ export const scenarios: Record<number, Entry> = {
   ]),
   18: covered([
     ...t(
+      I.performerRest,
+      "releases the original assignee",
+      "blocks the actual performer during rest",
+      "moves overlap to the actual performer",
+      "uses corrected times when the performer stays the same",
+      "reassesses reservations and impact",
+      "allows the original assignee manually",
+      "checks corrected rest in a real"
+    ),
+    ...t(
       I.auth,
       "retains an assignment and flags it when a new inactivity period conflicts",
       "requires current impact confirmation and keeps a conflicting assignment for treatment"
@@ -1388,6 +1400,16 @@ export const scenarios: Record<number, Entry> = {
   ]),
   24: covered([
     ...t(
+      I.performerRest,
+      "releases the original assignee",
+      "blocks the actual performer during rest",
+      "moves overlap to the actual performer",
+      "uses corrected times when the performer stays the same",
+      "reassesses reservations and impact",
+      "allows the original assignee manually",
+      "checks corrected rest in a real"
+    ),
+    ...t(
       I.auth,
       "records the history but leaves the balance for a manager decision after a normalization, even when the corrected end moves past it",
       "previews and applies a value correction once, keeping the draw value and hiding reasons from soldiers",
@@ -1399,6 +1421,16 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   25: covered([
+    ...t(
+      I.expiredTransfer,
+      "expires acceptance at or after the execution end",
+      "routes consent one millisecond before the end",
+      "expires a manager",
+      "rejects a new offer exactly at its execution end",
+      "expires at the performer's own end",
+      "when the target's period ends first",
+      "closes only an expired target"
+    ),
     ...t(
       I.auth,
       "keeps the original until consent, moves the full value without a score check and completes once when candidates race"
@@ -1417,6 +1449,16 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   26: covered([
+    ...t(
+      I.expiredTransfer,
+      "expires acceptance at or after the execution end",
+      "routes consent one millisecond before the end",
+      "expires a manager",
+      "rejects a new offer exactly at its execution end",
+      "expires at the performer's own end",
+      "when the target's period ends first",
+      "closes only an expired target"
+    ),
     ...t(
       I.auth,
       "rejects an unsuitable candidate without revealing why and rechecks at acceptance"
@@ -1718,6 +1760,16 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   44: covered([
+    ...t(
+      I.expiredTransfer,
+      "expires acceptance at or after the execution end",
+      "routes consent one millisecond before the end",
+      "expires a manager",
+      "rejects a new offer exactly at its execution end",
+      "expires at the performer's own end",
+      "when the target's period ends first",
+      "closes only an expired target"
+    ),
     ...t(
       I.auth,
       "keeps the original until consent, moves the full value without a score check and completes once when candidates race",

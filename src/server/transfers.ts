@@ -90,13 +90,33 @@ export type TransferData = {
 };
 type Domain = Awaited<ReturnType<typeof loadDomain>>;
 
+export const PERFORMANCE_ENDED_MESSAGE =
+  "תקופת הביצוע כבר הסתיימה ולכן ההצעה פגה. תיקון ביצוע נעשה בידי אחראי";
+
+export function performanceEnded(
+  seat: Assignment,
+  duty: Duty,
+  now = Date.now()
+) {
+  return instant(executionPeriod(seat, duty).end).toMillis() <= now;
+}
+
 /**
  * After the start a replacement can take only what is left of the seat, so eligibility
  * before a manager sets the handover looks at the rest of the offerer's period (decision 183).
  */
-export function remainingPeriod(seat: Assignment, duty: Duty) {
+export function remainingPeriod(
+  seat: Assignment,
+  duty: Duty,
+  now = Date.now()
+) {
   const period = executionPeriod(seat, duty);
-  const now = Date.now();
+  invariant(
+    instant(period.end).toMillis() > now,
+    "performance_ended",
+    PERFORMANCE_ENDED_MESSAGE,
+    409
+  );
   if (instant(period.start).toMillis() > now) return undefined;
   return { start: new Date(now).toISOString(), end: period.end };
 }
@@ -170,11 +190,6 @@ export async function offerTransfer(
   );
   // After the start an offer is still possible, but it always goes to a manager (decision 183).
   const remaining = remainingPeriod(seat, duty);
-  invariant(
-    instant(executionPeriod(seat, duty).end).toMillis() > Date.now(),
-    "performance_ended",
-    "הביצוע שלך בתורנות הזו כבר הסתיים. תיקון ביצוע נעשה בידי אחראי"
-  );
   invariant(
     !seatCommitted(await openSeatRequests(tx), seat.id),
     "transfer_open",
@@ -377,6 +392,9 @@ export async function respondTransfer(
       "התורנות עודכנה או בוטלה אחרי ההצעה",
       "duty_changed"
     );
+  const checkedAt = Date.now();
+  if (performanceEnded(seat, duty, checkedAt))
+    return expire(tx, row, PERFORMANCE_ENDED_MESSAGE, "performance_ended");
   const person = state.soldiers.find((item) => item.id === actor.soldierId);
   invariant(person, "not_found", "החייל לא נמצא", 404);
   // Recheck at the moment of acceptance: the offer never reserved anything for the candidate.
@@ -385,7 +403,7 @@ export async function respondTransfer(
     person,
     duty,
     data.slotId,
-    remainingPeriod(seat, duty)
+    remainingPeriod(seat, duty, checkedAt)
   );
   invariant(
     eligibility.status !== "blocked",
@@ -832,6 +850,8 @@ export async function reviewTransfer(
     .parse(payload);
   const { row, data, state, seat, duty, person, changed } =
     await awaitingManager(tx, actor, input.id, expectedVersion);
+  if (seat && duty && performanceEnded(seat, duty))
+    return expire(tx, row, PERFORMANCE_ENDED_MESSAGE, "performance_ended");
   if (changed || !duty || !person || !seat)
     return { valid: false, message: changed ?? "ההעברה אינה תקפה עוד" };
   const started = instant(duty.start).toMillis() <= Date.now();
@@ -912,6 +932,8 @@ export async function decideTransfer(
     .parse(payload);
   const { row, data, state, seat, duty, person, changed } =
     await awaitingManager(tx, actor, input.id, expectedVersion);
+  if (seat && duty && performanceEnded(seat, duty))
+    return expire(tx, row, PERFORMANCE_ENDED_MESSAGE, "performance_ended");
   const now = new Date().toISOString();
   const replacementId = data.acceptedBy!;
   const from = nameOf(state, data.fromSoldierId);
