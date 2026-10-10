@@ -6,6 +6,11 @@ WORKDIR /source
 RUN tar -xzf /tmp/source.tar.gz --strip-components=1 && rm /tmp/source.tar.gz
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 RUN go mod download && go mod verify
+# The release pins golang.org/x/net v0.58.0, which carries the HTTP/2 flaws of
+# GO-2026-6603/6610/6611/6612/6617 (#167). Raise only that module to the fixed
+# release; Go's proxy and checksum database vouch for it, and the build stays
+# read-only against the result.
+RUN go get golang.org/x/net@v0.60.0 && go mod verify
 # Match upstream's container build flags; the source release time is deterministic.
 RUN go build -mod=readonly -trimpath \
     -ldflags='-X main.Version=2026.10.0 -X main.BuildTime=2026-10-05T17:43:45Z -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual' \
