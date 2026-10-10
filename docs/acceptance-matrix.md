@@ -19,6 +19,8 @@
 
 ### 2. כאחראי, אני רוצה להוסיף ולעדכן חיילים מ־Excel לפי מספר אישי, עם תצוגה מקדימה, כדי לשלוט בשינויים לפני החלתם. — מכוסה
 
+- [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `stores soldiers and permits sign-in before any invitation is published`; `requires confirmation and publishes only new accounts once across two tabs and retries`
+- [import-invitations.spec.ts](../tests/e2e/import-invitations.spec.ts): `imports without mail and explicitly publishes invitations after reopening the batch`
 - [import-workbook.test.ts](../tests/unit/import-workbook.test.ts): `preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores`; `rejects the entire file and returns row, field and value for duplicates and malformed cells`; `rejects invalid archives, empty templates and excess rows`
 - [auth.test.ts](../tests/integration/auth.test.ts): `imports a whole reviewed batch, preserving reservations and blank fields with documented balances`; `rejects all rows on duplicate, conflicting identities, incomplete ranks or deleted people`; `serializes competing import approvals and returns idempotent results without duplicate ledger entries`; `restricts import previews and history to managers`
 - [staging-soldiers.test.ts](../tests/integration/staging-soldiers.test.ts): `writes a workbook that the import accepts whole, with the three populations`
@@ -387,6 +389,7 @@
 
 ### 1. כניסה לחשבון קיים — חיילים וחשבונות — מכוסה
 
+- [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `stores soldiers and permits sign-in before any invitation is published`
 - [google-sign-in.test.ts](../tests/integration/google-sign-in.test.ts): `rejects a link inserted after the hook approved it`; `rejects a session inserted after its hook approved an epoch`; `requires a proven epoch even when no Google proof exists`; `requires a verified current email once for a legacy Google link`; `refuses direct idToken sign-in`; `lets an invited person start with Google and then use either Google or an email code`; `refuses an uninvited address and an address Google has not verified, creating nothing`
 - [auth.test.ts](../tests/integration/auth.test.ts): `does not create an account or send mail for an unknown address`; `expires a code at ten minutes`; `consumes a code only once`
 - ספקים, שרת ופיילוט:
@@ -408,6 +411,8 @@
 
 ### 4. קליטה ידנית ובאקסל — חיילים וחשבונות — מכוסה
 
+- [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `stores soldiers and permits sign-in before any invitation is published`; `requires confirmation and publishes only new accounts once across two tabs and retries`; `keeps manual intake invitations automatic and needs none for an update-only batch`
+- [import-invitations.spec.ts](../tests/e2e/import-invitations.spec.ts): `imports without mail and explicitly publishes invitations after reopening the batch`
 - [import-workbook.test.ts](../tests/unit/import-workbook.test.ts): `preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores`; `rejects the entire file and returns row, field and value for duplicates and malformed cells`
 - [auth.test.ts](../tests/integration/auth.test.ts): `imports a whole reviewed batch, preserving reservations and blank fields with documented balances`
 - [soldier-intake.test.ts](../tests/integration/soldier-intake.test.ts): `takes an opening balance as the only history`; `starts without history, rank, grace or duties`
@@ -673,6 +678,7 @@
 
 ### 47. דחיית קובץ, דריסה ושחזור — ייבוא — מכוסה
 
+- [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `does not revive invitations for a fully restored intake`; `publishes only surviving rows after a partial restore`; `removes pending published invitations when the intake is restored`
 - [auth.test.ts](../tests/integration/auth.test.ts): `rejects all rows on duplicate, conflicting identities, incomplete ranks or deleted people`; `restores unchanged imported fields while preserving later edits and reservations`; `cancels a new soldier without activity: removes every trace, frees the number and keeps the row`; `shows each kind of activity as a conflict, including an edit that was reverted, and closes the batch only when every row is handled`
 - [bounded-body.test.ts](../tests/unit/bounded-body.test.ts): `counts streamed action bodies despite a missing or false length`
 - [workbook-archive.test.ts](../tests/unit/workbook-archive.test.ts): `counts actual bytes even when the directory advertises one byte`

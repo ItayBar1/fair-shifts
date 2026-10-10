@@ -32,8 +32,8 @@ export async function saveSoldier(
   actor: Actor,
   payload: unknown,
   expectedVersion?: number,
-  /** Set only by a caller that already confirmed a current impact preview. */
-  options: { populationReviewed?: boolean } = {}
+  /** Internal caller options: reviewed impact and explicit deferred import mail. */
+  options: { populationReviewed?: boolean; sendInvitation?: boolean } = {}
 ) {
   manager(actor);
   return persistSoldier(tx, actor, payload, expectedVersion, options);
@@ -59,7 +59,7 @@ async function persistSoldier(
   actor: Actor,
   payload: unknown,
   expectedVersion?: number,
-  options: { populationReviewed?: boolean } = {}
+  options: { populationReviewed?: boolean; sendInvitation?: boolean } = {}
 ) {
   const input = profileInput.parse(payload);
   const [existing] = input.id
@@ -208,15 +208,8 @@ async function persistSoldier(
     );
     if (actor.role === "technical")
       await audit(tx, actor, "account.create", account.id, {}, id);
-    await enqueueEmail(tx, {
-      recipientAccountId: account.id,
-      eventKey: `invitation:${account.id}`,
-      kind: "invitation",
-      title: "הוזמנת לתורנות הוגנת",
-      body: `ניתן להתחבר בכתובת ${process.env.BETTER_AUTH_URL}/login באמצעות כתובת המייל הזאת.`,
-      priority: 1,
-      expiresAt: new Date(Date.now() + 86_400_000),
-    });
+    if (options.sendInvitation !== false)
+      await enqueueAccountInvitation(tx, account.id);
   }
   if (existing) {
     const changes = profileChanges(
@@ -248,6 +241,22 @@ async function persistSoldier(
   if (existing) await reassessAssignments(tx, id);
   await refreshRankReminders(tx);
   return { id, version: data.version };
+}
+
+/** A stable account key prevents duplicate invitations across retries. */
+export async function enqueueAccountInvitation(
+  tx: DbTransaction,
+  accountId: string
+) {
+  await enqueueEmail(tx, {
+    recipientAccountId: accountId,
+    eventKey: `invitation:${accountId}`,
+    kind: "invitation",
+    title: "הוזמנת לתורנות הוגנת",
+    body: `ניתן להתחבר בכתובת ${process.env.BETTER_AUTH_URL}/login באמצעות כתובת המייל הזאת.`,
+    priority: 1,
+    expiresAt: new Date(Date.now() + 86_400_000),
+  });
 }
 
 type ProfileSnapshot = Soldier & {

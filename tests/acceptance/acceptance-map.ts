@@ -58,6 +58,7 @@ const U = {
   weekend: "tests/unit/weekend-surcharge.test.ts",
 } as const;
 const I = {
+  invitations: "tests/integration/import-invitations.test.ts",
   securityErasure: "tests/integration/security-erasure.test.ts",
   securityMail: "tests/integration/security-mail.test.ts",
   mine: "tests/integration/my-assignments.test.ts",
@@ -203,6 +204,15 @@ export const stories: Record<number, Entry> = {
     ),
   ]),
   2: covered([
+    ...t(
+      I.invitations,
+      "stores soldiers and permits sign-in before any invitation is published",
+      "requires confirmation and publishes only new accounts once across two tabs and retries"
+    ),
+    ...t(
+      "tests/e2e/import-invitations.spec.ts",
+      "imports without mail and explicitly publishes invitations after reopening the batch"
+    ),
     ...t(
       U.importBook,
       "preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores",
@@ -1041,6 +1051,10 @@ export const scenarios: Record<number, Entry> = {
   1: covered(
     [
       ...t(
+        I.invitations,
+        "stores soldiers and permits sign-in before any invitation is published"
+      ),
+      ...t(
         I.google,
         "rejects a link inserted after the hook approved it",
         "rejects a session inserted after its hook approved an epoch",
@@ -1099,6 +1113,16 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   4: covered([
+    ...t(
+      I.invitations,
+      "stores soldiers and permits sign-in before any invitation is published",
+      "requires confirmation and publishes only new accounts once across two tabs and retries",
+      "keeps manual intake invitations automatic and needs none for an update-only batch"
+    ),
+    ...t(
+      "tests/e2e/import-invitations.spec.ts",
+      "imports without mail and explicitly publishes invitations after reopening the batch"
+    ),
     ...t(
       U.importBook,
       "preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores",
@@ -1777,6 +1801,12 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   47: covered([
+    ...t(
+      I.invitations,
+      "does not revive invitations for a fully restored intake",
+      "publishes only surviving rows after a partial restore",
+      "removes pending published invitations when the intake is restored"
+    ),
     ...t(
       I.auth,
       "rejects all rows on duplicate, conflicting identities, incomplete ranks or deleted people",

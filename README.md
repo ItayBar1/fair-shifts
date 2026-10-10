@@ -1,5 +1,7 @@
 # Fair Shifts
 
+ייבוא ופרסום הזמנות (הכרעה 219, #163): שמירת ייבוא קולטת חיילים וחשבונות בלי לשלוח הזמנות. פותחים את האצווה, מאשרים ולוחצים ״פרסום הזמנות״ כדי להכניס הזמנות לתור. כניסה אפשרית גם קודם, וקוד כניסה נשלח לפי בקשה. הוספה ידנית ממשיכה לשלוח הזמנה. [הכנה לנתוני אמת והפערים שנותרו](docs/real-data-readiness-2026-10-09.md); אין קליטת נתוני אמת לפני שער הפיילוט ותנאי הפרטיות.
+
 שרשרת אספקה (הכרעה 217, אפיון 1.71, #131): CI סורק תלויות ואת כל תמונות הייצור וחוסם High/Critical ללא חריגה שנבדקה ואושרה בתוקף. בדיקה מקומית: sh scripts/security-scan.sh, Docker בלבד. הוראות סקירת חריגה ומעבר נפח PostgreSQL לבסיס החדש ב־[מדריך התפעול](docs/operations.md#שרשרת-אספקה-וסקירת-חריגה--131). תמונות הריצה משתמשות בקוד מקומפל ללא מנהל חבילות; פקודות תפעול עודכנו.
 
 הפרדת שירותים (הכרעה 216, אפיון 1.70, #130): ב־production האתר, העובד והתפעול משתמשים בקובצי env ובמשתמשי מסד נפרדים. `production deploy` עוצר אתר ועובד, מפעיל מיגרציות ובדיקת הרשאות דרך שירות `operations`, ואז מפעיל אותם. שחזור: `sh scripts/production.sh --profile operations run --rm -T --no-deps operations node scripts/run-runtime.mjs scripts/restore.ts ...`. לתצורה קיימת נדרש מעבר מפורש לפי [מדריך ההפעלה](docs/operations.md#מעבר-לתצורה-ולהרשאות-נפרדות--130); אין להפעיל את הגרסה החדשה עם קובץ env משותף.
@@ -11,7 +13,7 @@
 ## מקורות הפרויקט
 
 - [AGENTS.md](AGENTS.md) — הוראות עבודה ומקורות אמת.
-- [אפיון 1.72](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
+- [אפיון 1.73](docs/duty-management-prd.md) ו[עותק HTML](docs/duty-management-prd.html).
 - [יומן ההכרעות](docs/open-decisions.md), [מפת כיסוי](docs/requirements-coverage.md) ו[מחקר](docs/research-notes.md).
 - [תוכנית המימוש](plans/fair-shifts-implementation.md) ו[מדריך המסירה המקורי](docs/planning-handoff.md).
 - [תוכנית תיקון האבטחה המאושרת](plans/2026-10-07-security-remediation.md), [מעקב #122](https://github.com/ItayBar1/fair-shifts/issues/122). שינוי עצמי של אחראי ב־`/manage/account`; חילוץ כתובתו בידי הטכני במסך ההרשאות, עם סיבה וקוד לכתובת החדשה.

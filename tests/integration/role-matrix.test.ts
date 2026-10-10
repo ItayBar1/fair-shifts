@@ -38,6 +38,7 @@ const MANAGER = [
   "import.preview",
   "import.get",
   "import.apply",
+  "import.invitations.publish",
   "soldier.create",
   "soldier.update.preview",
   "soldier.update",
