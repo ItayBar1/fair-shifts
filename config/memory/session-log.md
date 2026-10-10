@@ -4,7 +4,7 @@
 
 שער האבטחה חסם את main ‏(`7fc2561`) ואת #166, על CVE-2026-78669 בחומרה High ב־`golang.org/x/net v0.58.0` של cloudflared. מסד החולשות התעדכן אחרי ה־main הירוק של 09.10. נפתח #167 בבעלות ItayBar1, בענף codex/itaybar1/issue-167-tunnel-x-net. ‏`Dockerfile.tunnel` מעלה רק את x/net ל־v0.60.0, דרך proxy ו־sumdb. אין חריגה ואין שינוי שער.
 
-נבדק בפועל ב־Docker: בניית התמונה, ‏`go version -m` ‏(go1.26.9 ו־x/net v0.60.0), ‏Trivy 0.75.0 עם אפס High/Critical (נשארו zlib Medium ו־x/crypto לא מסווג), ‏version, ‏tunnel help ו־UID 65532. שער האבטחה המלא רץ מקומית עם הזדהות GitHub: 15 ממצאים, אפס חוסמים ושלוש חריגות שאושרו. אחרי המיזוג: פריסה דרך הטיימר ואימות Tunnel חי, ואז מיזוג main ל־#166.
+נבדק בפועל ב־Docker: בניית התמונה, ‏`go version -m` ‏(go1.26.9 ו־x/net v0.60.0), ‏Trivy 0.75.0 עם אפס High/Critical (נשארו zlib Medium ו־x/crypto לא מסווג), ‏version, ‏tunnel help ו־UID 65532. שער האבטחה המלא רץ מקומית עם הזדהות GitHub: 15 ממצאים, אפס חוסמים ושלוש חריגות שאושרו. המשתמש ביקש להרחיב את #167: ‏zlib ‏(3 תמונות) ו־nghttp2-libs ‏(אתר ומסד) הועלו באילוץ `>=` לתיקוני Alpine. השער המלא רץ שוב: 10 ממצאים, אפס חוסמים. ‏production smoke המלא עבר. נשארו openpgp (אין תיקון), ‏braces (חריגה עד 22.10), ‏esbuild ו־uuid (npm, מחוץ להיקף). אחרי המיזוג: פריסה דרך הטיימר ואימות Tunnel חי, ואז מיזוג main ל־#166.
 
 ## 09.10.2026 — קליטה לפני הזמנה והכנה לנתוני אמת, #163
 

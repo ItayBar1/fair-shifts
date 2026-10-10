@@ -1,6 +1,6 @@
 # בדיקת שלמות ומפת כיסוי הדרישות
 
-עדכון שרשרת אספקה 10.10.2026 — [#167](https://github.com/ItayBar1/fair-shifts/issues/167), הכרעה 217: ‏CVE-2026-78669 בחומרה High ב־`golang.org/x/net v0.58.0` של cloudflared חסם את main ואת #166. ‏`Dockerfile.tunnel` מעלה רק את x/net ל־v0.60.0 מעל אותו מקור מוצמד. Trivy מקומי מצא אפס High/Critical. אין שינוי באפיון. [ראיות](security-supply-chain-evidence.md).
+עדכון שרשרת אספקה 10.10.2026 — [#167](https://github.com/ItayBar1/fair-shifts/issues/167), הכרעה 217: ‏CVE-2026-78669 בחומרה High ב־`golang.org/x/net v0.58.0` של cloudflared חסם את main ואת #166. ‏`Dockerfile.tunnel` מעלה רק את x/net ל־v0.60.0 מעל אותו מקור מוצמד. Trivy מקומי מצא אפס High/Critical. לפי בקשת המשתמש הועלו גם zlib ו־nghttp2 של Alpine בכל התמונות, באילוץ מינימום. השער המלא מצא 10 ממצאים ואפס חוסמים, ו־production smoke עבר. אין שינוי באפיון. [ראיות](security-supply-chain-evidence.md).
 
 09.10.2026 — הכרעה 219, אפיון 1.73 ו־#163: סעיף 7.1 וקבלה 1, 4, 47. `import-invitations.test.ts` מכסה קליטה ללא מייל, כניסה לפני פרסום, אישור ומקביליות, חשבון עדכני/מחוק, אצוות ישנות ושחזור מלא/חלקי; `import-invitations.spec.ts` מכסה פתיחה מחדש, חיווי ופרסום מפורש גם בנייד. מטריצת התפקידים כוללת `import.invitations.publish`. [הכנה לנתוני אמת](real-data-readiness-2026-10-09.md) מפרידה את השינוי משערי הגרסה והפיילוט. תוצאות הרצה ב־PR וביומן לאחר השלמתן; אין כאן ראיית פריסה של היכולת.
 
