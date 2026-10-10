@@ -1465,7 +1465,7 @@ async function decideStartedSwap(
   };
 }
 
-/** Read-only review for a manager: both sides' eligibility after the swap and the exceptions to approve. */
+/** Current review for a manager (ended offers expire): both sides' eligibility after the swap and the exceptions to approve. */
 export async function reviewSwap(
   tx: DbTransaction,
   actor: Actor,

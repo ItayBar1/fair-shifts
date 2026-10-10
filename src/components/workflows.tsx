@@ -6,10 +6,8 @@ import {
   type Action,
   str,
   num,
-  rows,
   obj,
   displayDate,
-  personName,
 } from "@/client/types";
 import {
   emailTypeLabels,
@@ -31,8 +29,6 @@ import {
 } from "./ui";
 import { TransferRequests } from "./transfers";
 import { SwapRequests } from "./swaps";
-import { AuditLink, ledgerSource } from "./audit";
-import { effectiveDiffers } from "@/domain/time";
 import { CancellationRequests } from "./cancellation-requests";
 import { MailHealthRow, MailPanel } from "./mail-operations";
 import { BackupsView, BackupFreshnessBadge } from "./backups";
@@ -42,10 +38,6 @@ export { ConstraintsView } from "./constraints";
 export function RequestsView({ state, action }: Props) {
   return (
     <>
-      <Notice>
-        העברת תורנות, החלפה הדדית בהסכמה ובקשות ביטול או דחייה לפני התחלה
-        זמינות. החלפה במהלך ביצוע נמצאת עדיין בבנייה.
-      </Notice>
       <CancellationRequests state={state} action={action} />
       <TransferRequests state={state} action={action} />
       <SwapRequests state={state} action={action} />
@@ -270,131 +262,6 @@ function PreferencesForm({
     />
   );
 }
-export function ScoresView({ state, action }: Props) {
-  const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
-  const [input, setInput] = useState<Record<string, unknown> | null>(null);
-  const fields: Field[] = [
-    {
-      name: "soldierIds",
-      label: "חיילים לשינוי היתרה",
-      type: "multiselect",
-      required: true,
-      options: state.soldiers
-        .filter((row) => !row.deletedAt)
-        .map((row) => ({ value: row.id, label: str(row.name) })),
-    },
-    {
-      name: "operation",
-      label: "פעולה",
-      type: "select",
-      required: true,
-      options: [
-        { value: "add", label: "הוספת נקודות" },
-        { value: "subtract", label: "הפחתת נקודות" },
-        { value: "set", label: "קביעת יתרה" },
-        { value: "percent", label: "הפחתת אחוזים" },
-      ],
-    },
-    { name: "value", label: "ערך", type: "number", min: 0, required: true },
-    {
-      name: "reason",
-      label: "סיבה",
-      type: "textarea",
-      required: true,
-      full: true,
-    },
-  ];
-  return (
-    <>
-      <Panel title="תיקון יתרה ונרמול קבוצתי">
-        <Form
-          fields={fields}
-          submitLabel="תצוגה מקדימה"
-          onSubmit={async (values) => {
-            const command = values;
-            setPreview(null);
-            const result = await action("score.preview", command);
-            setInput(command);
-            setPreview(result);
-          }}
-        />
-        {preview && (
-          <div className="result-box">
-            {rows(preview.rows).map((row) => (
-              <p key={str(row.soldierId)}>
-                {personName(state, row.soldierId)}: {num(row.before)} ←{" "}
-                {num(row.after)}
-              </p>
-            ))}
-            <button
-              className="btn primary"
-              onClick={async () => {
-                try {
-                  await action("score.apply", {
-                    ...input,
-                    token: preview.token,
-                  });
-                  setPreview(null);
-                } catch {
-                  /* Workspace renders errors. */
-                }
-              }}
-            >
-              אישור שינוי היתרה
-            </button>
-          </div>
-        )}
-      </Panel>
-      <Panel title="יומן ניקוד">
-        {state.ledger.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>חייל</th>
-                  <th>מועד תחולה</th>
-                  <th>נרשם</th>
-                  <th>שינוי</th>
-                  <th>יתרה</th>
-                  <th>סיבה</th>
-                  <th>תיעוד</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.ledger.map((row) => (
-                  <tr key={row.id}>
-                    <td>{personName(state, row.soldierId)}</td>
-                    <td>{displayDate(row.effectiveAt, true)}</td>
-                    <td>
-                      {effectiveDiffers(
-                        str(row.effectiveAt),
-                        str(row.recordedAt)
-                      )
-                        ? displayDate(row.recordedAt, true)
-                        : "באותו מועד"}
-                    </td>
-                    <td>{num(row.amount)}</td>
-                    <td>{num(row.after)}</td>
-                    <td>{str(row.reason)}</td>
-                    <td>
-                      {ledgerSource(row) ? (
-                        <AuditLink id={ledgerSource(row)} />
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty title="אין פעולות ניקוד" />
-        )}
-      </Panel>
-    </>
-  );
-}
 export { ImportsView } from "./imports";
 export { AuditView } from "./audit";
 export function TechnicalView({
@@ -403,14 +270,7 @@ export function TechnicalView({
   path,
 }: Props & { path: string }) {
   if (path.endsWith("/backups"))
-    return (
-      <>
-        <BackupsView state={state} action={action} />
-        <Notice>
-          שחזור מגיבוי למסד מבודד ובדיקת הנתונים לפני פתיחה נמצאים עדיין בבנייה.
-        </Notice>
-      </>
-    );
+    return <BackupsView state={state} action={action} />;
   if (path.endsWith("/recovery"))
     return (
       <Panel title="שחזור גישה">

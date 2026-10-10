@@ -832,7 +832,7 @@ async function awaitingManager(
   return { row, data, state, seat, duty, person, changed };
 }
 
-/** Read-only review for a manager: current eligibility of the replacement and the exceptions to approve. */
+/** Current review for a manager (ended offers expire): current eligibility of the replacement and the exceptions to approve. */
 export async function reviewTransfer(
   tx: DbTransaction,
   actor: Actor,

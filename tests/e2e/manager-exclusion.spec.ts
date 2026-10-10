@@ -450,3 +450,52 @@ test("appointing a soldier marks their seats for the managers, and removing the 
   );
   expect(preview.status).toBe("eligible");
 });
+
+test("a manager's requests screen lists the unit's requests without offers of their own, and the profile's account actions stand apart", async ({
+  browser,
+}) => {
+  const page = await signedIn(browser, "fresh");
+  // A manager neither offers nor receives a transfer or swap (decision 192).
+  await page.goto("/requests");
+  for (const title of ["העברות ביחידה", "החלפות ביחידה"])
+    await expect(
+      page.getByRole("heading", { name: title, exact: true })
+    ).toBeVisible();
+  for (const title of [
+    "הצעות שקיבלתי",
+    "הצעות ששלחתי",
+    "הצעות החלפה שקיבלתי",
+    "הצעות החלפה ששלחתי",
+  ])
+    await expect(
+      page.getByRole("heading", { name: title, exact: true })
+    ).toHaveCount(0);
+  // The swap during execution is built (decision 183); nothing says otherwise.
+  await expect(page.getByText(/בבנייה/)).toHaveCount(0);
+
+  // Account actions have room between them; deletion is set apart below (#165).
+  await page.goto("/manage/soldiers");
+  await page
+    .locator("tr", { hasText: "אלון" })
+    .getByRole("button", { name: "פרופיל ועריכה" })
+    .click();
+  const profile = page.getByRole("dialog", { name: /פרופיל חייל/ });
+  await profile.getByText("ניהול כתובת מייל וחשבון").click();
+  const change = await profile
+    .getByRole("button", { name: "שינוי כתובת מייל" })
+    .boundingBox();
+  const confirm = await profile
+    .getByRole("button", { name: "אימות כתובת חדשה" })
+    .boundingBox();
+  const remove = await profile
+    .getByRole("button", { name: "מחיקת המשתמש והמידע הרגיש" })
+    .boundingBox();
+  expect(change && confirm && remove).toBeTruthy();
+  // Right to left: the second button sits to the left of the first.
+  expect(change!.x - (confirm!.x + confirm!.width)).toBeGreaterThanOrEqual(8);
+  expect(remove!.y).toBeGreaterThanOrEqual(change!.y + change!.height + 12);
+  await profile.screenshot({
+    path: "test-results/soldier-profile-account.png",
+    animations: "disabled",
+  });
+});

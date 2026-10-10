@@ -438,125 +438,131 @@ export function TransferRequests({
   const outgoing = all.filter((row) => row.fromSoldierId === soldierId);
   return (
     <>
-      <Panel
-        title="הצעות שקיבלתי"
-        subtitle="הסכמה מעבירה אליך את התורנות ואת מלוא הניקוד שלה"
-      >
-        {incoming.length ? (
-          incoming.map((row) => (
-            <article className="task-item" key={row.id}>
-              <div className="grow">
-                <strong>
-                  {str(row.dutyName)} — מאת{" "}
-                  {personName(state, row.fromSoldierId)}
-                </strong>
-                <DutyLine state={state} row={row} />
-                {row.acceptedBy === soldierId && <Reasons row={row} />}
-                {row.acceptedBy === soldierId && <Decision row={row} />}
-              </div>
-              <div className="inline">
-                <Status value={row.status} />
-                {row.status === "awaiting_manager" &&
-                  row.acceptedBy === soldierId && (
-                    <Retract
-                      action={action}
-                      row={row}
-                      label="ביטול ההסכמה"
-                      description="ההעברה תיסגר לפני החלטת האחראי, והתורנות תישאר אצל המציע."
-                    />
-                  )}
-                {row.status === "awaiting_consent" && (
-                  <>
-                    <ActionDialog
-                      title="קבלת התורנות"
-                      buttonLabel="הסכמה"
-                      description="התנאים ייבדקו שוב עכשיו. אם הכול תקין והתורנות טרם התחילה, היא תועבר אליך מיד עם מלוא הניקוד."
-                      fields={[
-                        {
-                          name: "confirmed",
-                          label: "אני מסכים לקבל את התורנות",
-                          type: "checkbox",
-                          required: true,
-                        },
-                      ]}
-                      action={action}
-                      type="transfer.respond"
-                      payload={{ id: row.id, decision: "accept" }}
-                      version={row.version}
-                    />
-                    <QuickAction
-                      action={action}
-                      type="transfer.respond"
-                      payload={{ id: row.id, decision: "decline" }}
-                      version={row.version}
-                    >
-                      דחייה
-                    </QuickAction>
-                  </>
-                )}
-              </div>
-            </article>
-          ))
-        ) : (
-          <Empty title="אין הצעות שהתקבלו" />
-        )}
-      </Panel>
-      <Panel
-        title="הצעות ששלחתי"
-        subtitle="אפשר להציע תורנות להעברה מדף התורנות"
-      >
-        {outgoing.length ? (
-          outgoing.map((row) => (
-            <article className="task-item" key={row.id}>
-              <div className="grow">
-                <strong>{str(row.dutyName)}</strong>
-                <DutyLine state={state} row={row} />
-                {row.mailLimited === true && (
-                  <small>
-                    ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה היומית.
-                  </small>
-                )}
-                <small>
-                  {rows(row.candidates)
-                    .map(
-                      (item) =>
-                        `${personName(state, item.soldierId)}: ${candidateLabels[str(item.status)] ?? str(item.status)}`
-                    )
-                    .join(" · ")}
-                </small>
-                {row.closedReason ? (
-                  <small>{str(row.closedReason)}</small>
-                ) : (
-                  <Decision row={row} />
-                )}
-              </div>
-              <div className="inline">
-                <Status value={row.status} />
-                {row.status === "awaiting_manager" && (
-                  <Retract
-                    action={action}
-                    row={row}
-                    label="ביטול ההעברה"
-                    description="ההעברה תיסגר לפני החלטת האחראי, והשיבוץ שלך יישאר בתוקף."
-                  />
-                )}
-                {row.status === "awaiting_consent" && (
-                  <QuickAction
-                    action={action}
-                    type="transfer.withdraw"
-                    payload={{ id: row.id }}
-                    version={row.version}
-                  >
-                    ביטול ההצעה
-                  </QuickAction>
-                )}
-              </div>
-            </article>
-          ))
-        ) : (
-          <Empty title="לא שלחת הצעות העברה" />
-        )}
-      </Panel>
+      {/* A duty manager is never assigned, so has no offers of their own (decision 192). */}
+      {!manager && (
+        <>
+          <Panel
+            title="הצעות שקיבלתי"
+            subtitle="הסכמה מעבירה אליך את התורנות ואת מלוא הניקוד שלה"
+          >
+            {incoming.length ? (
+              incoming.map((row) => (
+                <article className="task-item" key={row.id}>
+                  <div className="grow">
+                    <strong>
+                      {str(row.dutyName)} — מאת{" "}
+                      {personName(state, row.fromSoldierId)}
+                    </strong>
+                    <DutyLine state={state} row={row} />
+                    {row.acceptedBy === soldierId && <Reasons row={row} />}
+                    {row.acceptedBy === soldierId && <Decision row={row} />}
+                  </div>
+                  <div className="inline">
+                    <Status value={row.status} />
+                    {row.status === "awaiting_manager" &&
+                      row.acceptedBy === soldierId && (
+                        <Retract
+                          action={action}
+                          row={row}
+                          label="ביטול ההסכמה"
+                          description="ההעברה תיסגר לפני החלטת האחראי, והתורנות תישאר אצל המציע."
+                        />
+                      )}
+                    {row.status === "awaiting_consent" && (
+                      <>
+                        <ActionDialog
+                          title="קבלת התורנות"
+                          buttonLabel="הסכמה"
+                          description="התנאים ייבדקו שוב עכשיו. אם הכול תקין והתורנות טרם התחילה, היא תועבר אליך מיד עם מלוא הניקוד."
+                          fields={[
+                            {
+                              name: "confirmed",
+                              label: "אני מסכים לקבל את התורנות",
+                              type: "checkbox",
+                              required: true,
+                            },
+                          ]}
+                          action={action}
+                          type="transfer.respond"
+                          payload={{ id: row.id, decision: "accept" }}
+                          version={row.version}
+                        />
+                        <QuickAction
+                          action={action}
+                          type="transfer.respond"
+                          payload={{ id: row.id, decision: "decline" }}
+                          version={row.version}
+                        >
+                          דחייה
+                        </QuickAction>
+                      </>
+                    )}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <Empty title="אין הצעות שהתקבלו" />
+            )}
+          </Panel>
+          <Panel
+            title="הצעות ששלחתי"
+            subtitle="אפשר להציע תורנות להעברה מדף התורנות"
+          >
+            {outgoing.length ? (
+              outgoing.map((row) => (
+                <article className="task-item" key={row.id}>
+                  <div className="grow">
+                    <strong>{str(row.dutyName)}</strong>
+                    <DutyLine state={state} row={row} />
+                    {row.mailLimited === true && (
+                      <small>
+                        ההצעה נשמרה באתר; חלק מהמיילים לא נשלחו בגלל המכסה
+                        היומית.
+                      </small>
+                    )}
+                    <small>
+                      {rows(row.candidates)
+                        .map(
+                          (item) =>
+                            `${personName(state, item.soldierId)}: ${candidateLabels[str(item.status)] ?? str(item.status)}`
+                        )
+                        .join(" · ")}
+                    </small>
+                    {row.closedReason ? (
+                      <small>{str(row.closedReason)}</small>
+                    ) : (
+                      <Decision row={row} />
+                    )}
+                  </div>
+                  <div className="inline">
+                    <Status value={row.status} />
+                    {row.status === "awaiting_manager" && (
+                      <Retract
+                        action={action}
+                        row={row}
+                        label="ביטול ההעברה"
+                        description="ההעברה תיסגר לפני החלטת האחראי, והשיבוץ שלך יישאר בתוקף."
+                      />
+                    )}
+                    {row.status === "awaiting_consent" && (
+                      <QuickAction
+                        action={action}
+                        type="transfer.withdraw"
+                        payload={{ id: row.id }}
+                        version={row.version}
+                      >
+                        ביטול ההצעה
+                      </QuickAction>
+                    )}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <Empty title="לא שלחת הצעות העברה" />
+            )}
+          </Panel>
+        </>
+      )}
       {manager && (
         <Panel
           title="העברות ביחידה"
