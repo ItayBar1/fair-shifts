@@ -149,11 +149,17 @@ test("a manager reads who did what and why, and reaches it from the soldier and 
   ).toBeVisible();
   await expect(page.getByRole("article")).toHaveCount(2);
 
-  // From a score ledger row to the event that produced it.
+  // From a score ledger row to the event that produced it. The ledger opens
+  // from the fairness table, and its old address leads there (decision 220).
   await page.goto("/manage/scores");
+  await expect(
+    page.getByRole("heading", { name: "טבלת הצדק", exact: true })
+  ).toBeVisible();
+  await page.getByRole("button", { name: "יומן היחידה" }).click();
   await page
+    .getByRole("dialog")
     .getByRole("row", { name: /תיקון יתרה סינתטי ליומן/ })
-    .getByRole("link", { name: "תיעוד" })
+    .getByRole("link", { name: "פירוט הפעולה" })
     .click();
   await expect(page).toHaveURL(/\/manage\/audit\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("article")).toHaveCount(1);

@@ -463,7 +463,7 @@ export function SoldiersView({
           </details>
           <details className="disclosure">
             <summary>ניהול כתובת מייל וחשבון</summary>
-            <div className="stack">
+            <div className="account-actions">
               <ActionDialog
                 title="שינוי כתובת מייל"
                 fields={[
@@ -502,12 +502,18 @@ export function SoldiersView({
                 payload={{ soldierId: selected.id }}
                 version={selected.version}
               />
-              <SoldierDeletion
-                person={selected}
-                action={action}
-                self={selected.id === state.actor.soldierId}
-                onDone={() => setSelected(null)}
-              />
+              <div className="danger-zone">
+                <small className="muted">
+                  מוחקת את פרטי הקשר והמידע הרגיש. השם, המספר האישי וההיסטוריה
+                  נשמרים.
+                </small>
+                <SoldierDeletion
+                  person={selected}
+                  action={action}
+                  self={selected.id === state.actor.soldierId}
+                  onDone={() => setSelected(null)}
+                />
+              </div>
             </div>
           </details>
         </Modal>

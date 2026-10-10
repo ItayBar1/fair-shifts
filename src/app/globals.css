@@ -322,6 +322,48 @@ small {
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+/* A vertical run of blocks with room between them; a lone button keeps its
+   own width instead of stretching across the column. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.stack > .btn,
+.stack > .text-button {
+  align-self: flex-start;
+}
+/* A section of a dialog that opens in place: a titled band set off from the
+   section before it, with room around what it holds. */
+.disclosure {
+  margin-block-start: var(--space-5);
+  border-block-start: 1px solid var(--separator);
+}
+.disclosure > summary {
+  padding-block: var(--space-4) var(--space-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+.disclosure > .stack {
+  padding-block: var(--space-2) var(--space-4);
+}
+/* Account actions: the routine ones in a row, deletion apart below them. */
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-block: var(--space-2) var(--space-4);
+}
+.account-actions .danger-zone {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-block-start: var(--space-3);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--separator);
+}
 .full-width {
   width: 100%;
 }
@@ -336,6 +378,9 @@ small {
   font-weight: 600;
 }
 .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   background: none;
   border: 0;
   padding: var(--space-2);
@@ -1668,7 +1713,8 @@ tbody tr:last-child td {
   }
 }
 /* On a phone the fairness table is a ranked list: place, name, then
-   population and rank on a second line, points at the side. */
+   population and rank on a second line, points at the side. A manager's
+   selection box comes first. */
 @media (max-width: 760px) {
   .fairness-table thead {
     display: none;
@@ -1689,38 +1735,54 @@ tbody tr:last-child td {
     padding: var(--space-3) var(--space-1);
     border-bottom: 1px solid var(--separator);
   }
+  .fairness-table.selectable tr {
+    grid-template-columns: 1.75rem 2rem auto 1fr auto;
+    grid-template-areas:
+      "select place name name score"
+      "select place population rank score";
+  }
   .fairness-table td {
     padding: 0;
     border: 0;
     white-space: normal;
   }
-  .fairness-table td:nth-child(1) {
+  .fairness-table .cell-select {
+    grid-area: select;
+  }
+  .fairness-table .cell-place {
     grid-area: place;
     text-align: center;
   }
-  .fairness-table td:nth-child(2) {
+  .fairness-table .cell-name {
     grid-area: name;
   }
-  .fairness-table td:nth-child(3),
-  .fairness-table td:nth-child(4) {
+  .fairness-table .cell-population,
+  .fairness-table .cell-rank {
     color: var(--text-2);
     font-size: var(--text-caption);
   }
-  .fairness-table td:nth-child(3) {
+  .fairness-table .cell-population {
     grid-area: population;
   }
-  .fairness-table td:nth-child(4) {
+  .fairness-table .cell-rank {
     grid-area: rank;
   }
-  .fairness-table td:nth-child(4)::before {
+  .fairness-table .cell-rank::before {
     content: "· ";
   }
-  .fairness-table td:nth-child(5) {
+  .fairness-table .cell-score {
     grid-area: score;
     text-align: end;
   }
   .fairness-table .avatar.small {
     display: none;
+  }
+  /* The confirmation line of a typed balance spans the whole row. */
+  .fairness-table tr.edit-row {
+    display: block;
+  }
+  .fairness-table .future-part {
+    display: block;
   }
 }
 /*
@@ -1771,6 +1833,156 @@ tbody tr:last-child td {
   font-size: var(--text-title-3);
   color: var(--accent-text);
 }
+/* A column head that sorts its column. */
+.sort-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sort-head svg {
+  opacity: 0.45;
+}
+.sort-head:hover,
+.sort-head.active {
+  color: var(--text);
+}
+.sort-head.active svg {
+  opacity: 1;
+  color: var(--accent-text);
+}
+.fairness-table .cell-select input,
+.fairness-table th.cell-select input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+}
+.selected-row {
+  background: var(--fill-hover);
+}
+/* A name that opens the soldier's points reads as the name, with a link's cue on hover. */
+.name-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: start;
+}
+.name-button:hover strong {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+/* The balance as an editable cell: the number, and a pencil that shows on hover. */
+.score-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  padding: var(--space-0-5) var(--space-2);
+  cursor: text;
+}
+.score-edit svg {
+  color: var(--text-2);
+  opacity: 0;
+}
+.score-edit:hover,
+.score-edit:focus-visible {
+  border-color: var(--separator-strong);
+}
+.score-edit:hover svg,
+.score-edit:focus-visible svg {
+  opacity: 1;
+}
+@media (hover: none) {
+  .score-edit svg {
+    opacity: 1;
+  }
+}
+.cell-input {
+  width: 6rem;
+  font-size: var(--text-callout);
+}
+.edit-row td {
+  background: var(--accent-soft);
+}
+.edit-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: normal;
+}
+.edit-line input {
+  flex: 1 1 14rem;
+}
+.edit-error {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+/* Held at the bottom while rows are chosen: how many, and what to do with them. */
+.selection-bar {
+  position: sticky;
+  bottom: var(--space-4);
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+}
+.selection-bar .btn {
+  margin-inline-start: auto;
+}
+.score-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.score-summary div {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.score-summary dt {
+  color: var(--text-2);
+  font-size: var(--text-caption);
+}
+.score-summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+.score-change .form-actions {
+  margin-top: var(--space-4);
+}
+.ledger-table .reason {
+  white-space: normal;
+  min-width: 10rem;
+}
+.ledger-table .amount {
+  text-align: end;
+}
+.date-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-footnote);
+  color: var(--text-2);
+}
 .rank-number {
   color: var(--text-2);
 }
@@ -1810,6 +2022,28 @@ tbody tr:last-child td {
 }
 .modal.wide {
   max-width: 850px;
+}
+/* A drawer: full height at the end side of the screen (the left, in Hebrew),
+   sliding in from that edge, so the table it came from stays in view. */
+.modal.side {
+  margin: 0;
+  margin-inline-start: auto;
+  width: min(42rem, 100%);
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+}
+.modal.side.wide {
+  width: min(64rem, 100%);
+}
+@starting-style {
+  .modal.side[open] {
+    transform: translateX(-2rem);
+  }
+}
+.modal.side.closing {
+  transform: translateX(-2rem);
 }
 .modal::backdrop {
   background: var(--scrim);

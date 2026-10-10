@@ -952,11 +952,13 @@ describe("what each account is sent", () => {
     expect(ids).toContain(bar.soldierId);
     for (const person of [manager, otherManager, chen])
       expect(ids).not.toContain(person.soldierId);
-    // Soldier summaries keep exactly the keys they had before.
+    // Soldier summaries keep exactly the keys they had before, and the points
+    // ahead on published duties (decision 220).
     for (const row of view.soldiers)
       expect(Object.keys(row).sort()).toEqual(
         [
           "currentScore",
+          "futureScore",
           "deletedAt",
           "id",
           "name",
