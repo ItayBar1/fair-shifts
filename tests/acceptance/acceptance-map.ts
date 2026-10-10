@@ -1575,8 +1575,10 @@ export const scenarios: Record<number, Entry> = {
         "pins external Docker images"
       ),
       ...t(
-        "tests/unit/braces-depth.test.ts",
-        "rejects the published stack-exhaustion input"
+        "tests/unit/dependency-overrides.test.ts",
+        "keeps braces, its glob chain and the old esbuild loader out",
+        "resolves Next's lint root directories through tinyglobby",
+        "gives exceljs a fixed CommonJS uuid"
       ),
       ...t(
         "tests/integration/database-permissions.test.ts",

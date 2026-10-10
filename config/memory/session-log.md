@@ -1,5 +1,11 @@
 # יומן סשנים
 
+## 10.10.2026 — #168: braces, ‏esbuild ו־uuid
+
+המשתמש ביקש לטפל ב־#168. לא נמצא ענף מרוחק, PR או סשן פעיל אחר עליו. ענף codex/itaybar1/issue-168-npm-findings. אין גרסה מתוקנת של braces, וגם התלויות שמעליה (micromatch, ‏fast-glob, ‏@next/eslint-plugin-next 16.4/canary) עדיין מביאות אותה. לכן נוספו overrides ב־`pnpm-workspace.yaml`: ‏tinyglobby במקום fast-glob של התוסף (משמש רק ל־`settings.next.rootDir`), הסרת `@esbuild-kit/esm-loader` שאין לה הפניה בקוד של drizzle-kit, ו־uuid 11.1.1 ל־exceljs (משתמש רק ב־v4, ועדיין CommonJS). הוסרו ה־patch, שלוש החריגות, ה־COPY של patches בשני ה־Dockerfile ובדיקת braces. במקומה נוספה `dependency-overrides.test.ts`, ומפת הקבלה (תרחיש 34) עודכנה.
+
+נבדק בפועל ב־Docker: טיפוסים, ‏lint (האזהרה הקיימת), ‏`db:generate` ללא שינויים, 29 בדיקות יחידה ממוקדות (XLSX, ‏supply-chain, מפה), ושער האבטחה המלא: ממצא אחד, אפס חוסמים, ‏audit נקי. ‏production smoke המלא עבר, כולל פענוח XLSX מקומפל ותרגיל שחזור. תוצאות Husky המלא ו־CI נרשמות ב־PR. ‏#166 מוזג ל־main בזמן העבודה (‏72f4928), ו־main מוזג לענף; הקונפליקט היחיד היה בפסקת #167 ב־project-state. המשך: סקירה ומיזוג לפני 22.10.2026.
+
 ## 10.10.2026 — #167: x/net ב־cloudflared
 
 שער האבטחה חסם את main ‏(`7fc2561`) ואת #166, על CVE-2026-78669 בחומרה High ב־`golang.org/x/net v0.58.0` של cloudflared. מסד החולשות התעדכן אחרי ה־main הירוק של 09.10. נפתח #167 בבעלות ItayBar1, בענף codex/itaybar1/issue-167-tunnel-x-net. ‏`Dockerfile.tunnel` מעלה רק את x/net ל־v0.60.0, דרך proxy ו־sumdb. אין חריגה ואין שינוי שער.
