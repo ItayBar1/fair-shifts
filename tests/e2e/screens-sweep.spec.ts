@@ -72,7 +72,6 @@ const screens: Record<Key, { path: string; title: string }[]> = {
     { path: "/manage/catalog", title: "קטלוג תורנויות" },
     { path: "/manage/planning", title: "תכנון ושיבוץ" },
     { path: "/manage/publish", title: "פרסום טיוטות" },
-    { path: "/manage/scores", title: "ניקוד והיסטוריה" },
     { path: "/manage/imports", title: "ייבוא חיילים" },
     { path: "/manage/audit", title: "יומן פעולות" },
   ],
