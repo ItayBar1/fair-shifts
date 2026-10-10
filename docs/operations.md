@@ -173,6 +173,8 @@ rm /opt/fair-shifts/deploy-state/stopped            # retry a stopped commit, e.
 
 ## סביבת ה־staging
 
+**החלפה ב־production (הכרעה 221, #172):** הסביבה הזו תוחלף ב־production על דומיין קבוע, ונתוני הדמו יישמרו בנפח עצור. הנוהל ב[מדריך ההעלאה](production-launch.md).
+
 כרטיס [#25](https://github.com/ItayBar1/fair-shifts/issues/25), הכרעה 189. סביבה סינתטית לתרגול ההפעלה ולבדיקות מול ספקים אמיתיים. אין בה נתוני חיילים אמיתיים.
 
 | פריט    | ערך                                                                                                                                                                                                                            |
