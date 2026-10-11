@@ -17,7 +17,7 @@
 - [first-duty.spec.ts](../tests/e2e/first-duty.spec.ts): `manager invites, assigns and publishes; soldier sees only published duties`
 - [soldier-intake.test.ts](../tests/integration/soldier-intake.test.ts): `creates the record, the contact, a zero balance, an invited account and its invitation`; `refuses a personal number that is taken, and an address that is taken, without a trace`; `creates one soldier when two managers send the same form at once`; `refuses a form %s and writes nothing`
 
-### 2. כאחראי, אני רוצה להוסיף ולעדכן חיילים מ־Excel לפי מספר אישי, עם תצוגה מקדימה, כדי לשלוט בשינויים לפני החלתם. — מכוסה
+### 2. כאחראי, אני רוצה להוסיף ולעדכן חיילים מ־Excel לפי מספר זיהוי, עם תצוגה מקדימה, כדי לשלוט בשינויים לפני החלתם. — מכוסה
 
 - [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `stores soldiers and permits sign-in before any invitation is published`; `requires confirmation and publishes only new accounts once across two tabs and retries`
 - [import-invitations.spec.ts](../tests/e2e/import-invitations.spec.ts): `imports without mail and explicitly publishes invitations after reopening the batch`
