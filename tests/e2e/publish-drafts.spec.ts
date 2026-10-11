@@ -163,18 +163,20 @@ async function makeInactive(name: string, date: string) {
 test("a manager picks a range, previews it, and publishes the ready drafts while a blocked one stays a draft", async ({
   page,
 }) => {
-  const morning = await draft("שמירת בוקר", day(12), 8, "תורן א");
-  const noon = await draft("שמירת צהריים", day(12), 14, "תורן ב");
+  // One captured day, so a run across midnight filters the seeded drafts.
+  const when = day(12);
+  const morning = await draft("שמירת בוקר", when, 8, "תורן א");
+  const noon = await draft("שמירת צהריים", when, 14, "תורן ב");
   const next = await draft("שמירת מחר", day(13), 8, "תורן א");
-  await makeInactive("תורן ב", day(12));
+  await makeInactive("תורן ב", when);
 
   await login(page, managerEmail);
   await page.getByRole("link", { name: "פרסום טיוטות" }).click();
   await expect(
     page.getByRole("heading", { name: "פרסום טיוטות", level: 1 })
   ).toBeVisible();
-  await page.getByLabel("מתאריך", { exact: true }).fill(day(12));
-  await page.getByLabel("עד תאריך", { exact: true }).fill(day(12));
+  await page.getByLabel("מתאריך", { exact: true }).fill(when);
+  await page.getByLabel("עד תאריך", { exact: true }).fill(when);
   const list = page.getByRole("group", { name: "טיוטות שמתחילות בטווח" });
   await expect(list.getByRole("checkbox")).toHaveCount(3); // "select all" and two drafts
   await expect(list.getByText("שמירת מחר")).toHaveCount(0);
