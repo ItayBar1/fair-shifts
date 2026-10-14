@@ -40,7 +40,7 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 - **אישור הפעלה (סעיף 7.6):** הגוף המפעיל ובעל השליטה, מטרות והרשאה לעבד את המידע, הספקים (Cloudflare, ‏Brevo, ‏Google), אירוח בשרת פרטי, ונוסח היידוע לחיילים. המסמכים נשמרים אצל המפעיל ולא ב־Git. מומלץ לבדוק גם את סיווג המידע על לוח התורנויות עצמו.
 - **מזהה החייל:** המימוש של #175 מוזג ונפרס, וקובץ הייבוא הוכן לפי התבנית החדשה.
 - **ערכי היחידה:** מחירון, תוספות, מנוחה, פטורים, כשירויות, דרגות ויתרות פתיחה, מאומתים בידי האחראים. אסור להשתמש בערכי הדוגמה.
-- **דומיין:** נרכש ומנוהל ב־DNS של Cloudflare (Nameservers של Cloudflare). להלן `<domain>` הוא הכתובת שתשמש את האתר, למשל `shifts.<domain>` או הדומיין עצמו.
+- **דומיין:** `fairshifts.app` נרכש ב־14.10.2026 ב־Cloudflare Registrar, ולכן ה־DNS שלו כבר מנוהל ב־Cloudflare. האתר יושב על הדומיין עצמו, `https://fairshifts.app`, בלי תת־דומיין. הרכישה היא לשנה, והחידוש עולה 14.20 דולר. בודקים ב־**Domain Registration** שהחידוש האוטומטי פעיל, כי דומיין שפג מפיל את האתר ואת שליחת המייל.
 
 ## 3. הכנת הספקים — לפני יום ההחלפה
 
@@ -50,7 +50,7 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 
 1. **Senders, Domains & Dedicated IPs → Domains → Add a domain**, ומזינים את הדומיין.
 2. Brevo מציג רשומות לאימות: קוד Brevo ב־TXT, ‏DKIM ו־DMARC. מוסיפים אותן ב־DNS של Cloudflare במצב **DNS only** (ענן אפור), או באימות האוטומטי אם Brevo מציע אותו ל־Cloudflare. מחכים עד שכל הרשומות מסומנות כמאומתות.
-3. **Senders → Add a sender:** למשל `no-reply@<domain>` עם השם ״תורנויות״. זה הערך של `BREVO_SENDER_EMAIL`.
+3. **Senders → Add a sender:** למשל `no-reply@fairshifts.app` עם השם ״תורנויות״. זה הערך של `BREVO_SENDER_EMAIL`.
 4. בודקים שה־API key הקיים פעיל. מכסת החינם (300 ביום) נשארת, והמערכת עוצרת לפני שהיא נגמרת.
 
 אם רוצים לקבל מייל בכתובת בדומיין, למשל עבור המנהל הטכני, אפשר להשתמש ב־Cloudflare Email Routing להעברה לתיבה קיימת. אין חובה לעשות את זה.
@@ -58,14 +58,14 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 **Google — לקוח הכניסה בפרויקט `fairshifts-backup`:**
 
 1. **Branding → Authorized domains:** מוסיפים את הדומיין. אם Google מבקש אימות בעלות, מאמתים ב־Search Console עם רשומת TXT ב־Cloudflare.
-2. **Clients → fair-shifts-staging:** מוסיפים מקור `https://<domain>` וכתובת חזרה `https://<domain>/api/auth/callback/google`. משאירים את כתובות ה־staging עד אחרי ההחלפה. אפשר לשנות את שם הלקוח ל־`fair-shifts`. המזהה והסוד לא משתנים.
+2. **Clients → fair-shifts-staging:** מוסיפים מקור `https://fairshifts.app` וכתובת חזרה `https://fairshifts.app/api/auth/callback/google`. משאירים את כתובות ה־staging עד אחרי ההחלפה. אפשר לשנות את שם הלקוח ל־`fair-shifts`. המזהה והסוד לא משתנים.
 3. **Data Access:** בודקים שמופיעים `openid`, ‏`email`, ‏`profile` ו־`calendar.app.created` בלבד, ושכולם מסומנים non-sensitive.
 
 **Google Drive — גיבוי:** יוצרים בחשבון הייעודי תיקייה חדשה לגיבויי production, נפרדת מתיקיית ה־staging, ושומרים את המזהה שלה (`GOOGLE_DRIVE_FOLDER_ID`). לקוח Drive, אסימון הרענון ו־`AGE_RECIPIENT` נשארים. המפתח הפרטי של age נשאר מחוץ לשרת.
 
-**Cloudflare Tunnel:** משתמשים באותו Tunnel. בלשונית **Routes** מוסיפים **Published application** עבור `<domain>` לשירות `http://app:3000`. ה־route הישן נשאר עד אחרי ההחלפה.
+**Cloudflare Tunnel:** משתמשים באותו Tunnel. בלשונית **Routes** מוסיפים **Published application** עבור `fairshifts.app` לשירות `http://app:3000`. ה־route הישן נשאר עד אחרי ההחלפה.
 
-**HSTS בדומיין החדש:** כמו ב־staging, ב־**SSL/TLS → Edge Certificates → HSTS** מגדירים `max-age` של שנה, בלי includeSubDomains ובלי preload ([ראיות המעבר](security-live-transition-evidence.md)).
+**HSTS בדומיין החדש:** כמו ב־staging, ב־**SSL/TLS → Edge Certificates → HSTS** מגדירים `max-age` של שנה, בלי includeSubDomains ובלי preload ([ראיות המעבר](security-live-transition-evidence.md)). הסיומת `.app` כולה כבר ברשימת ה־HSTS preload של הדפדפנים. לכן כל כתובת תחת `fairshifts.app`, כולל תת־דומיינים, נפתחת רק ב־HTTPS בלי קשר להגדרה. זה לא סותר את ההגדרה של האתר, ודרך ה־Tunnel אין גישה ב־HTTP בכל מקרה.
 
 ## 4. יום ההחלפה
 
@@ -85,7 +85,7 @@ sh scripts/production.sh ps -a
 # 3. Keep the staging configuration aside, then create the production configuration
 mv /opt/fair-shifts/config /opt/fair-shifts/config-staging
 export COMPOSE_PROJECT_NAME=fair-shifts-live
-sh scripts/production.sh init --environment=production --url=https://<domain>
+sh scripts/production.sh init --environment=production --url=https://fairshifts.app
 ```
 
 ל־`init` נוצרות שש תצורות חדשות: סיסמאות מסד, סודות כניסה, מפתח הצפנה לתור המייל ומפתח חתימה ליומן המחיקות. **אין להעתיק סודות אלה מ־staging.** מעתיקים מ־`config-staging` רק את ערכי הספקים, בעורך:
@@ -95,7 +95,7 @@ sh scripts/production.sh init --environment=production --url=https://<domain>
 | `TUNNEL_TOKEN`                                                                       | `tunnel.env`                              |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_SYNC=true`              | `app.env`, `worker.env`                   |
 | `MAIL_TRANSPORT=brevo`                                                               | `app.env`, `worker.env`                   |
-| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL=no-reply@<domain>`                              | `worker.env`                              |
+| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL=no-reply@fairshifts.app`                        | `worker.env`                              |
 | `MAIL_QUOTA_TIME_ZONE=Asia/Jerusalem`                                                | `app.env`, `worker.env`, `operations.env` |
 | `BACKUP_STORAGE=drive`, `BACKUP_TIME`, `AGE_RECIPIENT`                               | `app.env`, `worker.env`, `operations.env` |
 | `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | `worker.env`, `operations.env`            |
