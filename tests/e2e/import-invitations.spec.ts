@@ -23,10 +23,10 @@ test.beforeAll(async () => {
     sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   const id = randomUUID();
-  const data = soldier({ id, name: "אחראי פרסום", personalNumber: "000401" });
+  const data = soldier({ id, name: "אחראי פרסום" });
   await db
     .insert(soldiers)
-    .values({ id, name: data.name, personalNumber: data.personalNumber, data });
+    .values({ id, name: data.name, idNumber: data.idNumber, data });
   await db.insert(soldierContacts).values({ soldierId: id, email });
   await db.insert(balances).values({ soldierId: id });
   await createInvitedAccount({
@@ -63,10 +63,12 @@ test("imports without mail and explicitly publishes invitations after reopening 
   workbook
     .getWorksheet("חיילים")!
     .addRow([
-      "000402",
-      "חייל לפני פרסום",
-      "publish-soldier@example.invalid",
       null,
+      "חייל",
+      "לפני פרסום",
+      "זכר",
+      "publish-soldier@example.invalid",
+      "0500000402",
       null,
       0,
     ]);

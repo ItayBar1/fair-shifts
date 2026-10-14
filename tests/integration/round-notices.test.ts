@@ -23,7 +23,7 @@ import {
 import { refreshRoundNotices } from "../../src/server/round-notices";
 import { roundEventKey } from "../../src/domain/round-notices";
 import type { ServiceProfile } from "../../src/domain/types";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -46,11 +46,11 @@ async function person(
   service: Partial<ServiceProfile> = {}
 ) {
   const id = randomUUID();
-  const base = soldier({ id, name, personalNumber });
+  const base = soldier({ id, name });
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
+    idNumber: testIdNumber(personalNumber),
     data: { ...base, service: { ...base.service, ...service } },
   });
   await db

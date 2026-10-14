@@ -94,7 +94,7 @@ sh scripts/install-hooks.sh
 
 ## הקמה וכלי תחזוקה
 
-להקמה ראשונית מריצים `pnpm bootstrap` בשירות הכלים, עם המשתנים `TECHNICAL_EMAIL`, `TECHNICAL_NAME`, `MANAGER_EMAIL`, `MANAGER_NAME`, `MANAGER_PERSONAL_NUMBER`. הפקודה מסרבת לפעול אם כבר יש חשבונות, ומציגה קודי שחזור פעם אחת. יש לשמור אותם מחוץ למאגר וללוגים משותפים. `pnpm seed:demo` יוצר שני חשבונות סינתטיים בכתובות example.invalid ואינו שולח אליהם מייל.
+להקמה ראשונית מריצים `pnpm bootstrap` בשירות הכלים, עם המשתנים `TECHNICAL_EMAIL`, `TECHNICAL_NAME`, `MANAGER_EMAIL`, `MANAGER_FIRST_NAME`, `MANAGER_LAST_NAME`, `MANAGER_GENDER` (`male`, `female` או `other`) ו־`MANAGER_PHONE` (הכרעה 222). הפקודה מסרבת לפעול אם כבר יש חשבונות, ומציגה קודי שחזור פעם אחת. יש לשמור אותם מחוץ למאגר וללוגים משותפים. `pnpm seed:demo` יוצר שני חשבונות סינתטיים בכתובות example.invalid ואינו שולח אליהם מייל.
 
 להדגמה מקומית, לאחר הפעלת השירותים ובניית tools, מריצים `sh scripts/docker.sh run --rm tools pnpm seed:demo`. במסך הכניסה מזינים `manager@example.invalid` ומבקשים קוד. קוראים את הקוד באמצעות `sh scripts/docker.sh run --rm tools pnpm demo:code manager@example.invalid`, ואז מזינים אותו במסך. זהו אותו קוד חד־פעמי ואותו אימות; הכלי מסרב לפעול ב־production, במשלוח מייל פעיל או בכתובת שאינה example.invalid.
 

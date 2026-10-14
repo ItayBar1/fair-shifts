@@ -19,7 +19,7 @@ import { errorResponse } from "../../src/server/http";
 import { readState } from "../../src/server/state";
 import { GET as readStateRoute } from "../../src/app/api/v1/state/route";
 import { POST as actionRoute } from "../../src/app/api/v1/actions/route";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber, testProfile } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -128,6 +128,8 @@ const access: Record<string, Access> = {
   // The calendar belongs to a soldier; a manager takes no seat, so has none (decisions 192 and 195).
   "calendar.switch": "soldier",
   "calendar.remove.future": "soldier",
+  // A soldier's own phone and address (decision 222).
+  "profile.contact.update": "soldier",
   // A manager changes a soldier's address, after the new one is verified (section 7.1).
   "account.email.request": "manager",
   "account.email.confirm": "manager",
@@ -177,8 +179,8 @@ async function invite(
   await db.insert(soldiers).values({
     id: soldierId,
     name,
-    personalNumber,
-    data: soldier({ id: soldierId, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id: soldierId, name }),
   });
   await db.insert(soldierContacts).values({ soldierId, email, ...extra });
   await db.insert(balances).values({ soldierId, current: 20 });
@@ -403,10 +405,22 @@ describe("what each role is shown", () => {
     const emails = (await db.select().from(soldierContacts)).map(
       (row) => row.email
     );
+    // A soldier sees only their own details, in "my details" (decision 222).
     for (const actor of [alon, bar, technical]) {
-      const text = JSON.stringify(await readState(actor));
+      const { myProfile, ...state } = (await readState(actor)) as Record<
+        string,
+        unknown
+      >;
+      const text = JSON.stringify(state);
       for (const value of [...secrets, ...emails])
         expect(text, `${actor.role} sees ${value}`).not.toContain(value);
+      const own = (await db.select().from(soldierContacts)).find(
+        (row) => row.soldierId === actor.soldierId
+      );
+      const mine = JSON.stringify(myProfile ?? {});
+      for (const value of [...secrets, ...emails])
+        if (![own?.email, own?.phone, own?.address].includes(value))
+          expect(mine, `${actor.role} sees ${value}`).not.toContain(value);
     }
     // The same text does reach a manager, so the check above can fail.
     const managed = JSON.stringify(await readState(manager));
@@ -484,7 +498,7 @@ describe("a version that changed", () => {
       send(
         actor,
         "soldier.update",
-        { id: bar.soldierId, name, personalNumber: row.personalNumber },
+        { id: bar.soldierId, ...testProfile(name) },
         version
       );
     const first = await edit(manager, "בר א", row.version);

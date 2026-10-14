@@ -16,7 +16,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { errorResponse } from "../../src/server/http";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -27,9 +27,11 @@ if (
 
 // Adding one soldier with the form (stories 1 and 4, scenarios 4 and 5). Synthetic people only.
 let manager: Actor;
+// Required at intake: first and last name, gender, email and phone (decision 222).
 const form = {
-  name: "חייל בטופס",
-  personalNumber: "0007001",
+  firstName: "חייל",
+  lastName: "בטופס",
+  gender: "male",
   email: "New.Soldier@Example.invalid",
   phone: "050-0000001",
   address: "רחוב הטופס 1",
@@ -77,8 +79,8 @@ async function invite(
   await db.insert(soldiers).values({
     id: soldierId,
     name,
-    personalNumber,
-    data: soldier({ id: soldierId, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id: soldierId, name }),
   });
   await db.insert(soldierContacts).values({ soldierId, email });
   await db.insert(balances).values({ soldierId });
@@ -106,19 +108,23 @@ describe("adding a soldier with the form", () => {
       .select()
       .from(soldiers)
       .where(eq(soldiers.id, created.id));
-    expect(person).toMatchObject({
-      name: form.name,
-      personalNumber: form.personalNumber,
-      version: 1,
+    expect(person).toMatchObject({ name: "חייל בטופס", version: 1 });
+    expect(person.idNumber).toBeGreaterThan(0);
+    expect(person.data).toMatchObject({
+      firstName: "חייל",
+      lastName: "בטופס",
+      gender: "male",
     });
+    expect(person.data).not.toHaveProperty("personalNumber");
     // The address that was typed is stored in lower case, for the invitation and for sign-in.
     const [contact] = await db
       .select()
       .from(soldierContacts)
       .where(eq(soldierContacts.soldierId, created.id));
+    // The phone is kept without the separators that were typed.
     expect(contact).toMatchObject({
       email: "new.soldier@example.invalid",
-      phone: form.phone,
+      phone: "0500000001",
       address: form.address,
     });
     const [balance] = await db
@@ -171,7 +177,6 @@ describe("adding a soldier with the form", () => {
   it("takes an opening balance as the only history", async () => {
     const created = await create({
       ...form,
-      personalNumber: "0007002",
       email: "opening@example.invalid",
       currentScore: 40,
     });
@@ -190,7 +195,6 @@ describe("adding a soldier with the form", () => {
   it("keeps the population the form chose", async () => {
     const created = await create({
       ...form,
-      personalNumber: "0007003",
       email: "career@example.invalid",
       population: "career",
       serviceType: "career",
@@ -221,14 +225,13 @@ describe("a form that cannot be saved", () => {
       422,
       "invalid_input",
     ],
-    [
-      "with a personal number of letters",
-      { personalNumber: "12ab" },
-      422,
-      "invalid_input",
-    ],
-    ["without a personal number", { personalNumber: "" }, 422, "invalid_input"],
-    ["without a name", { name: "   " }, 422, "invalid_input"],
+    ["without a first name", { firstName: "   " }, 422, "invalid_input"],
+    ["without a last name", { lastName: undefined }, 422, "invalid_input"],
+    ["without a gender", { gender: undefined }, 422, "invalid_input"],
+    ["with an unknown gender", { gender: "unknown" }, 422, "invalid_input"],
+    ["without a phone", { phone: undefined }, 422, "invalid_input"],
+    ["with a landline number", { phone: "03-1234567" }, 422, "invalid_input"],
+    ["with a short mobile number", { phone: "050123" }, 422, "invalid_input"],
     [
       "with a negative opening balance",
       { currentScore: -5 },
@@ -253,16 +256,40 @@ describe("a form that cannot be saved", () => {
       expect(await counts()).toEqual(before);
     }
   );
-  it("refuses a personal number that is taken, and an address that is taken, without a trace", async () => {
-    await create(form);
+  it("refuses an address that is taken, and warns on the same name until the manager confirms", async () => {
+    const first = await create(form);
     const before = await counts();
+    expect(await refused(create({ ...form, firstName: "אחר" }))).toEqual({
+      status: 409,
+      code: "email_exists",
+    });
+    // The same first and last name stops the save with a warning only (decision 222).
     expect(
       await refused(create({ ...form, email: "other@example.invalid" }))
-    ).toEqual({ status: 409, code: "personal_number_exists" });
-    expect(
-      await refused(create({ ...form, personalNumber: "0007999" }))
-    ).toEqual({ status: 409, code: "email_exists" });
+    ).toEqual({ status: 409, code: "duplicate_name" });
     expect(await counts()).toEqual(before);
+    const second = await create({
+      ...form,
+      email: "other@example.invalid",
+      duplicateNameConfirmed: true,
+    });
+    const people = await db.select().from(soldiers);
+    const same = people.filter((row) => row.name === "חייל בטופס");
+    expect(same).toHaveLength(2);
+    // Each one gets its own issued number, which tells them apart.
+    const numbers = same.map((row) => row.idNumber);
+    expect(new Set(numbers).size).toBe(2);
+    expect(same.map((row) => row.id).sort()).toEqual(
+      [first.id, second.id].sort()
+    );
+  });
+  it("issues a number that ignores one sent with the form", async () => {
+    const created = await create({ ...form, idNumber: 987654 });
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, created.id));
+    expect(person.idNumber).not.toBe(987654);
   });
   it("creates one soldier when the same form is sent twice, and refuses the key for another form", async () => {
     const key = randomUUID();
@@ -270,7 +297,7 @@ describe("a form that cannot be saved", () => {
     expect(await create(form, key)).toEqual(first);
     expect((await db.select().from(soldiers)).length).toBe(2);
     expect(
-      await refused(create({ ...form, name: "שם אחר" }, key))
+      await refused(create({ ...form, firstName: "שם אחר" }, key))
     ).toMatchObject({ status: 409, code: "idempotency_conflict" });
   });
   it("creates one soldier when two managers send the same form at once", async () => {
@@ -286,7 +313,7 @@ describe("a form that cannot be saved", () => {
     expect(results.filter((row) => row.status === "fulfilled")).toHaveLength(1);
     expect(
       (await db.select().from(soldiers)).filter(
-        (row) => row.personalNumber === form.personalNumber
+        (row) => row.name === "חייל בטופס"
       )
     ).toHaveLength(1);
   });

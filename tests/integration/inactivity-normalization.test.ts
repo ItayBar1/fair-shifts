@@ -17,7 +17,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { errorResponse } from "../../src/server/http";
 import { user } from "../../src/server/auth-schema";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -45,11 +45,10 @@ async function invite(
   await db.insert(soldiers).values({
     id: soldierId,
     name,
-    personalNumber: number,
+    idNumber: testIdNumber(number),
     data: soldier({
       id: soldierId,
       name,
-      personalNumber: number,
       inactivePeriods: inactive,
     }),
   });

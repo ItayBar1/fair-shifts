@@ -14,7 +14,7 @@ import {
   deliverNextEmail,
 } from "../../src/server/operations/email";
 import { executeAction } from "../../src/server/actions";
-import { soldier } from "../fixtures";
+import { soldier, testProfile, testIdNumber, testNames } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -29,10 +29,10 @@ beforeEach(async () => {
     sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   const id = randomUUID();
-  const data = soldier({ id, name: "אחראי הזמנות", personalNumber: "0000001" });
+  const data = soldier({ id, name: "אחראי הזמנות" });
   await db
     .insert(soldiers)
-    .values({ id, name: data.name, personalNumber: data.personalNumber, data });
+    .values({ id, name: data.name, idNumber: testIdNumber("0000001"), data });
   await db
     .insert(soldierContacts)
     .values({ soldierId: id, email: "invitations-manager@example.invalid" });
@@ -83,9 +83,10 @@ async function intake(
       {
         rowNumber: 2,
         values: {
-          personalNumber: "0000002",
-          name: "חייל הזמנה",
+          ...testNames("חייל הזמנה"),
+          gender: "other",
           email: "imported@example.invalid",
+          phone: "0500000002",
           currentScore: 3,
         },
       },
@@ -150,7 +151,10 @@ describe("deferred import invitations (decision 219)", () => {
     const batch = await intake([
       {
         rowNumber: 3,
-        values: { personalNumber: "0000001", name: "אחראי מעודכן" },
+        values: {
+          idNumber: testIdNumber("0000001"),
+          ...testNames("אחראי מעודכן"),
+        },
       },
     ]);
     await expect(
@@ -199,9 +203,10 @@ describe("deferred import invitations (decision 219)", () => {
       {
         rowNumber: 3,
         values: {
-          personalNumber: "0000003",
-          name: "למחיקה",
+          ...testNames("למחיקה"),
+          gender: "other",
           email: "erased@example.invalid",
+          phone: "0500000003",
         },
       },
     ]);
@@ -288,18 +293,24 @@ describe("deferred import invitations (decision 219)", () => {
 
   it("keeps manual intake invitations automatic and needs none for an update-only batch", async () => {
     await command("soldier.create", {
-      name: "קליטה ידנית",
-      personalNumber: "0000004",
+      ...testProfile("קליטה ידנית"),
       email: "manual@example.invalid",
       population: "mandatory",
       serviceType: "mandatory",
       graceEligible: false,
     });
     expect(await invitations()).toHaveLength(1);
+    const [manual] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.name, "קליטה ידנית"));
     const preview = await command("import.preview", {
       filename: "update.xlsx",
       rows: [
-        { rowNumber: 2, values: { personalNumber: "0000004", name: "עודכן" } },
+        {
+          rowNumber: 2,
+          values: { idNumber: manual.idNumber, ...testNames("עודכן") },
+        },
       ],
     });
     const batch = await command(
@@ -324,9 +335,10 @@ describe("deferred import invitations (decision 219)", () => {
       {
         rowNumber: 3,
         values: {
-          personalNumber: "0000003",
-          name: "ללא פעילות",
+          ...testNames("ללא פעילות"),
+          gender: "other",
           email: "quiet@example.invalid",
+          phone: "0500000003",
         },
       },
     ]);

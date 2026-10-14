@@ -33,6 +33,8 @@ import { CancellationRequests } from "./cancellation-requests";
 import { MailHealthRow, MailPanel } from "./mail-operations";
 import { BackupsView, BackupFreshnessBadge } from "./backups";
 import { CalendarSettings } from "./calendar-settings";
+import { genders } from "./eligibility-conditions";
+import { duplicateNameField, phoneHint } from "./management";
 type Props = { state: AppState; action: Action };
 export { ConstraintsView } from "./constraints";
 export function RequestsView({ state, action }: Props) {
@@ -476,12 +478,14 @@ function AccountsPanel({
           submitLabel="יצירת משתמש מוזמן"
           description="המשתמש יוכל להתחבר במייל המאושר. לאחר היצירה אפשר להעניק לו הרשאת אחראי ברשימת החשבונות. נתוני השירות מנוהלים בידי אחראי התורנויות."
           fields={[
-            { name: "name", label: "שם מלא", required: true },
+            { name: "firstName", label: "שם פרטי", required: true },
+            { name: "lastName", label: "שם משפחה", required: true },
             {
-              name: "personalNumber",
-              label: "מספר אישי",
+              name: "gender",
+              label: "מגדר",
+              type: "select",
               required: true,
-              hint: "ספרות בלבד; אפסים מובילים נשמרים",
+              options: genders,
             },
             {
               name: "email",
@@ -489,6 +493,14 @@ function AccountsPanel({
               type: "email",
               required: true,
             },
+            {
+              name: "phone",
+              label: "טלפון נייד",
+              type: "tel",
+              required: true,
+              hint: phoneHint,
+            },
+            duplicateNameField,
           ]}
         />
       }

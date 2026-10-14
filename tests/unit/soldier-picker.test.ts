@@ -38,11 +38,13 @@ const day = {
 };
 
 describe("search", () => {
-  const dana = soldier({ name: "דנה כהן", personalNumber: "7654321" });
-  it("matches a name part and a personal number part as typed", () => {
+  const dana = soldier({ name: "דנה כהן", idNumber: 7654 });
+  it("matches a name part, or the whole issued ID number", () => {
     expect(matchesSearch(dana, "דנ")).toBe(true);
     expect(matchesSearch(dana, "כהן")).toBe(true);
-    expect(matchesSearch(dana, "6543")).toBe(true);
+    expect(matchesSearch(dana, "7654")).toBe(true);
+    // Part of a number is not the number: 76 is another soldier's (decision 222).
+    expect(matchesSearch(dana, "76")).toBe(false);
     expect(matchesSearch(dana, "לוי")).toBe(false);
     expect(matchesSearch(dana, "99")).toBe(false);
   });
@@ -436,9 +438,9 @@ describe("combining filters", () => {
 
 describe("the people listed", () => {
   const people = [
-    soldier({ id: "b", name: "בנימין", personalNumber: "2" }),
-    soldier({ id: "a", name: "אברהם", personalNumber: "1" }),
-    soldier({ id: "c", name: "גלית", personalNumber: "3", gender: "female" }),
+    soldier({ id: "b", name: "בנימין" }),
+    soldier({ id: "a", name: "אברהם" }),
+    soldier({ id: "c", name: "גלית", gender: "female" }),
   ].map(toRow);
   it("lists by name, in Hebrew order", () => {
     expect(
@@ -685,7 +687,6 @@ describe("a soldier row as the rules read it", () => {
     expect(person).toMatchObject({
       id: "p",
       name: "חייל",
-      personalNumber: "",
       populationHistory: [],
       qualifications: [],
       exemptions: [],

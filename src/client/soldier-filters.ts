@@ -53,9 +53,7 @@ export function filterSoldiers(soldiers: Row[], filters: SoldierFilters) {
   return soldiers.filter(
     (s) =>
       !s.deletedAt &&
-      (!search ||
-        str(s.name).includes(search) ||
-        str(s.personalNumber).includes(search)) &&
+      (!search || str(s.name).includes(search) || str(s.idNumber) === search) &&
       filters.populations.includes(str(s.population)) &&
       matchesRank(s, filters.rank)
   );

@@ -12,7 +12,7 @@ import {
 } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret, sealSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 /**
@@ -66,8 +66,8 @@ test.beforeAll(async ({ browser }) => {
     await db.insert(soldiers).values({
       id,
       name,
-      personalNumber,
-      data: soldier({ id, name, personalNumber }),
+      idNumber: testIdNumber(personalNumber),
+      data: soldier({ id, name }),
     });
     await db.insert(soldierContacts).values({ soldierId: id, email });
     await db.insert(balances).values({ soldierId: id });

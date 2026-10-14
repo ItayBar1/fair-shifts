@@ -25,7 +25,7 @@ import {
   enqueueEmail,
 } from "../../src/server/operations/email";
 import { quotaDay } from "../../src/server/operations/mail-quota-day";
-import { soldier, duty, assignment } from "../fixtures";
+import { soldier, duty, assignment, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -45,7 +45,7 @@ async function person(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber: `890${String(number).padStart(4, "0")}`,
+    idNumber: testIdNumber(`890${String(number).padStart(4, "0")}`),
     data: soldier({
       id,
       name,

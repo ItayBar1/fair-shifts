@@ -139,7 +139,7 @@ export function ImportsView({
     <>
       <Panel
         title="ייבוא Excel"
-        subtitle="קליטה ועדכון לפי מספר אישי, עם אישור לפני שמירה"
+        subtitle="קליטה ועדכון לפי מספר זיהוי, עם אישור לפני שמירה"
         actions={
           <a
             className="btn secondary"
@@ -151,8 +151,9 @@ export function ImportsView({
         }
       >
         <p className="muted">
-          תא ריק אינו מוחק מידע קיים. מספר אישי וטלפון נשמרים כטקסט; ניקוד נוכחי
-          אינו כולל ניקוד שמור.
+          התבנית כוללת את החיילים הקיימים ואת מספרי הזיהוי שלהם. חייל חדש נכנס
+          בשורה בלי מספר, והמערכת מייצרת לו מספר בשמירה. בעדכון ממלאים רק את מה
+          שמשתנה: תא ריק אינו מוחק מידע קיים. ניקוד נוכחי אינו כולל ניקוד שמור.
         </p>
         <p className="muted">
           שמירת הייבוא קולטת את החיילים ומאפשרת להם להתחבר. הזמנות במייל יישלחו
@@ -219,9 +220,30 @@ export function ImportsView({
               <div className="grow">
                 <h3>
                   {str(row.name)} ·{" "}
-                  <bdi>{str(obj(row.values).personalNumber)}</bdi> ·{" "}
-                  {row.mode === "create" ? "קליטה חדשה" : "עדכון קיים"}
+                  {row.mode === "create" && !row.subjectId ? (
+                    "מספר זיהוי יונפק בשמירה"
+                  ) : (
+                    <>
+                      מספר זיהוי{" "}
+                      <bdi dir="ltr">
+                        {str(
+                          obj(row.values).idNumber ??
+                            state.soldiers.find(
+                              (person) => person.id === row.subjectId
+                            )?.idNumber
+                        )}
+                      </bdi>
+                    </>
+                  )}{" "}
+                  · {row.mode === "create" ? "קליטה חדשה" : "עדכון קיים"}
                 </h3>
+                {Array.isArray(row.sameName) && (
+                  <Notice tone="warning">
+                    שם פרטי ושם משפחה זהים ל־
+                    {row.sameName.map((match) => str(match)).join(", ")}. אפשר
+                    לשמור בכל זאת; כדאי לוודא שלא מדובר באותו חייל.
+                  </Notice>
+                )}
                 {rows(row.changes).length ? (
                   <div className="table-scroll">
                     <table>

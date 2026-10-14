@@ -45,7 +45,7 @@ import {
   type BackupStorage,
 } from "../../src/server/operations/backup-storage";
 import { deliverNextEmail } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -161,8 +161,8 @@ beforeEach(async () => {
     await db.insert(soldiers).values({
       id,
       name,
-      personalNumber,
-      data: soldier({ id, name, personalNumber }),
+      idNumber: testIdNumber(personalNumber),
+      data: soldier({ id, name }),
     });
     await db
       .insert(soldierContacts)
@@ -234,12 +234,20 @@ describe("encrypted backup that restores into an isolated database", () => {
     await client.connect();
     try {
       const people = await client.query(
-        "select s.name, s.personal_number, b.current from soldiers s join balances b on b.soldier_id = s.id order by s.personal_number"
+        "select s.name, s.id_number, b.current from soldiers s join balances b on b.soldier_id = s.id order by s.id_number"
       );
       expect(people.rows).toEqual([
-        { name: "אחראי גיבוי", personal_number: "700001", current: 3 },
-        { name: "חייל גיבוי ראשון", personal_number: "700002", current: 12 },
-        { name: "חייל גיבוי שני", personal_number: "700003", current: 7 },
+        { name: "אחראי גיבוי", id_number: testIdNumber("700001"), current: 3 },
+        {
+          name: "חייל גיבוי ראשון",
+          id_number: testIdNumber("700002"),
+          current: 12,
+        },
+        {
+          name: "חייל גיבוי שני",
+          id_number: testIdNumber("700003"),
+          current: 7,
+        },
       ]);
       const accounts = await client.query(
         "select role from auth_user order by role"

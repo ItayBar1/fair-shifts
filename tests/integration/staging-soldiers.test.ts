@@ -34,8 +34,8 @@ beforeEach(async () => {
   await db.insert(soldiers).values({
     id,
     name: "אחראי staging",
-    personalNumber: "0000001",
-    data: soldier({ id, name: "אחראי staging", personalNumber: "0000001" }),
+    idNumber: 1000000001,
+    data: soldier({ id, name: "אחראי staging" }),
   });
   await db
     .insert(soldierContacts)
@@ -121,7 +121,7 @@ describe("synthetic soldiers for staging (card #25)", () => {
     const count = (population: string) =>
       people.filter(
         (person) =>
-          person.personalNumber.startsWith("9") &&
+          person.id !== manager.soldierId &&
           populationAt(person.data, now) === population
       ).length;
     expect([count("mandatory"), count("career"), count("academic")]).toEqual([

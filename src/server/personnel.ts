@@ -643,6 +643,13 @@ async function inspectConditions(
     capabilities,
     allowedHours,
   };
+  // Gender is a required profile field (decision 222): it can change here but
+  // not be cleared; only a record from before the rule may still lack it.
+  invariant(
+    input.gender || !person.data.gender,
+    "gender_required",
+    "מגדר הוא שדה חובה; אפשר לשנות אותו אך לא למחוק"
+  );
   if (input.gender) data.gender = input.gender;
   else delete data.gender;
   const before = conditionsOf(person.data);

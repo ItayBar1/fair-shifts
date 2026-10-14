@@ -324,10 +324,32 @@ export async function readState(actor: Actor) {
               row.subjectId === actor.soldierId)
         )
         .map((row) => ({ ...row.data, id: row.id, version: row.version }));
+    // The signed-in person's own details and issued number (decision 222);
+    // no one else's contact details reach a soldier.
+    const me = state.soldiers.find(
+      (person) => person.id === actor.soldierId && !person.deletedAt
+    );
+    const myContact = contacts.find((row) => row.soldierId === me?.id);
+    const myProfile = me && {
+      id: me.id,
+      idNumber: me.idNumber,
+      name: me.name,
+      firstName: me.firstName,
+      lastName: me.lastName,
+      gender: me.gender,
+      email: myContact?.email,
+      phone: myContact?.phone,
+      address: myContact?.address,
+      contactVersions: {
+        phone: myContact?.fieldVersions.phone ?? 0,
+        address: myContact?.fieldVersions.address ?? 0,
+      },
+    };
     return {
       ...base,
       soldiers,
       names,
+      myProfile,
       duties: visibleDuties.map((row) =>
         managing
           ? {

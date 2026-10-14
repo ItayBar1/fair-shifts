@@ -25,7 +25,13 @@ async function valid() {
   await workbook.xlsx.load(new Uint8Array(await createImportTemplate()).buffer);
   workbook
     .getWorksheet("חיילים")!
-    .addRow(["900001", "Synthetic", "synthetic@example.invalid"]);
+    .addRow([
+      900001,
+      "Synthetic",
+      "Soldier",
+      "אחר",
+      "synthetic@example.invalid",
+    ]);
   return Buffer.from(new Uint8Array(await workbook.xlsx.writeBuffer()));
 }
 function fixture(name: string) {
@@ -50,9 +56,7 @@ describe("bounded isolated parser", () => {
     );
     expect(options?.env).toEqual({ NODE_ENV: "production" });
     vi.mocked(fork).mockImplementation(actual.fork);
-    expect((await parseImportWorkbook(buffer))[0].values.personalNumber).toBe(
-      "900001"
-    );
+    expect((await parseImportWorkbook(buffer))[0].values.idNumber).toBe(900001);
   });
   it("kills a parser that exceeds the actual resident-memory limit and leaves the parent usable", async () => {
     const buffer = await valid();

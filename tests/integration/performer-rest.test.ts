@@ -20,7 +20,7 @@ import { loadDomain } from "../../src/server/repository";
 import { settleDue } from "../../src/server/scoring";
 import { impactOf, reassessAssignments } from "../../src/server/personnel";
 import { evaluateEligibility } from "../../src/domain/eligibility";
-import { assignment, duty, soldier } from "../fixtures";
+import { assignment, duty, soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -44,8 +44,8 @@ async function invite(
   await db.insert(soldiers).values({
     id: soldierId,
     name,
-    personalNumber: number,
-    data: soldier({ id: soldierId, name, personalNumber: number }),
+    idNumber: testIdNumber(number),
+    data: soldier({ id: soldierId, name }),
   });
   await db.insert(balances).values({ soldierId });
   const account = await createInvitedAccount({

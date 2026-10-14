@@ -182,7 +182,7 @@ export function SoldierPicker({
   };
   const number = (soldierId: string) => {
     const row = candidates.find((item) => item.id === soldierId);
-    return row ? ` · ${str(row.personalNumber)}` : "";
+    return row?.idNumber ? ` · ${row.idNumber}` : "";
   };
   const current =
     emptyOption && value === emptyOption.value
@@ -242,8 +242,8 @@ export function SoldierPicker({
               <input
                 type="search"
                 autoComplete="off"
-                aria-label={`חיפוש חייל לפי שם או מספר אישי — ${label}`}
-                placeholder="שם או מספר אישי…"
+                aria-label={`חיפוש חייל לפי שם או מספר זיהוי — ${label}`}
+                placeholder="שם או מספר זיהוי…"
                 value={filters.search}
                 onChange={(event) =>
                   setFilters((now) => ({ ...now, search: event.target.value }))
@@ -356,7 +356,7 @@ export function SoldierPicker({
                   />
                   <strong>{str(row.name)}</strong>
                   <bdi dir="ltr" className="muted picker-number">
-                    {str(row.personalNumber)}
+                    {str(row.idNumber)}
                   </bdi>
                   {rank && <span className="muted">{rank}</span>}
                   {row.isManager === true && (

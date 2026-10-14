@@ -193,7 +193,8 @@ rm /opt/fair-shifts/deploy-state/stopped            # retry a stopped commit, e.
 ```sh
 cd /opt/fair-shifts/app
 sh scripts/production.sh exec -T -e TECHNICAL_EMAIL=<address> -e TECHNICAL_NAME="Technical admin" \
-  -e MANAGER_EMAIL=<address> -e MANAGER_NAME="Test manager" -e MANAGER_PERSONAL_NUMBER=0000001 \
+  -e MANAGER_EMAIL=<address> -e MANAGER_FIRST_NAME=<first-name> -e MANAGER_LAST_NAME=<last-name> \
+  -e MANAGER_GENDER=<male|female|other> -e MANAGER_PHONE=<05XXXXXXXX> \
   app node scripts/run-runtime.mjs scripts/bootstrap.ts
 ```
 
@@ -223,7 +224,7 @@ sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tool
   pnpm staging:soldiers --out .local/staging-soldiers.xlsx --extra "<tester address>|<name>"
 ```
 
-בקובץ 20 חיילים בשלוש האוכלוסיות: 12 חובה, 5 קבע וקצינים ו־3 קמ״א. לכולם כתובות `@example.invalid`, שלא מקבלות מייל, מספרים אישיים שמתחילים ב־9 וניקוד התחלתי. כל `--extra` מוסיף חייל חובה עם כתובת בדיקה אמיתית, למשל לבדיקת Google ומייל. `.local` אינו נשמר ב־Git. מעלים את הקובץ ב־`/manage/imports`, בודקים את התצוגה המקדימה ומאשרים.
+בקובץ 20 חיילים בשלוש האוכלוסיות: 12 חובה, 5 קבע וקצינים ו־3 קמ״א. לכולם שם פרטי ושם משפחה, מגדר, טלפון סינתטי, כתובות `@example.invalid` שלא מקבלות מייל, וניקוד התחלתי. אין בקובץ מספר זיהוי: האתר מנפיק אותו בשמירה (הכרעה 222). כל `--extra` מוסיף חייל חובה עם כתובת בדיקה אמיתית, למשל לבדיקת Google ומייל. `.local` אינו נשמר ב־Git. מעלים את הקובץ ב־`/manage/imports`, בודקים את התצוגה המקדימה ומאשרים.
 
 ## לוגי אבחון לבקשות ולכניסת Google — #120
 

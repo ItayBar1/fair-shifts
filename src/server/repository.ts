@@ -135,7 +135,7 @@ export async function loadDomain(tx: DbTransaction) {
       ...row.data,
       id: row.id,
       name: row.name,
-      personalNumber: row.personalNumber,
+      idNumber: row.idNumber,
       version: row.version,
       currentScore: scores.get(row.id) ?? 0,
       deletedAt: row.deletedAt?.toISOString(),

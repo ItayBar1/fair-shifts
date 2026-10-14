@@ -10,7 +10,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 const people = [
@@ -46,8 +46,10 @@ test.beforeAll(async () => {
   );
   for (const [name, email, role, personalNumber] of people) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(soldierContacts).values({ soldierId: id, email });
     await db.insert(balances).values({ soldierId: id });
     const account = await createInvitedAccount({

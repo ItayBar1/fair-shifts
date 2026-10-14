@@ -398,8 +398,8 @@ describe("security #124: OTP burn and durable budgets", () => {
     await db.insert(soldiers).values({
       id: soldierId,
       name: "Synthetic soldier",
-      personalNumber: "6543210",
-      data: soldier({ id: soldierId, personalNumber: "6543210" }),
+      idNumber: 1006543210,
+      data: soldier({ id: soldierId }),
     });
     await createInvitedAccount({
       role: "soldier",

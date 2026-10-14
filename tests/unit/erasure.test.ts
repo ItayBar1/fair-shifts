@@ -88,7 +88,6 @@ describe("profile conditions", () => {
     expect(hasConditions(next)).toBe(false);
     expect("gender" in next).toBe(false);
     expect(next.name).toBe(rich.name);
-    expect(next.personalNumber).toBe(rich.personalNumber);
     expect(next.service).toEqual(rich.service);
     expect(next.rankHistory).toHaveLength(1);
   });
@@ -300,7 +299,7 @@ describe("import rows", () => {
     rowNumber: 3,
     mode: "update",
     name: "חייל",
-    values: { personalNumber: "123", phone: "0500000000", email: "a@b.c" },
+    values: { idNumber: 123, phone: "0500000000", email: "a@b.c" },
     profile: { phone: "0500000000", address: "רחוב" },
     changes: [{ key: "phone", before: "1", after: "2", source: "contact" }],
     newRowRestored: { action: "kept", reason: "ר", actorId: "x", at: AT },
@@ -313,7 +312,7 @@ describe("import rows", () => {
       mode: "update",
       name: "חייל",
       erased: true,
-      values: { personalNumber: "123" },
+      values: { idNumber: 123 },
       changes: [],
       newRowRestored: { action: "kept" },
     });

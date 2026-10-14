@@ -73,20 +73,24 @@ for (const width of [1280, 390]) {
       dialog.getByRole("button", { name: "סגירה", exact: true })
     ).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(dialog.getByLabel("שם מלא", { exact: true })).toBeFocused();
+    await expect(dialog.getByLabel("שם פרטי", { exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();
     await page.keyboard.press("Enter");
     dialog = page.getByRole("dialog", { name: "הוספת משתמש" });
-    await expect(dialog.locator("input")).toHaveCount(3);
-    await dialog.getByLabel("שם מלא", { exact: true }).fill("אחראי חדש מהטכני");
-    await dialog.getByLabel("מספר אישי", { exact: true }).fill("invalid");
+    // The same required details as any intake (decision 222); no ID number field.
+    await expect(dialog.locator("input")).toHaveCount(5);
+    await expect(dialog.getByLabel("מספר אישי")).toHaveCount(0);
+    await dialog.getByLabel("שם פרטי", { exact: true }).fill("אחראי");
+    await dialog.getByLabel("שם משפחה", { exact: true }).fill("חדש מהטכני");
+    await dialog.getByLabel("מגדר", { exact: true }).selectOption("other");
     await dialog.getByLabel("מייל מאושר", { exact: true }).fill(newEmail);
+    await dialog.getByLabel("טלפון נייד", { exact: true }).fill("03-1234567");
     const submit = dialog.getByRole("button", { name: "יצירת משתמש מוזמן" });
     await submit.click();
     await expect(dialog.getByRole("alert")).toContainText("יש לבדוק את השדות");
-    await dialog.getByLabel("מספר אישי", { exact: true }).fill("00000114");
+    await dialog.getByLabel("טלפון נייד", { exact: true }).fill("0500000114");
     await submit.click();
     await expect(dialog).toHaveCount(0);
     const row = page
@@ -95,14 +99,17 @@ for (const width of [1280, 390]) {
     await expect(row.getByText("חייל", { exact: true })).toBeVisible();
     await trigger.click();
     dialog = page.getByRole("dialog", { name: "הוספת משתמש" });
-    await dialog.getByLabel("שם מלא", { exact: true }).fill("כפילות לבדיקה");
-    await dialog.getByLabel("מספר אישי", { exact: true }).fill("00000114");
+    await dialog.getByLabel("שם פרטי", { exact: true }).fill("אחראי");
+    await dialog.getByLabel("שם משפחה", { exact: true }).fill("חדש מהטכני");
+    await dialog.getByLabel("מגדר", { exact: true }).selectOption("other");
     await dialog
       .getByLabel("מייל מאושר", { exact: true })
       .fill("duplicate-114@example.invalid");
+    await dialog.getByLabel("טלפון נייד", { exact: true }).fill("0500000116");
     await dialog.getByRole("button", { name: "יצירת משתמש מוזמן" }).click();
+    // The same name warns; saving needs the confirmation box (decision 222).
     await expect(dialog.getByRole("alert")).toContainText(
-      "המספר האישי כבר רשום"
+      "אותו שם פרטי ושם משפחה"
     );
     await page.keyboard.press("Escape");
 
@@ -132,13 +139,13 @@ for (const width of [1280, 390]) {
       .getByRole("button", { name: "הוספת חייל", exact: true })
       .click();
     const intake = fresh.getByRole("dialog", { name: "הוספת חייל" });
-    await intake
-      .getByLabel("שם מלא", { exact: true })
-      .fill("חייל מהאחראי החדש");
-    await intake.getByLabel("מספר אישי", { exact: true }).fill("00000115");
+    await intake.getByLabel("שם פרטי", { exact: true }).fill("חייל");
+    await intake.getByLabel("שם משפחה", { exact: true }).fill("מהאחראי החדש");
+    await intake.getByLabel("מגדר", { exact: true }).selectOption("male");
     await intake
       .getByLabel("מייל מאושר להזמנה", { exact: true })
       .fill("managed-114@example.invalid");
+    await intake.getByLabel("טלפון נייד", { exact: true }).fill("0500000115");
     await intake
       .getByLabel("אוכלוסיית שיבוץ", { exact: true })
       .selectOption("mandatory");

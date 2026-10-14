@@ -87,7 +87,7 @@ import {
   type CheckId,
   type RestoreReport,
 } from "../../src/domain/restore";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber, testProfile } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -199,8 +199,8 @@ async function invite(
   await db.insert(soldiers).values({
     id: soldierId,
     name,
-    personalNumber,
-    data: soldier({ id: soldierId, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id: soldierId, name }),
   });
   await db.insert(soldierContacts).values({
     soldierId,
@@ -614,6 +614,49 @@ describe("a restore drill", () => {
         "alter table auth_user drop column assignment_feed_cursor"
       );
       await client.query("drop index auth_account_user_provider");
+      // Decision 222: the issued number replaced the personal number, and field
+      // versions stopped reading it.
+      await client.query("alter table soldiers drop column id_number");
+      await client.query(
+        "alter table soldiers add column personal_number text"
+      );
+      await client.query("update soldiers set personal_number = id::text");
+      await client.query(
+        "alter table soldiers alter column personal_number set not null, add constraint soldiers_personal_number_unique unique (personal_number)"
+      );
+      await client.query(
+        `create function fair_shifts_person_fields(profile jsonb, person_name text, personal_number text, deleted_at timestamptz)
+         returns jsonb language sql immutable as $$
+           select (profile - 'service' - 'version' - 'currentScore' - 'constraints')
+             || coalesce((select jsonb_object_agg('service.' || key, value) from jsonb_each(coalesce(profile->'service', '{}'::jsonb))), '{}'::jsonb)
+             || jsonb_build_object('name', person_name, 'personalNumber', personal_number, 'deletedAt', extract(epoch from deleted_at));
+         $$`
+      );
+      await client.query(
+        `create or replace function fair_shifts_track_field_versions() returns trigger language plpgsql as $$
+         declare previous_fields jsonb; next_fields jsonb; field_name text;
+         begin
+           if TG_TABLE_NAME = 'soldiers' then
+             previous_fields := fair_shifts_person_fields(OLD.data, OLD.name, OLD.personal_number, OLD.deleted_at);
+             next_fields := fair_shifts_person_fields(NEW.data, NEW.name, NEW.personal_number, NEW.deleted_at);
+           else
+             previous_fields := to_jsonb(OLD) - 'field_versions';
+             next_fields := to_jsonb(NEW) - 'field_versions';
+           end if;
+           NEW.field_versions := OLD.field_versions;
+           for field_name in select key from jsonb_object_keys(previous_fields || next_fields) as keys(key) loop
+             if previous_fields->field_name is distinct from next_fields->field_name then
+               NEW.field_versions := jsonb_set(NEW.field_versions, array[field_name],
+                 to_jsonb(coalesce((OLD.field_versions->>field_name)::bigint, 0) + 1));
+             end if;
+           end loop;
+           return NEW;
+         end;
+         $$`
+      );
+      await client.query(
+        "drop function fair_shifts_person_profile_fields(jsonb, text, timestamptz)"
+      );
       await client.query(
         "delete from drizzle.__drizzle_migrations where created_at >= $1",
         [since]
@@ -777,7 +820,7 @@ describe("the checks of a restored database", () => {
     [
       "a deleted soldier whose contact details and account survived",
       "deleted_soldier_residue",
-      "update soldiers set deleted_at = now() where personal_number = '00711'",
+      `update soldiers set deleted_at = now() where id_number = ${testIdNumber("00711")}`,
     ],
   ];
   it.each(cases)("fails on %s", async (_label, id, change) => {
@@ -1029,8 +1072,7 @@ describe("deletions made after the backup", () => {
       "soldier.update",
       {
         id: member.soldierId,
-        name: row.name,
-        personalNumber: row.personalNumber,
+        ...testProfile(row.name),
         phone: "0501234567",
         address: "רחוב חדש 9",
       },
@@ -1077,7 +1119,7 @@ describe("deletions made after the backup", () => {
           rowNumber: 2,
           mode: "update",
           name: row.name,
-          values: { personalNumber: row.personalNumber, phone: "0509999999" },
+          values: { idNumber: row.idNumber, phone: "0509999999" },
           changes: [{ key: "phone", before: "1", after: "0509999999" }],
         },
       },
@@ -1114,9 +1156,11 @@ describe("deletions made after the backup", () => {
     const { rows } = await dumpOf(database!);
     expect(
       await rows(
-        `select name, personal_number, deleted_at is not null as deleted from soldiers where id = '${member.soldierId}'`
+        `select name, id_number, deleted_at is not null as deleted from soldiers where id = '${member.soldierId}'`
       )
-    ).toEqual([{ name: member.name, personal_number: "00711", deleted: true }]);
+    ).toEqual([
+      { name: member.name, id_number: testIdNumber("00711"), deleted: true },
+    ]);
     // The history stays, and so does the event.
     expect(
       await rows(

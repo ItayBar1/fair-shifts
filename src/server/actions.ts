@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { updateOwnContact } from "./my-profile";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { unitTransaction } from "./db";
@@ -595,6 +596,9 @@ export async function executeAction(actor: Actor, value: unknown) {
         break;
       case "settings.save":
         result = await savePreferences(tx, actor, payload, expectedVersion);
+        break;
+      case "profile.contact.update":
+        result = await updateOwnContact(tx, actor, payload);
         break;
       case "settings.reset":
         result = await resetPreferences(tx, actor, expectedVersion);

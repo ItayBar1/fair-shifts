@@ -32,7 +32,11 @@ export const unitLock = pgTable("unit_lock", {
 export const soldiers = pgTable("soldiers", {
   id: uuid("id").primaryKey(),
   name: text("name").notNull(),
-  personalNumber: text("personal_number").notNull().unique(),
+  // Issued by the database; the military personal number is not kept (decision 222).
+  idNumber: integer("id_number")
+    .generatedByDefaultAsIdentity()
+    .notNull()
+    .unique(),
   data: jsonb("data").$type<Soldier>().notNull(),
   version: integer("version").notNull().default(1),
   fieldVersions: jsonb("field_versions")

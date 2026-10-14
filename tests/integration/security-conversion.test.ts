@@ -54,7 +54,6 @@ async function person() {
   await db.insert(soldiers).values({
     id,
     name: "סינתטי",
-    personalNumber: randomUUID(),
     data: soldier({ id }),
   });
   await db.insert(balances).values({ soldierId: id });

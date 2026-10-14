@@ -33,7 +33,7 @@ import {
   enqueueEmail,
 } from "../../src/server/operations/email";
 import { verifyRestoredData } from "../../src/server/operations/restore";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber, testNames } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -49,8 +49,8 @@ async function invite(number: string, role: "manager" | "soldier" = "soldier") {
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber: number,
-    data: soldier({ id, name, personalNumber: number }),
+    idNumber: testIdNumber(number),
+    data: soldier({ id, name }),
   });
   await db.insert(soldierContacts).values({ soldierId: id, email });
   await db.insert(balances).values({ soldierId: id });
@@ -265,9 +265,10 @@ describe("security #126: all retained copies", () => {
           {
             rowNumber: 2,
             values: {
-              personalNumber: "920004",
-              name: "Synthetic imported",
+              ...testNames("Synthetic imported"),
+              gender: "other",
               email: "new-import@example.invalid",
+              phone: "0509200040",
             },
           },
         ],
@@ -286,7 +287,7 @@ describe("security #126: all retained copies", () => {
     const [person] = await db
       .select()
       .from(soldiers)
-      .where(eq(soldiers.personalNumber, "920004"));
+      .where(eq(soldiers.name, "Synthetic imported"));
     expect(
       await db
         .select()

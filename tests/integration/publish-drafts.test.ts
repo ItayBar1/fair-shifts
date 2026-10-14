@@ -20,7 +20,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
 import type { AuditEntry } from "../../src/server/audit-log";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -45,8 +45,8 @@ async function invite(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   await db
     .insert(soldierContacts)

@@ -1,16 +1,17 @@
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { AppError, invariant } from "./errors";
-import { date, population } from "./validation";
+import { date, gender, population } from "./validation";
 import { validateWorkbookArchive } from "./workbook-archive";
 import { parseWorkbookInProcess } from "./workbook-process";
 
 export const importValues = z
   .object({
-    personalNumber: z
-      .string()
-      .regex(/^\d{1,20}$/, "נדרש מספר אישי בן 1–20 ספרות כטקסט"),
-    name: z.string().trim().min(1).max(500).optional(),
+    // Empty for a new soldier; the number the site issued for an update (decision 222).
+    idNumber: z.number().int().positive().max(2147483647).optional(),
+    firstName: z.string().trim().min(1).max(100).optional(),
+    lastName: z.string().trim().min(1).max(100).optional(),
+    gender: gender.optional(),
     email: z
       .email("נדרשת כתובת מייל תקינה")
       .transform((value) => value.toLowerCase())
@@ -52,12 +53,22 @@ export type ImportProblem = {
 type Column = {
   key: keyof ImportValues;
   label: string;
-  kind?: "identifier" | "date" | "score" | "population" | "service" | "boolean";
+  kind?:
+    | "idNumber"
+    | "identifier"
+    | "date"
+    | "score"
+    | "population"
+    | "service"
+    | "boolean"
+    | "gender";
   width?: number;
 };
 export const importColumns: Column[] = [
-  { key: "personalNumber", label: "מספר אישי", kind: "identifier" },
-  { key: "name", label: "שם מלא", width: 25 },
+  { key: "idNumber", label: "מספר זיהוי", kind: "idNumber", width: 14 },
+  { key: "firstName", label: "שם פרטי", width: 18 },
+  { key: "lastName", label: "שם משפחה", width: 18 },
+  { key: "gender", label: "מגדר", kind: "gender", width: 10 },
   { key: "email", label: "מייל", width: 35 },
   { key: "phone", label: "טלפון", kind: "identifier" },
   { key: "address", label: "כתובת", width: 35 },
@@ -75,8 +86,13 @@ export const importColumns: Column[] = [
   { key: "rankEffectiveDate", label: "תחולת דרגה", kind: "date" },
 ];
 
+/**
+ * The template lists the unit's active soldiers by issued number and name, so
+ * an update fills only the cells that change; empty cells keep stored values.
+ */
 export async function createImportTemplate(
-  ranks: { name: string; track: string }[] = []
+  ranks: { name: string; track: string }[] = [],
+  people: { idNumber: number; firstName: string; lastName: string }[] = []
 ) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Fair Shifts";
@@ -103,15 +119,23 @@ export async function createImportTemplate(
     fgColor: { argb: "FF174A44" },
   };
   sheet.getRow(1).height = 28;
-  sheet.autoFilter = { from: "A1", to: "Q1" };
+  sheet.autoFilter = {
+    from: "A1",
+    to: `${sheet.getColumn(importColumns.length).letter}1`,
+  };
+  for (const person of people) sheet.addRow(person);
   const instructions = workbook.addWorksheet("הוראות", {
     views: [{ rightToLeft: true }],
   });
   instructions.getColumn(1).width = 110;
   for (const line of [
-    "תבנית קליטה ועדכון חיילים — גרסה 1",
-    "ממלאים בגיליון חיילים. מספר אישי וטלפון הם טקסט; שומרים אפסים מובילים.",
-    "לקליטה חדשה נדרשים מספר אישי, שם ומייל. תא ריק בעדכון אינו מוחק ערך קיים.",
+    "תבנית קליטה ועדכון חיילים — גרסה 2",
+    "ממלאים בגיליון חיילים. הטלפון הוא טקסט; שומרים את ה־0 המוביל.",
+    "חייל חדש: משאירים את מספר הזיהוי ריק. המערכת מייצרת אותו בשמירה.",
+    "לקליטה חדשה נדרשים שם פרטי, שם משפחה, מגדר (זכר / נקבה / אחר), מייל וטלפון. הכתובת אינה חובה.",
+    "עדכון: בשורה של חייל קיים משאירים את מספר הזיהוי שלו וממלאים רק מה שמשתנה. תא ריק אינו מוחק ערך קיים.",
+    "טלפון: נייד ישראלי בן 10 ספרות שמתחיל ב־05, או מספר בינלאומי שמתחיל ב־+.",
+    "שם פרטי ושם משפחה זהים לחייל אחר מציגים אזהרה בתצוגה המקדימה, ואפשר לשמור בכל זאת.",
     "תאריכים: YYYY-MM-DD. ניקוד: מספר שלם שאינו שלילי; אינו כולל ניקוד שמור.",
     "אוכלוסייה: חובה / קבע / קצינים / קמ״א. סוג שירות: חובה / קבע. זכאות לחסד: כן / לא.",
     "אם לא הוזנו בקליטה חדשה: אוכלוסייה וסוג שירות חובה, ללא זכאות לחסד, יתרת פתיחה 0. התצוגה המקדימה תפרט זאת.",
@@ -160,13 +184,25 @@ function readValue(cell: ExcelJS.Cell, column: Column): unknown {
     );
   if (column.kind === "identifier" && typeof value === "number") {
     if (!Number.isSafeInteger(value) || value < 0 || !/^0+$/.test(cell.numFmt))
-      throw new Error(
-        "מספר אישי וטלפון חייבים להיות טקסט כדי לשמור אפסים מובילים"
-      );
+      throw new Error("הטלפון חייב להיות טקסט כדי לשמור את ה־0 המוביל");
     return String(value).padStart(cell.numFmt.length, "0");
   }
   const text = String(value).trim();
   if (!text) return undefined;
+  if (column.kind === "idNumber") {
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(Number(text)))
+      throw new Error("מספר הזיהוי הוא מספר שלם שהאתר הנפיק");
+    return Number(text);
+  }
+  if (column.kind === "gender") {
+    const genders: Record<string, string> = {
+      זכר: "male",
+      נקבה: "female",
+      אחר: "other",
+    };
+    if (!genders[text]) throw new Error("יש להזין זכר, נקבה או אחר");
+    return genders[text];
+  }
   if (column.kind === "score") {
     if (!/^\d+$/.test(text))
       throw new Error("הניקוד חייב להיות מספר שלם שאינו שלילי");
@@ -223,16 +259,16 @@ export async function decodeImportWorkbook(
       seenHeaders.add(column.key);
     }
   });
-  if (!seenHeaders.has("personalNumber"))
+  if (!seenHeaders.has("idNumber"))
     problems.push({
       row: 1,
-      field: "מספר אישי",
+      field: "מספר זיהוי",
       value: "",
-      reason: "חסרה עמודת זיהוי",
-      fix: "יש להשתמש בתבנית",
+      reason: "חסרה עמודת מספר הזיהוי",
+      fix: "יש להשתמש בתבנית; בשורה של חייל חדש משאירים אותה ריקה",
     });
   const parsed: ImportRow[] = [];
-  const seenNumbers = new Set<string>();
+  const seenNumbers = new Set<number>();
   for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
     const row = sheet.getRow(rowNumber);
     if (!row.hasValues) continue;
@@ -276,15 +312,16 @@ export async function decodeImportWorkbook(
         });
       }
     } else {
-      if (seenNumbers.has(result.data.personalNumber))
+      const number = result.data.idNumber;
+      if (number !== undefined && seenNumbers.has(number))
         problems.push({
           row: rowNumber,
-          field: "מספר אישי",
-          value: result.data.personalNumber,
-          reason: "מספר אישי כפול בקובץ",
+          field: "מספר זיהוי",
+          value: String(number),
+          reason: "מספר זיהוי כפול בקובץ",
           fix: "יש להשאיר שורה אחת לכל חייל",
         });
-      seenNumbers.add(result.data.personalNumber);
+      if (number !== undefined) seenNumbers.add(number);
       parsed.push({ rowNumber, values: result.data });
     }
   }

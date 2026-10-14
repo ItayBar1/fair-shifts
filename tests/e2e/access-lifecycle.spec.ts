@@ -9,7 +9,7 @@ import {
   issueRecoveryCodes,
 } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 const emails = {
@@ -21,8 +21,10 @@ const emails = {
 };
 async function person(name: string, personalNumber: string) {
   const id = randomUUID();
-  const data = soldier({ id, name, personalNumber });
-  await db.insert(soldiers).values({ id, name, personalNumber, data });
+  const data = soldier({ id, name });
+  await db
+    .insert(soldiers)
+    .values({ id, name, idNumber: testIdNumber(personalNumber), data });
   await db.insert(balances).values({ soldierId: id });
   return id;
 }

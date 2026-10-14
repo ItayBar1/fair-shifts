@@ -38,11 +38,10 @@ test.beforeAll(async () => {
   await db.insert(soldiers).values({
     id,
     name: "אחראי להחלפת כתובת",
-    personalNumber: "7000001",
+    idNumber: 1007000001,
     data: soldier({
       id,
       name: "אחראי להחלפת כתובת",
-      personalNumber: "7000001",
     }),
   });
   await db

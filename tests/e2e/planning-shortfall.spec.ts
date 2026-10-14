@@ -16,7 +16,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 const managerEmail = "planning-manager@example.invalid";
@@ -48,10 +48,11 @@ test.beforeAll(async () => {
     const data = soldier({
       id,
       name,
-      personalNumber,
       inactivePeriods: inactive ? [{ start: planned, end: planned }] : [],
     });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     ids[name] = id;
   }
@@ -163,7 +164,6 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
   const data = soldier({
     id,
     name: "לפני שחרור",
-    personalNumber: "500004",
     service: {
       type: "mandatory",
       basePopulation: "mandatory",
@@ -173,7 +173,7 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
   });
   await db
     .insert(soldiers)
-    .values({ id, name: data.name, personalNumber: data.personalNumber, data });
+    .values({ id, name: data.name, idNumber: data.idNumber, data });
   await db.insert(balances).values({ soldierId: id, current: 0 });
   const releaseType = await command("dutyType.save", {
     name: "שמירה לפני שחרור",

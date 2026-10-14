@@ -16,7 +16,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
 import type { AuditEntry } from "../../src/server/audit-log";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -40,8 +40,8 @@ async function invite(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   const email = `${personalNumber}@example.invalid`;
   await db.insert(soldierContacts).values({ soldierId: id, email });
@@ -232,8 +232,7 @@ describe("audit log", () => {
       "soldier.update",
       {
         id: member.soldierId,
-        name: "חייל לבדיקה",
-        personalNumber: "00001",
+        // Only the phone changes; names and gender keep their stored values.
         phone: "0500000001",
         serviceType: "mandatory",
         population: "mandatory",

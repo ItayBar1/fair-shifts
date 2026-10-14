@@ -255,7 +255,7 @@ export function SoldierConditions({
             value={gender}
             onChange={(e) => setGender(e.target.value)}
           >
-            <option value="">לא הוזן</option>
+            {!person.gender && <option value="">לא הוזן</option>}
             {genders.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}

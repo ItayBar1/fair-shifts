@@ -42,7 +42,7 @@ import {
 } from "./personnel";
 import { refreshRankReminders } from "./ranks";
 import { deletionSummary, eraseSoldier } from "./soldier-deletion";
-import { date, id, population, text } from "./validation";
+import { date, gender, id, population, text } from "./validation";
 
 const changeSchema = z.object({
   key: z.string(),
@@ -71,7 +71,7 @@ type RestoreRow = {
   balanceVersion?: number;
   contactVersions?: Record<string, number>;
   pendingNew: boolean;
-  personalNumber?: string;
+  idNumber?: number;
   /** Only for a new soldier from this batch whose row is not closed yet. */
   creation?: Creation;
 };
@@ -358,10 +358,7 @@ async function restoreRows(
       pendingNew,
       ...(pendingNew
         ? {
-            personalNumber: String(
-              z.record(z.string(), z.unknown()).parse(row.data.values ?? {})
-                .personalNumber ?? ""
-            ),
+            idNumber: person?.idNumber,
             creation,
           }
         : {}),
@@ -379,7 +376,7 @@ function withoutContact(value: unknown) {
 }
 /**
  * Removes a soldier created by the import as if never imported (decision 174).
- * The import row keeps its number, name, personal number and outcome only.
+ * The import row keeps its row number, the imported values without contact details, and the outcome.
  */
 async function cancelCreation(
   tx: DbTransaction,
@@ -633,7 +630,15 @@ export async function previewImportRestore(
 }
 function applyPersonField(person: Soldier, field: RestoreField) {
   if (field.key === "name") person.name = text.parse(field.proposed);
-  else if (field.key === "populationHistory")
+  // A name part that was absent before the import is absent again; the full
+  // name comes back through its own field.
+  else if (field.key === "firstName" || field.key === "lastName") {
+    if (field.proposed === null) delete person[field.key];
+    else person[field.key] = text.parse(field.proposed);
+  } else if (field.key === "gender") {
+    if (field.proposed === null) delete person.gender;
+    else person.gender = gender.parse(field.proposed);
+  } else if (field.key === "populationHistory")
     person.populationHistory = z
       .array(z.object({ effectiveFrom: date, population }))
       .parse(field.proposed);

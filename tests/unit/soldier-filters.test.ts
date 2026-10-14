@@ -9,7 +9,7 @@ const people = [
   {
     id: "m",
     name: "חובה א",
-    personalNumber: "0001",
+    idNumber: 1,
     population: "mandatory",
     rankId: "r-sgt",
     rankTrack: "נגדים",
@@ -17,16 +17,16 @@ const people = [
   {
     id: "c",
     name: "קבע ב",
-    personalNumber: "0002",
+    idNumber: 2,
     population: "career",
     rankId: "r-officer",
     rankTrack: "קצינים",
   },
-  { id: "k", name: "קמא ג", personalNumber: "0003", population: "academic" },
+  { id: "k", name: "קמא ג", idNumber: 3, population: "academic" },
   {
     id: "same-name",
     name: "חובה ד",
-    personalNumber: "0004",
+    idNumber: 4,
     population: "mandatory",
     rankId: "r-sgt-other",
     rankTrack: "מסלול אחר",
@@ -34,7 +34,7 @@ const people = [
   {
     id: "gone",
     name: "חובה ה",
-    personalNumber: "0005",
+    idNumber: 5,
     population: "mandatory",
     deletedAt: "2026-01-01T00:00:00Z",
   },
@@ -79,7 +79,7 @@ describe("soldier list filters", () => {
   });
   it("combines search with filters and never lists deleted records", () => {
     expect(
-      ids({ search: " 0004 ", populations: ["mandatory"], rank: "" })
+      ids({ search: " 4 ", populations: ["mandatory"], rank: "" })
     ).toEqual(["same-name"]);
     expect(
       ids({ search: "חובה ה", populations: all, rank: "missing" })

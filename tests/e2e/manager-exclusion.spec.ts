@@ -19,7 +19,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { settleDue } from "../../src/server/scoring";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 // A duty manager is never assigned to a duty (card #82, decision 192). Synthetic people only.
@@ -41,10 +41,13 @@ async function invite(key: Key, role: Actor["role"], balance = 0) {
   let soldierId: string | undefined;
   if (role !== "technical") {
     soldierId = randomUUID();
-    const data = soldier({ id: soldierId, name, personalNumber });
-    await db
-      .insert(soldiers)
-      .values({ id: soldierId, name, personalNumber, data });
+    const data = soldier({ id: soldierId, name });
+    await db.insert(soldiers).values({
+      id: soldierId,
+      name,
+      idNumber: testIdNumber(personalNumber),
+      data,
+    });
     await db.insert(soldierContacts).values({ soldierId, email });
     await db.insert(balances).values({ soldierId, current: balance });
   }
