@@ -104,7 +104,8 @@ test("a soldier sees their own number and changes phone and address, and the man
   await expect(details).toContainText(people.member.email);
   await page.getByLabel("טלפון נייד").fill("abc");
   await page.getByRole("button", { name: "שמירת טלפון וכתובת" }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  // The form's own message; the page may also show a general notice.
+  await expect(page.locator("form").getByRole("alert")).toBeVisible();
   await page.getByLabel("טלפון נייד").fill("052-765 4321");
   await page.getByLabel("כתובת (לא חובה)").fill("רחוב הפרטים 4");
   await page.getByRole("button", { name: "שמירת טלפון וכתובת" }).click();
