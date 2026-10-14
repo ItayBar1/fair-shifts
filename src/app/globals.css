@@ -850,6 +850,25 @@ small {
 .my-assignment-details dd {
   margin: 0;
 }
+.detail-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-callout);
+}
+.detail-list div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+.detail-list dt {
+  color: var(--text-3);
+  min-width: 7rem;
+}
+.detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .panel-head {
   display: flex;
   align-items: center;
@@ -1336,7 +1355,8 @@ select:focus-visible {
   color: var(--text-3);
   opacity: 1;
 }
-.field input:not([type="checkbox"]),
+/* A radio keeps its own size, so a picker row stays on one line. */
+.field input:not([type="checkbox"]):not([type="radio"]),
 .field select,
 .field textarea {
   width: 100%;

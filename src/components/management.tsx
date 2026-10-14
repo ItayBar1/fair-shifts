@@ -53,21 +53,65 @@ import {
   genders,
 } from "./eligibility-conditions";
 import type { Gender, RankClause, Requirements } from "@/domain/types";
+/** The phone format the server accepts (decision 222). */
+export const phoneHint = "נייד ישראלי שמתחיל ב־05, או מספר בינלאומי שמתחיל ב־+";
+/** Saving a second soldier with the same first and last name is allowed after this. */
+export const duplicateNameField: Field = {
+  name: "duplicateNameConfirmed",
+  label: "לשמור גם אם כבר רשום חייל עם אותו שם פרטי ושם משפחה",
+  type: "checkbox",
+  full: true,
+  hint: "אם קיים שם זהה, השמירה תיעצר עם אזהרה עד שמסמנים כאן",
+};
+// A record from before decision 222 may lack a part; the form fills what it can
+// from the full name, and an edit cannot clear a part that is stored.
+const nameParts = (s?: Row) => {
+  const [first = "", ...rest] = str(s?.name).split(" ");
+  return {
+    firstName: str(s?.firstName, first),
+    lastName: str(s?.lastName, rest.join(" ")),
+  };
+};
 const soldierFields = (s?: Row): Field[] => [
-  { name: "name", label: "שם מלא", required: true, value: str(s?.name) },
   {
-    name: "personalNumber",
-    label: "מספר אישי",
+    name: "firstName",
+    label: "שם פרטי",
     required: true,
-    value: str(s?.personalNumber),
-    hint: "נשמר כטקסט, כולל אפסים בתחילת המספר",
+    value: nameParts(s).firstName,
   },
+  {
+    name: "lastName",
+    label: "שם משפחה",
+    required: !s || Boolean(nameParts(s).lastName),
+    value: nameParts(s).lastName,
+  },
+  // On an edit, gender changes in the conditions below, which first shows the
+  // assignments the change affects.
+  ...(s
+    ? []
+    : [
+        {
+          name: "gender",
+          label: "מגדר",
+          type: "select",
+          required: true,
+          options: genders,
+        } satisfies Field,
+      ]),
   {
     name: "email",
     label: "מייל מאושר להזמנה",
     type: "email",
     required: !s,
     value: str(s?.email),
+  },
+  {
+    name: "phone",
+    label: "טלפון נייד",
+    type: "tel",
+    required: !s || Boolean(s.phone),
+    value: str(s?.phone),
+    hint: phoneHint,
   },
   {
     name: "population",
@@ -88,7 +132,6 @@ const soldierFields = (s?: Row): Field[] => [
     ],
     value: str(s?.serviceType, "mandatory"),
   },
-  { name: "phone", label: "טלפון", value: str(s?.phone) },
   {
     name: "enlistmentDate",
     label: "תאריך גיוס",
@@ -139,6 +182,7 @@ const soldierFields = (s?: Row): Field[] => [
     min: 0,
     value: num(s?.currentScore ?? s?.score),
   },
+  ...(s ? [] : [duplicateNameField]),
 ];
 /** Service dates derived by the server, shown so a manager sees them before planning. */
 function ServiceDates({ person }: { person: Row }) {
@@ -209,8 +253,8 @@ export function SoldiersView({
           <label className="search">
             <Search size={17} />
             <input
-              aria-label="חיפוש חייל לפי שם או מספר אישי"
-              placeholder="שם או מספר אישי…"
+              aria-label="חיפוש חייל לפי שם או מספר זיהוי"
+              placeholder="שם או מספר זיהוי…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -278,7 +322,7 @@ export function SoldiersView({
               <thead>
                 <tr>
                   <th>שם</th>
-                  <th>מספר אישי</th>
+                  <th>מספר זיהוי</th>
                   <th>אוכלוסייה</th>
                   <th>דרגה</th>
                   <th>שחרור</th>
@@ -298,7 +342,7 @@ export function SoldiersView({
                         {s.isManager === true && <Badge>אחראי תורנויות</Badge>}
                       </span>
                     </td>
-                    <td dir="ltr">{str(s.personalNumber)}</td>
+                    <td dir="ltr">{str(s.idNumber)}</td>
                     <td>{population(s.population)}</td>
                     <td>
                       {s.rankId ? (
@@ -351,7 +395,10 @@ export function SoldiersView({
             <Badge>{population(selected.population)}</Badge>
             <Status value={selected.serviceStatus || "active"} />
             <span className="muted">
-              מספר אישי {str(selected.personalNumber)}
+              מספר זיהוי <bdi dir="ltr">{str(selected.idNumber)}</bdi>
+            </span>
+            <span className="muted">
+              מייל <bdi dir="ltr">{str(selected.email, "—")}</bdi>
             </span>
             <AuditLink id={selected.id} label="יומן הפעולות של החייל" />
           </div>
@@ -504,7 +551,7 @@ export function SoldiersView({
               />
               <div className="danger-zone">
                 <small className="muted">
-                  מוחקת את פרטי הקשר והמידע הרגיש. השם, המספר האישי וההיסטוריה
+                  מוחקת את פרטי הקשר והמידע הרגיש. השם, מספר הזיהוי וההיסטוריה
                   נשמרים.
                 </small>
                 <SoldierDeletion

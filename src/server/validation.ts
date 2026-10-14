@@ -16,19 +16,38 @@ export const commandSchema = z.object({
   idempotencyKey: z.string().uuid(),
 });
 export type Command = z.infer<typeof commandSchema>;
+/** Separators people type are dropped before the check. */
+export function normalizePhone(value: string) {
+  return value.replace(/[\s\-().]/g, "");
+}
+/** An Israeli mobile number, or an international one with its + prefix (decision 222). */
+export const phone = z
+  .string()
+  .transform(normalizePhone)
+  .pipe(
+    z
+      .string()
+      .regex(
+        /^(05\d{8}|\+\d{8,15})$/,
+        "נדרש טלפון נייד ישראלי בן 10 ספרות שמתחיל ב־05, או מספר בינלאומי שמתחיל ב־+"
+      )
+  );
+const personName = z.string().trim().min(1).max(100);
+// Names, gender and phone are required when a soldier is created (decision
+// 222); an edit that leaves one out keeps the stored value.
+const blank = (value: unknown) =>
+  typeof value === "string" && !value.trim() ? undefined : value;
 export const profileInput = z.object({
   id: id.optional(),
-  name: text,
-  personalNumber: z
-    .string()
-    .trim()
-    .regex(/^\d{1,20}$/, "מספר אישי חייב להכיל ספרות"),
+  firstName: z.preprocess(blank, personName.optional()),
+  lastName: z.preprocess(blank, personName.optional()),
+  gender: z.preprocess(blank, gender.optional()),
   email: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.email().optional()
   ),
   currentScore: z.number().int().nonnegative().max(2147483647).optional(),
-  phone: z.string().max(30).optional(),
+  phone: z.preprocess(blank, phone.optional()),
   address: z.string().max(500).optional(),
   population: population.default("mandatory"),
   serviceType: z.enum(["mandatory", "career"]).default("mandatory"),
@@ -39,13 +58,40 @@ export const profileInput = z.object({
   permanentDate: optionalDate,
   graceEligible: z.boolean().default(false),
   rankTrack: z.string().max(100).optional(),
+  /** The manager saw the same-name warning and saves anyway. */
+  duplicateNameConfirmed: z.boolean().optional(),
 });
-// The technical form creates an identity only; extra fields cannot grant roles,
-// edit a person, supply a balance or attach sensitive personnel information.
+// The technical form asks for the same required details as any intake
+// (decision 222); extra fields cannot grant roles, edit a person, supply a
+// balance or attach sensitive personnel information.
 export const technicalUserInput = profileInput
-  .pick({ name: true, personalNumber: true, email: true })
-  .extend({ email: z.email() })
+  .pick({
+    firstName: true,
+    lastName: true,
+    gender: true,
+    email: true,
+    phone: true,
+  })
+  .extend({
+    firstName: personName,
+    lastName: personName,
+    gender,
+    email: z.email(),
+    phone,
+    duplicateNameConfirmed: z.boolean().optional(),
+  })
   .strict();
+/** The full name shown everywhere, from its two required parts. */
+export function fullName(firstName: string, lastName: string) {
+  return `${firstName.trim()} ${lastName.trim()}`;
+}
+/** Two people count as the same name when first and last name match (decision 222). */
+export function nameKey(firstName: string, lastName: string) {
+  return fullName(firstName, lastName)
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
 export const scoreInput = z.object({
   soldierIds: z.array(id).min(1).max(500),
   operation: z.enum(["add", "subtract", "set", "percent"]),

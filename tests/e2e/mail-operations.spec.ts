@@ -33,10 +33,10 @@ test.beforeAll(async () => {
     role: "technical",
   });
   const id = randomUUID();
-  const data = soldier({ id, name: "חייל נמען", personalNumber: "000301" });
+  const data = soldier({ id, name: "חייל נמען" });
   await db
     .insert(soldiers)
-    .values({ id, name: data.name, personalNumber: data.personalNumber, data });
+    .values({ id, name: data.name, idNumber: data.idNumber, data });
   await db
     .insert(soldierContacts)
     .values({ soldierId: id, email: recipientEmail });

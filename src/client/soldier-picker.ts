@@ -70,7 +70,7 @@ export type PickerSoldier = Pick<
   Soldier,
   | "id"
   | "name"
-  | "personalNumber"
+  | "idNumber"
   | "service"
   | "populationHistory"
   | "rankHistory"
@@ -92,7 +92,7 @@ export function pickerSoldier(row: Row): PickerSoldier {
   return {
     id: row.id,
     name: str(row.name),
-    personalNumber: str(row.personalNumber),
+    idNumber: typeof row.idNumber === "number" ? row.idNumber : undefined,
     service: {
       type: service.type === "career" ? "career" : "mandatory",
       basePopulation: (["mandatory", "career", "academic"].includes(base)
@@ -123,16 +123,19 @@ const normalize = (text: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** Every word typed must appear in the name or in the personal number, in any order. */
+/**
+ * Every word typed must appear in the name, in any order; a number typed alone
+ * is the issued ID number, matched whole so 1 does not also find 10 and 21.
+ */
 export function matchesSearch(
-  soldier: Pick<PickerSoldier, "name" | "personalNumber">,
+  soldier: Pick<PickerSoldier, "name" | "idNumber">,
   search: string
 ): boolean {
   const words = normalize(search).split(" ").filter(Boolean);
   if (!words.length) return true;
   const name = normalize(soldier.name);
-  const number = normalize(soldier.personalNumber);
-  return words.every((word) => name.includes(word) || number.includes(word));
+  const number = String(soldier.idNumber ?? "");
+  return words.every((word) => name.includes(word) || number === word);
 }
 
 /**

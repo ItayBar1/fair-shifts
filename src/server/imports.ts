@@ -24,7 +24,7 @@ import {
   type ImportRow,
   type ImportValues,
 } from "./import-workbook";
-import { profileInput, id, text } from "./validation";
+import { fullName, nameKey, profileInput, id, text } from "./validation";
 import {
   effectiveToday,
   impactOf,
@@ -33,6 +33,7 @@ import {
 } from "./personnel";
 import { enqueueAccountInvitation, saveSoldier } from "./people";
 import { accountAvailable } from "./auth/accounts";
+import { reservedAddress } from "../domain/mail-delivery";
 import { setSoldierRank } from "./ranks";
 import { postScore, settleDue } from "./scoring";
 
@@ -60,6 +61,8 @@ type PlannedRow = {
   changes: ImportChange[];
   rank?: { id: string; version: number; effectiveDate: string };
   populationImpact?: PopulationImpact;
+  /** Same first and last name as another soldier or row: shown, not blocking (decision 222). */
+  sameName?: string[];
 };
 /**
  * A row that moves the soldier's population carries the reviewed impact on
@@ -71,6 +74,9 @@ type PopulationImpact = ReturnType<typeof populationChange> &
 
 const fieldLabels: Record<string, string> = {
   name: "שם מלא",
+  firstName: "שם פרטי",
+  lastName: "שם משפחה",
+  gender: "מגדר",
   populationHistory: "היסטוריית אוכלוסייה",
   rankHistory: "היסטוריית דרגות",
   "service.type": "סוג שירות",
@@ -87,8 +93,12 @@ const fieldLabels: Record<string, string> = {
   currentScore: "ניקוד נוכחי",
 };
 export function personImportFields(person: Soldier): Record<string, unknown> {
+  // The full name is listed beside its parts, so a restore brings it back too.
   return {
     name: person.name,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    gender: person.gender,
     populationHistory: person.populationHistory,
     rankHistory: person.rankHistory,
     ...Object.fromEntries(
@@ -128,8 +138,9 @@ function profileFor(
   const service = person?.data.service;
   return {
     id: person?.id,
-    name: values.name ?? person?.name,
-    personalNumber: values.personalNumber,
+    firstName: values.firstName ?? person?.data.firstName,
+    lastName: values.lastName ?? person?.data.lastName,
+    gender: values.gender ?? person?.data.gender,
     email: values.email ?? contact?.email,
     phone: values.phone ?? contact?.phone ?? undefined,
     address: values.address ?? contact?.address ?? undefined,
@@ -154,7 +165,12 @@ function proposedPerson(
   rankDate?: string
 ): Soldier {
   const data = structuredClone(person.data);
-  data.name = profile.name;
+  if (profile.firstName && profile.lastName) {
+    data.name = fullName(profile.firstName, profile.lastName);
+    data.firstName = profile.firstName;
+    data.lastName = profile.lastName;
+  }
+  if (profile.gender) data.gender = profile.gender;
   data.service = {
     type: profile.serviceType,
     basePopulation: data.service.basePopulation,
@@ -199,7 +215,7 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
   let domain: DomainState | undefined;
   const planned: PlannedRow[] = [];
   const problems: ImportProblem[] = [];
-  const numbers = new Set<string>();
+  const numbers = new Set<number>();
   const emails = new Set<string>();
   const problem = (row: ImportRow, key: string, reason: string, fix: string) =>
     problems.push({
@@ -211,37 +227,58 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
     });
   for (const row of inputs) {
     const values = row.values;
-    if (numbers.has(values.personalNumber))
+    // A row with the issued number updates that soldier; without it, a new one (decision 222).
+    const number = values.idNumber;
+    if (number !== undefined && numbers.has(number))
       problem(
         row,
-        "personalNumber",
-        "מספר אישי כפול בקובץ",
+        "idNumber",
+        "מספר זיהוי כפול בקובץ",
         "יש להשאיר שורה אחת לכל חייל"
       );
-    numbers.add(values.personalNumber);
-    const person = people.find(
-      (item) => item.personalNumber === values.personalNumber
-    );
+    if (number !== undefined) numbers.add(number);
+    const person =
+      number === undefined
+        ? undefined
+        : people.find((item) => item.idNumber === number);
+    if (number !== undefined && !person) {
+      problem(
+        row,
+        "idNumber",
+        "מספר הזיהוי אינו קיים ביחידה",
+        "בשורה של חייל חדש משאירים את מספר הזיהוי ריק; בעדכון מעתיקים אותו מהאתר"
+      );
+      continue;
+    }
     const contact = contacts.find((item) => item.soldierId === person?.id);
     const balance = scores.find((item) => item.soldierId === person?.id);
     if (person?.deletedAt) {
       problem(
         row,
-        "personalNumber",
+        "idNumber",
         "הרשומה נמחקה ואינה ניתנת לקליטה מחדש בייבוא",
         "יש לפנות לאחראי; הייבוא אינו משחזר מידע שנמחק"
       );
       continue;
     }
-    if (!person && !values.name)
-      problem(row, "name", "שם חובה בקליטה חדשה", "יש למלא שם מלא");
-    if (!person && !values.email)
-      problem(
-        row,
-        "email",
-        "מייל חובה להזמנת חייל חדש",
-        "יש למלא כתובת מאושרת להזמנה"
-      );
+    if (!person) {
+      const required: [keyof ImportValues, string][] = [
+        ["firstName", "שם פרטי"],
+        ["lastName", "שם משפחה"],
+        ["gender", "מגדר"],
+        ["email", "מייל"],
+        ["phone", "טלפון"],
+      ];
+      const missing = required.filter(([key]) => values[key] === undefined);
+      for (const [key, label] of missing)
+        problem(
+          row,
+          key,
+          `${label} חובה בקליטה חדשה`,
+          key === "email" ? "יש למלא כתובת מאושרת להזמנה" : `יש למלא ${label}`
+        );
+      if (missing.length) continue;
+    }
     if (person && values.email && values.email !== contact?.email)
       problem(
         row,
@@ -396,7 +433,10 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
       personVersion: person?.version,
       balanceVersion: balance?.version,
       contactVersions: contact?.fieldVersions,
-      name: profile.name,
+      name:
+        profile.firstName && profile.lastName
+          ? fullName(profile.firstName, profile.lastName)
+          : person!.name,
       mode: person ? "update" : "create",
       profile,
       changes,
@@ -418,6 +458,31 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
     422,
     { problems }
   );
+  // A new name, or one an update changes, that another soldier or row also has.
+  const keyOf = (row: PlannedRow) =>
+    nameKey(row.profile.firstName ?? row.name, row.profile.lastName ?? "");
+  for (const row of planned) {
+    const person = people.find((item) => item.id === row.soldierId);
+    if (person && row.name === person.name) continue;
+    const key = keyOf(row);
+    const matches = [
+      ...people
+        .filter(
+          (item) =>
+            !item.deletedAt &&
+            item.id !== row.soldierId &&
+            nameKey(
+              item.data.firstName ?? item.name,
+              item.data.lastName ?? ""
+            ) === key
+        )
+        .map((item) => `${item.name} (מספר זיהוי ${item.idNumber})`),
+      ...planned
+        .filter((other) => other !== row && keyOf(other) === key)
+        .map((other) => `שורה ${other.rowNumber} בקובץ`),
+    ];
+    if (matches.length) row.sameName = matches;
+  }
   return planned;
 }
 function fingerprint(planned: PlannedRow[]) {
@@ -500,6 +565,7 @@ export async function previewImport(
       (row) => row.mode === "update" && row.changes.length > 0
     ).length,
     populationMoves: planned.filter((row) => row.populationImpact).length,
+    sameNames: planned.filter((row) => row.sameName).length,
   });
   const details = [];
   for (const row of planned)
@@ -578,10 +644,11 @@ export async function applyImport(
       )
     ) {
       // The batch fingerprint already binds this save to the reviewed impact.
+      // The preview showed any same-name warning before this approval.
       const result = await saveSoldier(
         tx,
         actor,
-        row.profile,
+        { ...row.profile, duplicateNameConfirmed: true },
         row.personVersion,
         { populationReviewed: true, sendInvitation: false }
       );
@@ -697,7 +764,13 @@ export async function publishImportInvitations(
       .from(user)
       .where(eq(user.soldierId, row.subjectId))
       .for("update");
-    if (!target || !(await accountAvailable(target, tx))) {
+    // A reserved test address is never handed to the real provider (decision
+    // 190), so it is not queued and counts as skipped.
+    if (
+      !target ||
+      !(await accountAvailable(target, tx)) ||
+      (process.env.MAIL_TRANSPORT === "brevo" && reservedAddress(target.email))
+    ) {
       skipped++;
       continue;
     }

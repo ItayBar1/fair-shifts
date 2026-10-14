@@ -58,6 +58,7 @@ const U = {
   weekend: "tests/unit/weekend-surcharge.test.ts",
 } as const;
 const I = {
+  identity: "tests/integration/soldier-identity.test.ts",
   performerRest: "tests/integration/performer-rest.test.ts",
   expiredTransfer: "tests/integration/expired-transfer.test.ts",
   invitations: "tests/integration/import-invitations.test.ts",
@@ -101,6 +102,7 @@ const I = {
   techIntake: "tests/integration/technical-user-create.test.ts",
 } as const;
 const E = {
+  myProfile: "tests/e2e/my-profile.spec.ts",
   mine: "tests/e2e/my-assignments.spec.ts",
   access: "tests/e2e/access-lifecycle.spec.ts",
   audit: "tests/e2e/audit-log.spec.ts",
@@ -200,7 +202,8 @@ export const stories: Record<number, Entry> = {
     ...t(
       I.intake,
       "creates the record, the contact, a zero balance, an invited account and its invitation",
-      "refuses a personal number that is taken, and an address that is taken, without a trace",
+      "refuses an address that is taken, and warns on the same name until the manager confirms",
+      "issues a number that ignores one sent with the form",
       "creates one soldier when two managers send the same form at once",
       "refuses a form %s and writes nothing"
     ),
@@ -217,7 +220,8 @@ export const stories: Record<number, Entry> = {
     ),
     ...t(
       U.importBook,
-      "preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores",
+      "reads the issued number, names, gender, a zero-led phone, Israeli dates, explicit false and integer scores",
+      "lists the unit's soldiers by issued number and name, so an update fills only what changes",
       "rejects the entire file and returns row, field and value for duplicates and malformed cells",
       "rejects invalid archives, empty templates and excess rows"
     ),
@@ -960,7 +964,7 @@ export const stories: Record<number, Entry> = {
         "creates an invited identity with zero balance without any manager",
         "grants the existing manager role, revokes old access",
         "refuses soldier and manager actors before validating payload",
-        "rejects duplicate identity and normalized email",
+        "refuses a normalized email that is taken and warns on the same name",
         "replays one idempotent result",
         "serializes competing creations",
         "rolls back person, contact, balance and account"
@@ -1092,6 +1096,17 @@ export const scenarios: Record<number, Entry> = {
       "gives soldiers no log and the technical account only operations within its authority"
     ),
     ...t(E.sweep, "and sees nothing of it"),
+    // Decision 222: a soldier sees only their own number and details.
+    ...t(
+      I.identity,
+      "shows the soldier their own number and details, and no one else's",
+      "saves a new phone and address at once, logs it and tells the managers without the values",
+      "refuses a stale screen, a landline number, and anyone but a soldier"
+    ),
+    ...t(
+      E.myProfile,
+      "a soldier sees their own number and changes phone and address, and the manager is told"
+    ),
     ...t(
       "tests/e2e/browser-security.spec.ts",
       "each HTML response gets a fresh server nonce",
@@ -1121,13 +1136,21 @@ export const scenarios: Record<number, Entry> = {
       "requires confirmation and publishes only new accounts once across two tabs and retries",
       "keeps manual intake invitations automatic and needs none for an update-only batch"
     ),
+    // Decision 222: the issued number identifies a row; the same name only warns.
+    ...t(
+      I.identity,
+      "updates the soldier whose number the row carries and creates one for a row without a number",
+      "rejects a number the unit does not have, and a new row without the required details",
+      "warns on the same first and last name, against the unit and within the file, and still saves",
+      "does not queue an invitation to a reserved test address when the real provider is set"
+    ),
     ...t(
       "tests/e2e/import-invitations.spec.ts",
       "imports without mail and explicitly publishes invitations after reopening the batch"
     ),
     ...t(
       U.importBook,
-      "preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores",
+      "reads the issued number, names, gender, a zero-led phone, Israeli dates, explicit false and integer scores",
       "rejects the entire file and returns row, field and value for duplicates and malformed cells"
     ),
     ...t(
@@ -1810,7 +1833,7 @@ export const scenarios: Record<number, Entry> = {
         "grants the existing manager role, revokes old access",
         "refuses soldier and manager actors before validating payload",
         "rejects invalid or out-of-scope identity fields",
-        "rejects duplicate identity and normalized email",
+        "refuses a normalized email that is taken and warns on the same name",
         "replays one idempotent result",
         "serializes competing creations",
         "rolls back person, contact, balance and account"
@@ -2093,7 +2116,7 @@ export const scenarios: Record<number, Entry> = {
   58: covered([
     ...t(
       U.picker,
-      "matches a name part and a personal number part as typed",
+      "matches a name part, or the whole issued ID number",
       "hides a soldier whose exemption covers only part of the range",
       "hides a soldier whose qualification expires, or starts, inside the range",
       "uses Israel days on the night the clocks go back",
@@ -2101,7 +2124,7 @@ export const scenarios: Record<number, Entry> = {
     ),
     ...t(
       E.picker,
-      "the picker opens filtered by the duty and the role, and finds by name and personal number",
+      "the picker opens filtered by the duty and the role, and finds by name and ID number",
       "the server still checks a soldier the filters had hidden",
       "the picker works with the keyboard and on a phone without sideways scrolling"
     ),

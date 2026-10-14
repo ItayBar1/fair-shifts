@@ -32,7 +32,6 @@ async function invite(
   await db.insert(soldiers).values({
     id: soldierId,
     name,
-    personalNumber: randomUUID(),
     data: soldier({ id: soldierId, name }),
   });
   await db.insert(balances).values({ soldierId });

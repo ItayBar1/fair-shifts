@@ -18,7 +18,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -39,11 +39,11 @@ async function invite(
 ): Promise<Actor> {
   const id = randomUUID();
   const personalNumber = String(serial++).padStart(5, "0");
-  const base = soldier({ id, name, personalNumber });
+  const base = soldier({ id, name });
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
+    idNumber: testIdNumber(personalNumber),
     data: { ...base, service: { ...base.service, ...service } },
   });
   await db

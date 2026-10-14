@@ -60,10 +60,13 @@ const lastNames = [
 type Row = Record<string, string | number>;
 const rows: Row[] = firstNames.map((first, index) => {
   const number = index + 1;
+  // No ID number: the site issues one on import (decision 222).
   const base: Row = {
-    personalNumber: String(9_000_000 + number),
-    name: `${first} ${lastNames[index % lastNames.length]}`,
+    firstName: first,
+    lastName: lastNames[index % lastNames.length],
+    gender: index % 2 ? "זכר" : "נקבה",
     email: `soldier${String(number).padStart(2, "0")}@example.invalid`,
+    phone: `05000000${String(number).padStart(2, "0")}`,
     currentScore: (index * 7) % 41,
     arrivalDate: `2025-${String((index % 9) + 1).padStart(2, "0")}-01`,
   };
@@ -97,10 +100,13 @@ const rows: Row[] = firstNames.map((first, index) => {
 args.extra.forEach((entry, index) => {
   const [email, name] = entry.split("|").map((part) => part.trim());
   if (!email || !name) throw new Error(`--extra needs "email|name": ${entry}`);
+  const [firstName, ...rest] = name.split(/\s+/);
   rows.push({
-    personalNumber: String(9_000_101 + index),
-    name,
+    firstName,
+    lastName: rest.join(" ") || "בדיקה",
+    gender: "אחר",
     email,
+    phone: `05000001${String(index).padStart(2, "0")}`,
     currentScore: 10,
     population: "חובה",
     serviceType: "חובה",

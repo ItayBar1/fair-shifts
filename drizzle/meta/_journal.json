@@ -120,6 +120,20 @@
       "when": 1791409027366,
       "tag": "0016_erasure_results",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792001467708,
+      "tag": "0017_soldier_id_number",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792001476296,
+      "tag": "0018_drop_personal_number",
+      "breakpoints": true
     }
   ]
 }

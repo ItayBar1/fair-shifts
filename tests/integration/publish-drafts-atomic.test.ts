@@ -20,7 +20,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { announceAssignment } from "../../src/server/assignment-mail";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 // The second announcement of a publish fails, as a database fault in the middle of a batch would.
 vi.mock("../../src/server/assignment-mail", async (original) => {
@@ -44,8 +44,8 @@ async function invite(name: string, role: "soldier" | "manager", n: number) {
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   await db
     .insert(soldierContacts)

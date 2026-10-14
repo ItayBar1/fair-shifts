@@ -26,7 +26,7 @@ import {
 } from "../../src/server/operations/email";
 import type { EmailKind } from "../../src/domain/notification-preferences";
 import { RETRY_DELAYS_MS } from "../../src/domain/mail-delivery";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -45,8 +45,8 @@ async function invite(name: string, email: string, personalNumber: string) {
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   await db.insert(soldierContacts).values({ soldierId: id, email });
   await db.insert(balances).values({ soldierId: id });

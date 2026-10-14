@@ -37,7 +37,7 @@ import {
   deliverNextEmail,
   enqueueEmail,
 } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber, testProfile, testNames } from "../fixtures";
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
 import { settleDue } from "../../src/server/scoring";
@@ -90,8 +90,8 @@ async function invite(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   await db.insert(soldierContacts).values({ soldierId: id, email });
   await db.insert(balances).values({ soldierId: id });
@@ -418,7 +418,13 @@ describe("first duty vertical slice", () => {
     const draftState = await readState(actor);
     expect(draftState.duties).toHaveLength(0);
     expect(draftState.assignments).toHaveLength(0);
-    expect(JSON.stringify(draftState)).not.toContain(memberEmail);
+    // The soldier's own details reach only "my details" (decision 222).
+    expect((draftState as Record<string, unknown>).myProfile).toMatchObject({
+      email: memberEmail,
+    });
+    expect(
+      JSON.stringify({ ...draftState, myProfile: undefined })
+    ).not.toContain(memberEmail);
     expect(JSON.stringify(draftState)).not.toContain("personalNumber");
     await command("duty.publish", { id: row.id, confirmed: true }, 2);
     const published = await readState(actor);
@@ -1361,8 +1367,7 @@ describe("first duty vertical slice", () => {
     );
     const payload = {
       id: actor.soldierId,
-      name: "שם מעודכן",
-      personalNumber: "00001",
+      ...testProfile("שם מעודכן"),
       population: "academic",
       serviceType: "mandatory",
       graceEligible: false,
@@ -1806,8 +1811,7 @@ describe("first duty vertical slice", () => {
       "soldier.update",
       {
         id: actor.soldierId,
-        name: "חייל חובה שנערך בידי אחראי קבע",
-        personalNumber: "00001",
+        ...testProfile("חייל חובה שנערך בידי אחראי קבע"),
         population: "mandatory",
         serviceType: "mandatory",
         graceEligible: false,
@@ -1824,8 +1828,7 @@ describe("first duty vertical slice", () => {
     await saveProfile(
       {
         id: career.soldierId,
-        name: "אחראי קבע לבדיקה",
-        personalNumber: "00003",
+        ...testProfile("אחראי קבע לבדיקה"),
         population: "academic",
         serviceType: "mandatory",
         graceEligible: false,
@@ -3793,8 +3796,7 @@ describe("first duty vertical slice", () => {
     await mandatoryDuty(soldierId, morning, morning.plus({ hours: 8 }));
     const profile = {
       id: soldierId,
-      name: "חייל לבדיקה",
-      personalNumber: "00001",
+      ...testProfile("חייל לבדיקה"),
       population: "mandatory",
       serviceType: "mandatory",
       graceEligible: false,
@@ -3883,10 +3885,16 @@ describe("first duty vertical slice", () => {
       }[];
     };
     const rows = [
-      { rowNumber: 2, values: { personalNumber: "00001", permanentDate: day } },
+      {
+        rowNumber: 2,
+        values: { idNumber: testIdNumber("00001"), permanentDate: day },
+      },
       {
         rowNumber: 3,
-        values: { personalNumber: "00002", name: "אחראי לבדיקה" },
+        values: {
+          idNumber: testIdNumber("00002"),
+          ...testNames("אחראי לבדיקה"),
+        },
       },
     ];
     const preview = (await command("import.preview", {
@@ -3981,16 +3989,16 @@ describe("first duty vertical slice", () => {
         {
           rowNumber: 2,
           values: {
-            personalNumber: "00001",
-            name: "שם מעודכן",
+            idNumber: testIdNumber("00001"),
+            ...testNames("שם מעודכן"),
             currentScore: 51,
           },
         },
         {
           rowNumber: 3,
           values: {
-            personalNumber: "000009",
-            name: "חייל מייבוא",
+            ...testNames("חייל מייבוא"),
+            gender: "male",
             email: "import@example.invalid",
             phone: "0500000009",
             currentScore: 12,
@@ -4048,7 +4056,7 @@ describe("first duty vertical slice", () => {
     const [newPerson] = await db
       .select()
       .from(soldiers)
-      .where(eq(soldiers.personalNumber, "000009"));
+      .where(eq(soldiers.name, "חייל מייבוא"));
     expect(newPerson.data.service.graceEligible).toBe(false);
     expect(newPerson.data.rankHistory[0].rankId).toBe(rank.id);
     const active = (await db.select().from(assignments)).filter(
@@ -4071,25 +4079,26 @@ describe("first duty vertical slice", () => {
       {
         rowNumber: 2,
         values: {
-          personalNumber: "00001",
-          name: "אסור לשמור",
+          idNumber: testIdNumber("00001"),
+          ...testNames("אסור לשמור"),
           email: "changed@example.invalid",
         },
       },
       {
         rowNumber: 3,
         values: {
-          personalNumber: "000009",
-          name: "חדש",
+          ...testNames("חדש"),
+          gender: "other",
           email: memberEmail,
+          phone: "0500000009",
           rankName: "חלקי",
         },
       },
       {
         rowNumber: 4,
         values: {
-          personalNumber: "000009",
-          name: "כפול",
+          idNumber: testIdNumber("00001"),
+          ...testNames("כפול"),
           email: "new@example.invalid",
         },
       },
@@ -4102,7 +4111,7 @@ describe("first duty vertical slice", () => {
         problems: expect.arrayContaining([
           expect.objectContaining({ row: 2, field: "מייל" }),
           expect.objectContaining({ row: 3, field: "דרגה" }),
-          expect.objectContaining({ row: 4, field: "מספר אישי" }),
+          expect.objectContaining({ row: 4, field: "מספר זיהוי" }),
         ]),
       },
     });
@@ -4127,7 +4136,10 @@ describe("first duty vertical slice", () => {
         rows: [
           {
             rowNumber: 2,
-            values: { personalNumber: "00001", name: "אסור להחיות" },
+            values: {
+              idNumber: testIdNumber("00001"),
+              ...testNames("אסור להחיות"),
+            },
           },
         ],
       })
@@ -4143,7 +4155,10 @@ describe("first duty vertical slice", () => {
       rows: [
         {
           rowNumber: 2,
-          values: { personalNumber: "00001", name: "ייבוא מיושן" },
+          values: {
+            idNumber: testIdNumber("00001"),
+            ...testNames("ייבוא מיושן"),
+          },
         },
       ],
     });
@@ -4205,7 +4220,10 @@ describe("first duty vertical slice", () => {
     const preview = await command("import.preview", {
       filename: "retry.xlsx",
       rows: [
-        { rowNumber: 2, values: { personalNumber: "00001", currentScore: 10 } },
+        {
+          rowNumber: 2,
+          values: { idNumber: testIdNumber("00001"), currentScore: 10 },
+        },
       ],
     });
     const payload = {
@@ -4225,7 +4243,10 @@ describe("first duty vertical slice", () => {
     const preview2 = await command("import.preview", {
       filename: "retry2.xlsx",
       rows: [
-        { rowNumber: 2, values: { personalNumber: "00001", currentScore: 20 } },
+        {
+          rowNumber: 2,
+          values: { idNumber: testIdNumber("00001"), currentScore: 20 },
+        },
       ],
     });
     const key = randomUUID();
@@ -4252,7 +4273,10 @@ describe("first duty vertical slice", () => {
     const payload = {
       filename: "permissions.xlsx",
       rows: [
-        { rowNumber: 2, values: { personalNumber: "00001", name: "חדש" } },
+        {
+          rowNumber: 2,
+          values: { idNumber: testIdNumber("00001"), ...testNames("חדש") },
+        },
       ],
     };
     await expect(
@@ -4273,7 +4297,12 @@ describe("first duty vertical slice", () => {
   ) {
     const preview = await command("import.preview", {
       filename: "restore.xlsx",
-      rows: [{ rowNumber: 2, values: { personalNumber: "00001", ...values } }],
+      rows: [
+        {
+          rowNumber: 2,
+          values: { idNumber: testIdNumber("00001"), ...values },
+        },
+      ],
     });
     return command(
       "import.apply",
@@ -4307,7 +4336,7 @@ describe("first duty vertical slice", () => {
       1
     );
     const batch = await importUpdate({
-      name: "שם מהייבוא",
+      ...testNames("שם מהייבוא"),
       phone: "0500000007",
       currentScore: 20,
     });
@@ -4363,7 +4392,10 @@ describe("first duty vertical slice", () => {
   });
   it("requires a decision after a field changes and returns to the imported value", async () => {
     const { actor } = await fixtureDuty();
-    const batch = await importUpdate({ phone: "0500000007", name: "שם מיובא" });
+    const batch = await importUpdate({
+      phone: "0500000007",
+      ...testNames("שם מיובא"),
+    });
     await db
       .update(soldierContacts)
       .set({ phone: "0500000008" })
@@ -4586,7 +4618,7 @@ describe("first duty vertical slice", () => {
     const { actor } = await fixtureDuty();
     const batch = await importUpdate({
       phone: "0500000007",
-      name: "שם מהייבוא",
+      ...testNames("שם מהייבוא"),
     });
     const preview = await restoration(batch.id);
     await db
@@ -4641,16 +4673,19 @@ describe("first duty vertical slice", () => {
     expect(JSON.stringify(viewed)).not.toContain("0500000007");
   });
   describe("restore of soldiers created by the import (decision 174)", () => {
+    // New rows carry no number; the test keys each person by its own label.
+    const names = new Map<string, string>();
     async function importNew(
       people: { number: string; name: string; email: string; score?: number }[]
     ) {
+      for (const person of people) names.set(person.number, person.name);
       const preview = await command("import.preview", {
         filename: "new-soldiers.xlsx",
         rows: people.map((person, index) => ({
           rowNumber: index + 2,
           values: {
-            personalNumber: person.number,
-            name: person.name,
+            ...testNames(person.name),
+            gender: "other",
             email: person.email,
             phone: `05000001${String(index).padStart(2, "0")}`,
             address: "כתובת סינתטית מהייבוא",
@@ -4668,7 +4703,7 @@ describe("first duty vertical slice", () => {
       const [person] = await db
         .select()
         .from(soldiers)
-        .where(eq(soldiers.personalNumber, number));
+        .where(eq(soldiers.name, names.get(number)!));
       return person;
     }
     async function actorOf(number: string): Promise<Actor> {
@@ -4728,7 +4763,7 @@ describe("first duty vertical slice", () => {
         rows: [
           {
             rowNumber: 2,
-            values: { personalNumber: "000031", name: "רק תצוגה" },
+            values: { idNumber: person.idNumber, ...testNames("רק תצוגה") },
           },
         ],
       });
@@ -4743,7 +4778,7 @@ describe("first duty vertical slice", () => {
       const preview = await restoration(batch.id);
       expect(creationOf(preview, "קליטה לביטול")).toMatchObject({
         pendingNew: true,
-        personalNumber: "000031",
+        idNumber: person.idNumber,
         creation: { status: "cancel", activity: [] },
       });
       const result = await command(
@@ -4789,7 +4824,7 @@ describe("first duty vertical slice", () => {
       expect(detail.data).toMatchObject({
         rowNumber: 2,
         name: "קליטה לביטול",
-        values: { personalNumber: "000031" },
+        values: { firstName: "קליטה", lastName: "לביטול" },
         newRowRestored: { action: "cancelled", reason: "קובץ שגוי" },
       });
       const stored = JSON.stringify(detail.data);
@@ -4805,7 +4840,7 @@ describe("first duty vertical slice", () => {
         .from(records)
         .where(eq(records.id, attempt.id));
       expect(kept.data.candidates).toEqual(attempt.data.candidates);
-      // The previewed later file is now stale; the number is free again.
+      // The previewed later file is now stale: its number no longer exists.
       await expect(
         command(
           "import.apply",
@@ -4819,9 +4854,10 @@ describe("first duty vertical slice", () => {
           {
             rowNumber: 2,
             values: {
-              personalNumber: "000031",
-              name: "קליטה חוזרת",
+              ...testNames("קליטה חוזרת"),
+              gender: "other",
               email: "cancel@example.invalid",
+              phone: "0500000131",
             },
           },
         ],
@@ -4887,7 +4923,10 @@ describe("first duty vertical slice", () => {
         rows: [
           {
             rowNumber: 2,
-            values: { personalNumber: "000045", name: "שם מאוחר" },
+            values: {
+              idNumber: (await personByNumber("000045")).idNumber,
+              ...testNames("שם מאוחר"),
+            },
           },
         ],
       });
@@ -4901,6 +4940,7 @@ describe("first duty vertical slice", () => {
         },
         1
       );
+      names.set("000045", "שם מאוחר");
       const preview = await restoration(batch.id);
       const expected: Record<string, string> = {
         "עם שיבוץ": "שיבוץ",
@@ -5082,17 +5122,22 @@ describe("first duty vertical slice", () => {
       });
       const preview = await command("import.preview", {
         filename: "rank.xlsx",
-        rows: ["000071", "000072"].map((number, index) => ({
-          rowNumber: index + 2,
-          values: {
-            personalNumber: number,
-            name: `עם דרגה ${index + 1}`,
-            email: `rank${index}@example.invalid`,
-            rankName: "טוראי סינתטי",
-            rankTrack: "חובה",
-            rankEffectiveDate: "2026-01-01",
-          },
-        })),
+        rows: ["000071", "000072"].map((number, index) => {
+          names.set(number, `עם דרגה ${index + 1}`);
+          return {
+            rowNumber: index + 2,
+            values: {
+              firstName: "עם",
+              lastName: `דרגה ${index + 1}`,
+              gender: "other",
+              email: `rank${index}@example.invalid`,
+              phone: `05000002${index}0`,
+              rankName: "טוראי סינתטי",
+              rankTrack: "חובה",
+              rankEffectiveDate: "2026-01-01",
+            },
+          };
+        }),
       });
       const batch = await command(
         "import.apply",
@@ -5168,10 +5213,7 @@ describe("first duty vertical slice", () => {
         .select()
         .from(soldiers)
         .where(eq(soldiers.id, person.id));
-      expect(still).toMatchObject({
-        name: "נמחק במסלול",
-        personalNumber: "000061",
-      });
+      expect(still).toMatchObject({ name: "נמחק במסלול" });
       expect(still.deletedAt).toBeInstanceOf(Date);
       expect(
         await db
@@ -5319,7 +5361,7 @@ describe("first duty vertical slice", () => {
       zone: "Asia/Jerusalem",
     });
     const batch = await importUpdate(
-      { permanentDate: transition, name: "שם מהייבוא" },
+      { permanentDate: transition, ...testNames("שם מהייבוא") },
       { populationImpactConfirmed: true }
     );
     await mandatoryDuty(
@@ -5332,8 +5374,7 @@ describe("first duty vertical slice", () => {
     await saveProfile(
       {
         id: soldierId,
-        name: "שם מהייבוא",
-        personalNumber: "00001",
+        ...testProfile("שם מהייבוא"),
         population: "mandatory",
         serviceType: "mandatory",
         graceEligible: false,

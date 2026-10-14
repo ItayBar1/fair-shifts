@@ -17,7 +17,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 // Execution periods and a handover after the start (card #18, decision 183). Synthetic people only.
@@ -61,8 +61,10 @@ test.beforeAll(async () => {
   );
   for (const [key, [name, personalNumber, email]] of Object.entries(people)) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     const role = key === "manager" ? "manager" : "soldier";
     const account = await createInvitedAccount({

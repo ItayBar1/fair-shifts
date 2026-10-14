@@ -39,7 +39,6 @@ async function person(role: Actor["role"] = "soldier"): Promise<Actor> {
     await db.insert(soldiers).values({
       id: soldierId,
       name,
-      personalNumber: randomUUID(),
       data: soldier({ id: soldierId, name }),
     });
     await db.insert(balances).values({ soldierId });

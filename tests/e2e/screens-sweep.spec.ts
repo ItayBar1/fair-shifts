@@ -15,7 +15,7 @@ import {
 } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
-import { assignment, duty, soldier } from "../fixtures";
+import { assignment, duty, soldier, testIdNumber } from "../fixtures";
 import { submitAuth } from "./auth-submit";
 
 // Every screen of every role, as the browser shows it (scenarios 2 and 35,
@@ -56,6 +56,8 @@ const screens: Record<Key, { path: string; title: string }[]> = {
     { path: "/requests", title: "החלפות ובקשות" },
     { path: "/notifications", title: "הודעות" },
     { path: "/settings", title: "העדפות אישיות" },
+    // A soldier's own details and issued number (decision 222).
+    { path: "/me", title: "הפרטים שלי" },
   ],
   // A manager starts at the care centre (decision 218).
   manager: [
@@ -117,12 +119,11 @@ async function seed(withDuties: boolean) {
     const data = soldier({
       id: ids[key],
       name: person.name,
-      personalNumber: `86000${index}`,
     });
     await db.insert(soldiers).values({
       id: data.id,
       name: data.name,
-      personalNumber: data.personalNumber,
+      idNumber: testIdNumber(index),
       data,
     });
     await db
@@ -333,6 +334,8 @@ for (const withDuties of [false, true])
 test.describe("what a role may not open", () => {
   const open = sharedSessions(true);
   const closed: [Key, string][] = [
+    ["manager", "/me"],
+    ["technical", "/me"],
     ["soldier", "/manage"],
     ["soldier", "/manage/soldiers"],
     ["soldier", "/manage/audit"],

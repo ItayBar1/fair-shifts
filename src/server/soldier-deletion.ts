@@ -173,7 +173,7 @@ async function assess(
     soldier: {
       id: person.id,
       name: person.name,
-      personalNumber: person.personalNumber,
+      idNumber: person.idNumber,
       version: person.version,
     },
     hasAccount: Boolean(login),

@@ -15,13 +15,13 @@
 ### 1. כאחראי, אני רוצה להוסיף חייל בטופס בודד כדי לקלוט משתמש גם בלי להכין קובץ. — מכוסה
 
 - [first-duty.spec.ts](../tests/e2e/first-duty.spec.ts): `manager invites, assigns and publishes; soldier sees only published duties`
-- [soldier-intake.test.ts](../tests/integration/soldier-intake.test.ts): `creates the record, the contact, a zero balance, an invited account and its invitation`; `refuses a personal number that is taken, and an address that is taken, without a trace`; `creates one soldier when two managers send the same form at once`; `refuses a form %s and writes nothing`
+- [soldier-intake.test.ts](../tests/integration/soldier-intake.test.ts): `creates the record, the contact, a zero balance, an invited account and its invitation`; `refuses an address that is taken, and warns on the same name until the manager confirms`; `issues a number that ignores one sent with the form`; `creates one soldier when two managers send the same form at once`; `refuses a form %s and writes nothing`
 
-### 2. כאחראי, אני רוצה להוסיף ולעדכן חיילים מ־Excel לפי מספר אישי, עם תצוגה מקדימה, כדי לשלוט בשינויים לפני החלתם. — מכוסה
+### 2. כאחראי, אני רוצה להוסיף ולעדכן חיילים מ־Excel לפי מספר זיהוי, עם תצוגה מקדימה, כדי לשלוט בשינויים לפני החלתם. — מכוסה
 
 - [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `stores soldiers and permits sign-in before any invitation is published`; `requires confirmation and publishes only new accounts once across two tabs and retries`
 - [import-invitations.spec.ts](../tests/e2e/import-invitations.spec.ts): `imports without mail and explicitly publishes invitations after reopening the batch`
-- [import-workbook.test.ts](../tests/unit/import-workbook.test.ts): `preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores`; `rejects the entire file and returns row, field and value for duplicates and malformed cells`; `rejects invalid archives, empty templates and excess rows`
+- [import-workbook.test.ts](../tests/unit/import-workbook.test.ts): `reads the issued number, names, gender, a zero-led phone, Israeli dates, explicit false and integer scores`; `lists the unit's soldiers by issued number and name, so an update fills only what changes`; `rejects the entire file and returns row, field and value for duplicates and malformed cells`; `rejects invalid archives, empty templates and excess rows`
 - [auth.test.ts](../tests/integration/auth.test.ts): `imports a whole reviewed batch, preserving reservations and blank fields with documented balances`; `rejects all rows on duplicate, conflicting identities, incomplete ranks or deleted people`; `serializes competing import approvals and returns idempotent results without duplicate ledger entries`; `restricts import previews and history to managers`
 - [staging-soldiers.test.ts](../tests/integration/staging-soldiers.test.ts): `writes a workbook that the import accepts whole, with the three populations`
 
@@ -348,7 +348,7 @@
 
 ### 60. כמנהל טכני, אני רוצה להוסיף משתמש בודד ולהעניק ולהסיר הרשאת אחראי, כדי שתמיד אוכל למנות אחראי חדש ולשלוט בגישת הניהול מ… — מכוסה
 
-- [technical-user-create.test.ts](../tests/integration/technical-user-create.test.ts): `creates an invited identity with zero balance without any manager`; `grants the existing manager role, revokes old access`; `refuses soldier and manager actors before validating payload`; `rejects duplicate identity and normalized email`; `replays one idempotent result`; `serializes competing creations`; `rolls back person, contact, balance and account`
+- [technical-user-create.test.ts](../tests/integration/technical-user-create.test.ts): `creates an invited identity with zero balance without any manager`; `grants the existing manager role, revokes old access`; `refuses soldier and manager actors before validating payload`; `refuses a normalized email that is taken and warns on the same name`; `replays one idempotent result`; `serializes competing creations`; `rolls back person, contact, balance and account`
 - [technical-user-create.spec.ts](../tests/e2e/technical-user-create.spec.ts): `technical intake without managers, validation, keyboard and promotion`
 - [access.test.ts](../tests/integration/access.test.ts): `rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both`; `keeps the technical account out of soldier records, rankings and role changes`
 - [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `makes the technical account read the account again before changing a role`
@@ -401,6 +401,8 @@
 - [auth.test.ts](../tests/integration/auth.test.ts): `rejects forged privileges and makes retries idempotent`
 - [audit-log.test.ts](../tests/integration/audit-log.test.ts): `gives soldiers no log and the technical account only operations within its authority`
 - [screens-sweep.spec.ts](../tests/e2e/screens-sweep.spec.ts): `and sees nothing of it`
+- [soldier-identity.test.ts](../tests/integration/soldier-identity.test.ts): `shows the soldier their own number and details, and no one else's`; `saves a new phone and address at once, logs it and tells the managers without the values`; `refuses a stale screen, a landline number, and anyone but a soldier`
+- [my-profile.spec.ts](../tests/e2e/my-profile.spec.ts): `a soldier sees their own number and changes phone and address, and the manager is told`
 - [browser-security.spec.ts](../tests/e2e/browser-security.spec.ts): `each HTML response gets a fresh server nonce`; `the production browser boots normally and blocks injected inline script and eval`; `public health exposes readiness only`
 
 ### 3. שני אחראים ומאגר משותף — חיילים וחשבונות; סבבי אילוצים — מכוסה
@@ -412,8 +414,9 @@
 ### 4. קליטה ידנית ובאקסל — חיילים וחשבונות — מכוסה
 
 - [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `stores soldiers and permits sign-in before any invitation is published`; `requires confirmation and publishes only new accounts once across two tabs and retries`; `keeps manual intake invitations automatic and needs none for an update-only batch`
+- [soldier-identity.test.ts](../tests/integration/soldier-identity.test.ts): `updates the soldier whose number the row carries and creates one for a row without a number`; `rejects a number the unit does not have, and a new row without the required details`; `warns on the same first and last name, against the unit and within the file, and still saves`; `does not queue an invitation to a reserved test address when the real provider is set`
 - [import-invitations.spec.ts](../tests/e2e/import-invitations.spec.ts): `imports without mail and explicitly publishes invitations after reopening the batch`
-- [import-workbook.test.ts](../tests/unit/import-workbook.test.ts): `preserves identifiers and zeros, Israeli calendar dates, explicit false and integer scores`; `rejects the entire file and returns row, field and value for duplicates and malformed cells`
+- [import-workbook.test.ts](../tests/unit/import-workbook.test.ts): `reads the issued number, names, gender, a zero-led phone, Israeli dates, explicit false and integer scores`; `rejects the entire file and returns row, field and value for duplicates and malformed cells`
 - [auth.test.ts](../tests/integration/auth.test.ts): `imports a whole reviewed batch, preserving reservations and blank fields with documented balances`
 - [soldier-intake.test.ts](../tests/integration/soldier-intake.test.ts): `takes an opening balance as the only history`; `starts without history, rank, grace or duties`
 
@@ -666,7 +669,7 @@
 
 ### 45. מנהל טכני, קליטת משתמש והרשאות — הרשאות; מקביליות; עברית ונייד — מכוסה
 
-- [technical-user-create.test.ts](../tests/integration/technical-user-create.test.ts): `creates an invited identity with zero balance without any manager`; `grants the existing manager role, revokes old access`; `refuses soldier and manager actors before validating payload`; `rejects invalid or out-of-scope identity fields`; `rejects duplicate identity and normalized email`; `replays one idempotent result`; `serializes competing creations`; `rolls back person, contact, balance and account`
+- [technical-user-create.test.ts](../tests/integration/technical-user-create.test.ts): `creates an invited identity with zero balance without any manager`; `grants the existing manager role, revokes old access`; `refuses soldier and manager actors before validating payload`; `rejects invalid or out-of-scope identity fields`; `refuses a normalized email that is taken and warns on the same name`; `replays one idempotent result`; `serializes competing creations`; `rolls back person, contact, balance and account`
 - [technical-user-create.spec.ts](../tests/e2e/technical-user-create.spec.ts): `technical intake without managers, validation, keyboard and promotion`
 - [access.test.ts](../tests/integration/access.test.ts): `rejects managers and soldiers on the server, applies a grant and a removal to an existing connection and records both`; `keeps the technical account out of soldier records, rankings and role changes`
 - [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `makes the technical account read the account again before changing a role`; `gives the technical account accounts and operations but no soldiers or scores`
@@ -763,8 +766,8 @@
 
 ### 58. בחירת חייל לשיבוץ — שיבוץ; כשירות; עברית ושימוש מעשי — מכוסה
 
-- [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `matches a name part and a personal number part as typed`; `hides a soldier whose exemption covers only part of the range`; `hides a soldier whose qualification expires, or starts, inside the range`; `uses Israel days on the night the clocks go back`; `shows a value added to a catalog with no change in code`
-- [soldier-picker.spec.ts](../tests/e2e/soldier-picker.spec.ts): `the picker opens filtered by the duty and the role, and finds by name and personal number`; `the server still checks a soldier the filters had hidden`; `the picker works with the keyboard and on a phone without sideways scrolling`
+- [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `matches a name part, or the whole issued ID number`; `hides a soldier whose exemption covers only part of the range`; `hides a soldier whose qualification expires, or starts, inside the range`; `uses Israel days on the night the clocks go back`; `shows a value added to a catalog with no change in code`
+- [soldier-picker.spec.ts](../tests/e2e/soldier-picker.spec.ts): `the picker opens filtered by the duty and the role, and finds by name and ID number`; `the server still checks a soldier the filters had hidden`; `the picker works with the keyboard and on a phone without sideways scrolling`
 
 ### 59. תורנויות ביומן Google — הודעות והעדפות; חשבונות — מכוסה
 

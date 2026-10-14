@@ -11,7 +11,7 @@ import {
 } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { submitAuth, signedInHome } from "./auth-submit";
 
 const managerEmail = "deletion-manager@example.invalid";
@@ -38,8 +38,10 @@ test.beforeAll(async () => {
   ] as const;
   for (const [name, email, role, personalNumber] of people) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(soldierContacts).values({
       soldierId: id,
       email,
@@ -148,7 +150,7 @@ test("the manager sees what a deletion does, deletes the user, and the seat beco
     dialog.getByRole("link", { name: "תורנות עתידית למחיקה" })
   ).toBeVisible();
   await expect(
-    dialog.getByRole("region", { name: "מה נשמר" }).getByText("שם ומספר אישי")
+    dialog.getByRole("region", { name: "מה נשמר" }).getByText("שם ומספר זיהוי")
   ).toBeVisible();
   await expect(
     dialog.getByRole("region", { name: "מה יוסר" }).getByText(/פרטי קשר/)

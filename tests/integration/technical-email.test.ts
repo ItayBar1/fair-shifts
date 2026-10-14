@@ -31,7 +31,7 @@ import {
 import { openSecret } from "../../src/server/operations/email";
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -59,8 +59,8 @@ async function invite(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   await db.insert(soldierContacts).values({ soldierId: id, email });
   await db.insert(balances).values({ soldierId: id });

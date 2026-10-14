@@ -16,7 +16,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 // A soldier deleted while a duty runs (ticket #34, decision 196). Synthetic people only.
@@ -48,8 +48,8 @@ test.beforeAll(async () => {
       await db.insert(soldiers).values({
         id,
         name,
-        personalNumber,
-        data: soldier({ id, name, personalNumber }),
+        idNumber: testIdNumber(personalNumber),
+        data: soldier({ id, name }),
       });
       await db.insert(balances).values({ soldierId: id });
     }

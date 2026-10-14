@@ -19,7 +19,7 @@ import {
   permissionLostNotice,
 } from "../../src/domain/calendar-sync";
 import { FakeGoogle, type Profile } from "../google-fake";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import {
   recordGoogleGrant,
   purgeCalendarLink,
@@ -109,8 +109,8 @@ async function invite(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber: number,
-    data: soldier({ id, name, personalNumber: number }),
+    idNumber: testIdNumber(number),
+    data: soldier({ id, name }),
   });
   await db
     .insert(soldierContacts)

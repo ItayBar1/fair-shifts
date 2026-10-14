@@ -20,7 +20,7 @@ import { readState } from "../../src/server/state";
 import { deliverNextEmail } from "../../src/server/operations/email";
 import { refreshDutyReminders } from "../../src/server/duty-reminders";
 import { dutyReminderKey } from "../../src/domain/duty-reminders";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -44,8 +44,8 @@ async function invite(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   const email = `${personalNumber}@example.invalid`;
   await db.insert(soldierContacts).values({ soldierId: id, email });

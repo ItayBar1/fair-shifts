@@ -7,7 +7,7 @@ import { user, emailOutbox } from "../../src/server/auth-schema";
 import { soldiers, balances } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 const managerEmail = "restore-manager@example.invalid";
@@ -27,8 +27,10 @@ test.beforeAll(async () => {
     ["חייל קבע משוחזר", "540002", soldierEmail, "soldier"],
   ] as const) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     await createInvitedAccount({ name, email, role, soldierId: id });
   }
@@ -86,7 +88,7 @@ test("a restore that moves the population shows its assignments per the chosen d
   const [person] = await db
     .select()
     .from(soldiers)
-    .where(eq(soldiers.personalNumber, "540002"));
+    .where(eq(soldiers.idNumber, 1000540002));
   const zone = "Asia/Jerusalem";
   const day = (days: number) =>
     DateTime.now().setZone(zone).plus({ days }).startOf("day");
@@ -102,7 +104,7 @@ test("a restore that moves the population shows its assignments per the chosen d
       {
         rowNumber: 2,
         values: {
-          personalNumber: "540002",
+          idNumber: testIdNumber("540002"),
           permanentDate: imported.toISODate(),
         },
       },
@@ -238,7 +240,12 @@ test("a restore that moves the population shows its assignments per the chosen d
   const visible = JSON.stringify(
     await (await member.request.get("/api/v1/state")).json()
   );
-  for (const hidden of ["populationHistory", "540001", "career.xlsx"])
+  // The manager's issued number is not a soldier's to see (decision 222).
+  for (const hidden of [
+    "populationHistory",
+    `"idNumber":${testIdNumber("540001")}`,
+    "career.xlsx",
+  ])
     expect(visible).not.toContain(hidden);
   await context.close();
 });

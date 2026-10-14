@@ -14,7 +14,7 @@ import {
 } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber, testProfile } from "../fixtures";
 import ExcelJS from "exceljs";
 import { DateTime } from "luxon";
 import { createImportTemplate } from "../../src/server/import-workbook";
@@ -30,10 +30,10 @@ test.beforeAll(async () => {
     sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   const id = randomUUID();
-  const data = soldier({ id, name: "אחראי בדיקה", personalNumber: "000001" });
+  const data = soldier({ id, name: "אחראי בדיקה" });
   await db
     .insert(soldiers)
-    .values({ id, name: data.name, personalNumber: data.personalNumber, data });
+    .values({ id, name: data.name, idNumber: data.idNumber, data });
   await db.insert(balances).values({ soldierId: id });
   await createInvitedAccount({
     name: data.name,
@@ -111,9 +111,12 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     .first()
     .click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("שם מלא").fill("חייל סינתטי");
-  await dialog.getByLabel("מספר אישי").fill("000007");
+  // Required at intake (decision 222); the site issues the ID number.
+  await dialog.getByLabel("שם פרטי", { exact: true }).fill("חייל");
+  await dialog.getByLabel("שם משפחה", { exact: true }).fill("סינתטי");
+  await dialog.getByLabel("מגדר", { exact: true }).selectOption("male");
   await dialog.getByLabel("מייל מאושר להזמנה").fill("soldier@example.invalid");
+  await dialog.getByLabel("טלפון נייד").fill("050-0000001");
   await dialog.getByLabel("אוכלוסיית שיבוץ").selectOption("mandatory");
   await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -763,10 +766,25 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(new Uint8Array(await createImportTemplate()).buffer);
   const sheet = workbook.getWorksheet("חיילים")!;
-  sheet.addRow(["000007", "חייל לאחר ייבוא", null, "0500000007", null, 17]);
+  // The existing soldier is updated by the number the site issued; the new one has none.
+  const synthetic = (
+    await (await page.request.get("/api/v1/state")).json()
+  ).soldiers.find((person: { name: string }) => person.name === "חייל סינתטי");
   sheet.addRow([
-    "000019",
-    "חייל קליטה מייבוא",
+    synthetic.idNumber,
+    "חייל",
+    "לאחר ייבוא",
+    null,
+    null,
+    "0500000007",
+    null,
+    17,
+  ]);
+  sheet.addRow([
+    null,
+    "חייל",
+    "קליטה מייבוא",
+    "זכר",
     "xlsx@example.invalid",
     "0500000019",
     null,
@@ -787,7 +805,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   const beforeImport = await (await page.request.get("/api/v1/state")).json();
   expect(
     beforeImport.soldiers.some(
-      (person: { personalNumber: string }) => person.personalNumber === "000019"
+      (person: { name: string }) => person.name === "חייל קליטה מייבוא"
     )
   ).toBe(false);
   await page.getByLabel("סיבת הייבוא").fill("קליטה סינתטית בדפדפן");
@@ -808,7 +826,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   const afterImport = await (await page.request.get("/api/v1/state")).json();
   expect(
     afterImport.soldiers.find(
-      (person: { personalNumber: string }) => person.personalNumber === "000007"
+      (person: { idNumber: number }) => person.idNumber === synthetic.idNumber
     )
   ).toMatchObject({
     name: "חייל לאחר ייבוא",
@@ -817,11 +835,11 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   });
   expect(
     afterImport.soldiers.find(
-      (person: { personalNumber: string }) => person.personalNumber === "000019"
+      (person: { name: string }) => person.name === "חייל קליטה מייבוא"
     )
   ).toMatchObject({ currentScore: 5, graceEligible: false });
   const importedPerson = afterImport.soldiers.find(
-    (person: { personalNumber: string }) => person.personalNumber === "000007"
+    (person: { idNumber: number }) => person.idNumber === synthetic.idNumber
   );
   await db
     .update(soldierContacts)
@@ -878,7 +896,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   const restoredState = await (await page.request.get("/api/v1/state")).json();
   expect(
     restoredState.soldiers.find(
-      (person: { personalNumber: string }) => person.personalNumber === "000007"
+      (person: { idNumber: number }) => person.idNumber === synthetic.idNumber
     )
   ).toMatchObject({
     name: "חייל סינתטי",
@@ -888,7 +906,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   });
   expect(
     restoredState.soldiers.find(
-      (person: { personalNumber: string }) => person.personalNumber === "000019"
+      (person: { name: string }) => person.name === "חייל קליטה מייבוא"
     )
   ).toBeUndefined();
   expect(
@@ -935,7 +953,6 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
     const data = soldier({
       id,
       name,
-      personalNumber,
       service: {
         type: population === "career" ? "career" : "mandatory",
         basePopulation: population,
@@ -945,7 +962,9 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
         ? [{ ...rank, effectiveFrom: "2026-01-01", order: 1 }]
         : [],
     });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     return id;
   }
@@ -1018,7 +1037,7 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
   await ownScope.selectOption("mandatory");
   await expect(ownScope).toHaveValue("mandatory");
   await page.goto("/manage/soldiers");
-  await page.getByLabel("חיפוש חייל לפי שם או מספר אישי").fill("מסנן");
+  await page.getByLabel("חיפוש חייל לפי שם או מספר זיהוי").fill("מסנן");
   await expect(page.getByLabel("חובה", { exact: true })).toBeChecked();
   await expect(page.getByLabel("קמ״א", { exact: true })).toBeChecked();
   await expect(
@@ -1072,7 +1091,7 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
   await login(careerPage, "career-manager@example.invalid");
   await careerPage.setViewportSize({ width: 390, height: 844 });
   await careerPage.goto("/manage/soldiers");
-  await careerPage.getByLabel("חיפוש חייל לפי שם או מספר אישי").fill("מסנן");
+  await careerPage.getByLabel("חיפוש חייל לפי שם או מספר זיהוי").fill("מסנן");
   await expect
     .poll(() => visibleNames(careerPage))
     .toEqual(["מסנן קבע", "מסנן אחראי קבע", "מסנן קמא"].sort());
@@ -1151,8 +1170,10 @@ test("multi-day duties appear on every Israeli day and month, independent of the
     role: "manager" | "soldier"
   ) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     await createInvitedAccount({ name, email, role, soldierId: id });
     return id;
@@ -1342,8 +1363,10 @@ test("manager corrects a finished duty with an impact preview while the draw val
     role: "manager" | "soldier"
   ) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     await createInvitedAccount({ name, email, role, soldierId: id });
     return id;
@@ -1477,8 +1500,10 @@ test("a soldier offers a published duty to several replacements and the first co
     role: "manager" | "soldier"
   ) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     await createInvitedAccount({ name, email, role, soldierId: id });
     return id;
@@ -1644,8 +1669,10 @@ test("population moves preview their impact before saving in the transition, the
     role: "manager" | "soldier"
   ) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     await createInvitedAccount({ name, email, role, soldierId: id });
     return id;
@@ -1795,7 +1822,7 @@ test("population moves preview their impact before saving in the transition, the
   // 2. Editing the profile: an unrelated field saves directly, the officer
   // date only after reviewing its impact.
   profile = await openProfile("חייל עריכת קצונה");
-  await profile.getByLabel("טלפון").fill("0500000463");
+  await profile.getByLabel("טלפון נייד").fill("0500000463");
   await profile.getByRole("button", { name: "שמירה", exact: true }).click();
   await expect(profile).not.toBeVisible();
   profile = await openProfile("חייל עריכת קצונה");
@@ -1825,8 +1852,8 @@ test("population moves preview their impact before saving in the transition, the
   await workbook.xlsx.load(new Uint8Array(await createImportTemplate()).buffer);
   const sheet = workbook.getWorksheet("חיילים")!;
   const row = sheet.addRow([]);
-  row.getCell(1).value = "460004";
-  row.getCell(13).value = careerDay.toISODate();
+  row.getCell(1).value = testIdNumber("460004");
+  row.getCell(15).value = careerDay.toISODate();
   await page.getByLabel("קובץ XLSX").setInputFiles({
     name: "population.xlsx",
     mimeType:
@@ -1881,8 +1908,7 @@ test("population moves preview their impact before saving in the transition, the
       type: "soldier.update.preview",
       payload: {
         id: people.profile,
-        name: "חייל עריכת קצונה",
-        personalNumber: "460003",
+        ...testProfile("חייל עריכת קצונה"),
       },
       idempotencyKey: randomUUID(),
     },
@@ -1905,8 +1931,10 @@ test("manager resolves a pending balance decision from the handling center after
     role: "manager" | "soldier"
   ) {
     const id = randomUUID();
-    const data = soldier({ id, name, personalNumber });
-    await db.insert(soldiers).values({ id, name, personalNumber, data });
+    const data = soldier({ id, name });
+    await db
+      .insert(soldiers)
+      .values({ id, name, idNumber: testIdNumber(personalNumber), data });
     await db.insert(balances).values({ soldierId: id });
     await createInvitedAccount({ name, email, role, soldierId: id });
     return id;

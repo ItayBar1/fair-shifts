@@ -27,10 +27,10 @@ test.beforeAll(async () => {
     sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
   );
   const id = randomUUID();
-  const data = soldier({ id, name: "אחראי שחזור", personalNumber: "000301" });
+  const data = soldier({ id, name: "אחראי שחזור" });
   await db
     .insert(soldiers)
-    .values({ id, name: data.name, personalNumber: data.personalNumber, data });
+    .values({ id, name: data.name, idNumber: data.idNumber, data });
   await db
     .insert(soldierContacts)
     .values({ soldierId: id, email: managerEmail });
@@ -46,12 +46,11 @@ test.beforeAll(async () => {
   const secondData = soldier({
     id: second,
     name: "אחראי מחיקה בשחזור",
-    personalNumber: "000302",
   });
   await db.insert(soldiers).values({
     id: second,
     name: secondData.name,
-    personalNumber: secondData.personalNumber,
+    idNumber: secondData.idNumber,
     data: secondData,
   });
   await db
@@ -97,20 +96,34 @@ test("cancels a new soldier without activity and waits for a decision on one who
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(new Uint8Array(await createImportTemplate()).buffer);
   const sheet = workbook.getWorksheet("חיילים")!;
+  // New soldiers: no ID number; first name, last name, gender, mail, phone (decision 222).
   sheet.addRow([
-    "000311",
-    "קליטה ללא פעילות",
+    null,
+    "קליטה",
+    "ללא פעילות",
+    "זכר",
     "restore-quiet@example.invalid",
     "0500000311",
     null,
     3,
   ]);
-  sheet.addRow(["000312", "קליטה שנכנסה", activeEmail, "0500000312", null, 4]);
   sheet.addRow([
-    "000313",
-    "קליטה שנמחקה",
-    "restore-erased@example.invalid",
     null,
+    "קליטה",
+    "שנכנסה",
+    "נקבה",
+    activeEmail,
+    "0500000312",
+    null,
+    4,
+  ]);
+  sheet.addRow([
+    null,
+    "קליטה",
+    "שנמחקה",
+    "אחר",
+    "restore-erased@example.invalid",
+    "0500000313",
     null,
     0,
   ]);
@@ -140,7 +153,7 @@ test("cancels a new soldier without activity and waits for a decision on one who
   await db
     .update(soldiers)
     .set({ deletedAt: new Date() })
-    .where(eq(soldiers.personalNumber, "000313"));
+    .where(eq(soldiers.name, "קליטה שנמחקה"));
 
   await page
     .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
@@ -178,11 +191,9 @@ test("cancels a new soldier without activity and waits for a decision on one who
   await expect(page.getByText(/הקליטה בוטלה בשחזור/)).toBeVisible();
   await expect(page.getByText(/נמחק במסלול המחיקה; השורה נסגרה/)).toBeVisible();
   const partial = await (await page.request.get("/api/v1/state")).json();
-  const numbers = partial.soldiers.map(
-    (person: { personalNumber: string }) => person.personalNumber
-  );
-  expect(numbers).not.toContain("000311");
-  expect(numbers).toContain("000312");
+  const names = partial.soldiers.map((person: { name: string }) => person.name);
+  expect(names).not.toContain("קליטה ללא פעילות");
+  expect(names).toContain("קליטה שנכנסה");
 
   await page
     .getByRole("button", { name: "בדיקת שחזור הייבוא", exact: true })
@@ -207,7 +218,7 @@ test("cancels a new soldier without activity and waits for a decision on one who
   const [activePerson] = await db
     .select()
     .from(soldiers)
-    .where(eq(soldiers.personalNumber, "000312"));
+    .where(eq(soldiers.name, "קליטה שנכנסה"));
   await db
     .update(soldierContacts)
     .set({ phone: "0500000399" })
@@ -230,7 +241,7 @@ test("cancels a new soldier without activity and waits for a decision on one who
   const [kept] = await db
     .select()
     .from(soldiers)
-    .where(eq(soldiers.personalNumber, "000312"));
+    .where(eq(soldiers.name, "קליטה שנכנסה"));
   expect(kept.name).toBe("קליטה שנכנסה");
 });
 
@@ -245,8 +256,10 @@ test("deletes the user of a new soldier with activity when the manager decides s
   workbook
     .getWorksheet("חיילים")!
     .addRow([
-      "000321",
-      "קליטה למחיקה",
+      null,
+      "קליטה",
+      "למחיקה",
+      "זכר",
       deletedEmail,
       "0500000321",
       "רחוב ייבוא 5",
@@ -292,7 +305,7 @@ test("deletes the user of a new soldier with activity when the manager decides s
   const [deleted] = await db
     .select()
     .from(soldiers)
-    .where(eq(soldiers.personalNumber, "000321"));
+    .where(eq(soldiers.name, "קליטה למחיקה"));
   expect(deleted.deletedAt).not.toBeNull();
   expect(deleted.name).toBe("קליטה למחיקה");
   const [contact] = await db

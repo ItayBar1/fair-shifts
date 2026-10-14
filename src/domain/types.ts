@@ -59,8 +59,15 @@ export interface AllowedHours extends DateRange {
 }
 export interface Soldier {
   id: string;
+  /** Full name for display: first and last name joined (decision 222). */
   name: string;
-  personalNumber: string;
+  firstName?: string;
+  lastName?: string;
+  /**
+   * Issued by the database when the soldier is created and never changed; it
+   * comes from the row, not from the stored profile (decision 222).
+   */
+  idNumber?: number;
   version: number;
   deletedAt?: Instant;
   /**

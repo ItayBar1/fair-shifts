@@ -128,6 +128,7 @@ export const diagnosticActionTypes = new Set([
   "notification.read",
   "notification.hide",
   "settings.save",
+  "profile.contact.update",
   "settings.reset",
   "notification.defaults.save",
   "calendar.switch",

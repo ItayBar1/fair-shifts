@@ -15,7 +15,7 @@ import {
 } from "../../src/server/schema";
 import { createInvitedAccount } from "../../src/server/auth/accounts";
 import { openSecret } from "../../src/server/operations/email";
-import { assignment, duty, soldier } from "../fixtures";
+import { assignment, duty, soldier, testIdNumber } from "../fixtures";
 import { signedInHome } from "./auth-submit";
 
 // A deterministic synthetic calendar, behind real sign-in and state permissions.
@@ -67,12 +67,11 @@ test.beforeEach(async () => {
     const data = soldier({
       id: ids[key],
       name: person.name,
-      personalNumber: `84000${index}`,
     });
     await db.insert(soldiers).values({
       id: data.id,
       name: data.name,
-      personalNumber: data.personalNumber,
+      idNumber: testIdNumber(index),
       data,
     });
     await db

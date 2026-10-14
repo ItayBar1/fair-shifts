@@ -246,6 +246,7 @@ export type Field = {
     | "text"
     | "number"
     | "email"
+    | "tel"
     | "date"
     | "datetime-local"
     | "time"
@@ -364,6 +365,7 @@ function FieldList({ fields }: { fields: Field[] }) {
                       [
                         "number",
                         "email",
+                        "tel",
                         "date",
                         "datetime-local",
                         "time",

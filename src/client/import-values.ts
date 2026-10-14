@@ -14,6 +14,8 @@ export function importValue(value: unknown, key: string, state: AppState) {
     return population(value);
   if (key === "serviceType" || key === "service.type")
     return value === "career" ? "קבע" : "חובה";
+  if (key === "gender")
+    return value === "male" ? "זכר" : value === "female" ? "נקבה" : "אחר";
   if (Array.isArray(value))
     return (
       value

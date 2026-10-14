@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { profileInput, technicalUserInput } from "./validation";
+import {
+  fullName,
+  nameKey,
+  profileInput,
+  technicalUserInput,
+} from "./validation";
 import {
   audit,
   currentVersion,
@@ -94,20 +99,26 @@ async function persistSoldier(
       "score_preview_required",
       "שינוי יתרה נעשה דרך מסך הניקוד עם תצוגה מקדימה"
     );
-  } else invariant(input.email, "email_required", "נדרשת כתובת מייל להזמנה");
-  // Say which value is taken instead of failing on the database's own constraint.
-  if (!existing || existing.personalNumber !== input.personalNumber)
+  } else {
+    invariant(input.email, "email_required", "נדרשת כתובת מייל להזמנה");
     invariant(
-      !(
-        await tx
-          .select({ id: soldiers.id })
-          .from(soldiers)
-          .where(eq(soldiers.personalNumber, input.personalNumber))
-      ).length,
-      "personal_number_exists",
-      "המספר האישי כבר רשום ביחידה",
-      409
+      input.firstName && input.lastName && input.gender && input.phone,
+      "invalid_input",
+      "בקליטה נדרשים שם פרטי, שם משפחה, מגדר וטלפון",
+      422
     );
+  }
+  // The same first and last name warns and still allows saving (decision 222).
+  if (!existing && !input.duplicateNameConfirmed) {
+    const matches = await sameNamePeople(tx, input.firstName!, input.lastName!);
+    invariant(
+      !matches.length,
+      "duplicate_name",
+      "כבר רשום חייל עם אותו שם פרטי ושם משפחה. אפשר לשמור בכל זאת אחרי אישור",
+      409,
+      { matches }
+    );
+  }
   if (!existing)
     invariant(
       !(
@@ -154,7 +165,6 @@ async function persistSoldier(
       .update(soldiers)
       .set({
         name: data.name,
-        personalNumber: data.personalNumber,
         data,
         version: data.version,
         updatedAt: new Date(),
@@ -175,16 +185,11 @@ async function persistSoldier(
       .set({ name: data.name })
       .where(eq(user.soldierId, id));
   } else {
-    await tx.insert(soldiers).values({
-      id,
-      name: data.name,
-      personalNumber: data.personalNumber,
-      data,
-    });
+    await tx.insert(soldiers).values({ id, name: data.name, data });
     await tx.insert(soldierContacts).values({
       soldierId: id,
       email: input.email!.toLowerCase(),
-      phone: input.phone,
+      phone: input.phone!,
       address: input.address,
     });
     await tx.insert(balances).values({ soldierId: id });
@@ -216,7 +221,6 @@ async function persistSoldier(
       {
         ...existing.data,
         name: existing.name,
-        personalNumber: existing.personalNumber,
         phone: contact?.phone,
         address: contact?.address,
       },
@@ -240,7 +244,29 @@ async function persistSoldier(
     await audit(tx, actor, "soldier.create", id, {}, id);
   if (existing) await reassessAssignments(tx, id);
   await refreshRankReminders(tx);
-  return { id, version: data.version };
+  const [{ idNumber }] = await tx
+    .select({ idNumber: soldiers.idNumber })
+    .from(soldiers)
+    .where(eq(soldiers.id, id));
+  return { id, version: data.version, idNumber };
+}
+
+/** Active people with this first and last name, for the same-name warning. */
+export async function sameNamePeople(
+  tx: DbTransaction,
+  firstName: string,
+  lastName: string,
+  exceptId?: string
+) {
+  const key = nameKey(firstName, lastName);
+  return (await tx.select().from(soldiers))
+    .filter(
+      (row) =>
+        !row.deletedAt &&
+        row.id !== exceptId &&
+        nameKey(row.data.firstName ?? row.name, row.data.lastName ?? "") === key
+    )
+    .map((row) => ({ name: row.name, idNumber: row.idNumber }));
 }
 
 /** A stable account key prevents duplicate invitations across retries. */
@@ -264,8 +290,9 @@ type ProfileSnapshot = Soldier & {
   address?: string | null;
 };
 const profileFields = {
-  name: (row: ProfileSnapshot) => row.name,
-  personalNumber: (row: ProfileSnapshot) => row.personalNumber,
+  firstName: (row: ProfileSnapshot) => row.firstName,
+  lastName: (row: ProfileSnapshot) => row.lastName,
+  gender: (row: ProfileSnapshot) => row.gender,
   serviceType: (row: ProfileSnapshot) => row.service.type,
   basePopulation: (row: ProfileSnapshot) => row.service.basePopulation,
   arrivalDate: (row: ProfileSnapshot) => row.service.arrivalDate,
@@ -299,8 +326,14 @@ function profileData(
   const data: Soldier = {
     ...existing,
     id,
-    name: input.name,
-    personalNumber: input.personalNumber,
+    // An edit without names keeps the stored name (records from before decision 222).
+    name:
+      input.firstName && input.lastName
+        ? fullName(input.firstName, input.lastName)
+        : (existing?.name ?? ""),
+    firstName: input.firstName ?? existing?.firstName,
+    lastName: input.lastName ?? existing?.lastName,
+    gender: input.gender ?? existing?.gender,
     version: (version ?? 0) + 1,
     currentScore: existing?.currentScore ?? 0,
     populationHistory: existing?.populationHistory ?? [],
@@ -343,8 +376,10 @@ async function assessProfileImpact(
   const state = await loadDomain(tx);
   const change = populationChange(existing.data, data);
   const { impact } = impactOf(state, existing.id, data);
+  // The same-name confirmation is not part of the reviewed impact.
+  const reviewed = { ...input, duplicateNameConfirmed: undefined };
   const previewToken = createHash("sha256")
-    .update(JSON.stringify({ input, change, state }))
+    .update(JSON.stringify({ input: reviewed, change, state }))
     .digest("hex");
   return { previewToken, impact, change };
 }

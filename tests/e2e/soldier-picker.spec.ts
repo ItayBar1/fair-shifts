@@ -25,7 +25,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { submitAuth, signedInHome } from "./auth-submit";
 
 // Search and filters in the soldier picker (card #83, decision 193). Synthetic people only.
@@ -37,13 +37,13 @@ const at = (hour: number, offset = 0) =>
   D.plus({ days: offset, hours: hour }).toISO()!;
 
 const manager = {
+  number: "880100",
   name: "אחראי בוחר",
-  personalNumber: "880100",
   email: "picker-manager@example.invalid",
 };
 const second = {
+  number: "880101",
   name: "אחראית נוספת",
-  personalNumber: "880101",
   email: "picker-second@example.invalid",
 };
 let actor: Actor;
@@ -73,19 +73,15 @@ async function addSoldier(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber, ...data }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name, ...data }),
     ...(deleted && { deletedAt: new Date() }),
   });
   await db.insert(balances).values({ soldierId: id });
   return id;
 }
 async function addManager(person: typeof manager) {
-  const id = await addSoldier(
-    person.personalNumber,
-    person.name,
-    person.personalNumber
-  );
+  const id = await addSoldier(person.number, person.name, person.number);
   return createInvitedAccount({
     name: person.name,
     email: person.email,
@@ -302,7 +298,7 @@ test.beforeAll(async () => {
   ).id;
 });
 
-test("the picker opens filtered by the duty and the role, and finds by name and personal number", async ({
+test("the picker opens filtered by the duty and the role, and finds by name and ID number", async ({
   browser,
 }) => {
   const page = await signedIn(browser);
@@ -328,20 +324,29 @@ test("the picker opens filtered by the duty and the role, and finds by name and 
     0
   );
 
-  const search = dialog.getByLabel("חיפוש חייל לפי שם או מספר אישי");
+  // Each option is one line: the choice, the name and the number side by side.
+  const option = dialog.locator(".picker-option").first();
+  const radio = (await option.locator("input").boundingBox())!;
+  const label = (await option.locator("strong").boundingBox())!;
+  expect(
+    Math.abs(radio.y + radio.height / 2 - (label.y + label.height / 2))
+  ).toBeLessThan(label.height);
+  expect(radio.width).toBeLessThan(40);
+
+  const search = dialog.getByLabel("חיפוש חייל לפי שם או מספר זיהוי");
   await search.fill("דנ");
   expect(await names(dialog)).toEqual(["דנה ירוק", "דני כחול"]);
   await expect(count(dialog)).toHaveText("2 מתוך 7 חיילים");
   await search.fill("ירוק דנה");
   expect(await names(dialog)).toEqual(["דנה ירוק"]);
-  await search.fill("880005");
+  await search.fill(String(testIdNumber("880005")));
   expect(await names(dialog)).toEqual(["גיל פטור שהסתיים"]);
   await search.fill("אין כזה");
   expect(await names(dialog)).toEqual([]);
   await expect(count(dialog)).toHaveText("אין חיילים שמתאימים לחיפוש ולסינון");
 
   // Enter picks the one person left and does not submit the form.
-  await search.fill("880002");
+  await search.fill(String(testIdNumber("880002")));
   await search.press("Enter");
   await expect(dialog.getByRole("radio", { name: /דני כחול/ })).toBeChecked();
   await expect(dialog.getByText("ניקוד צפוי")).toHaveCount(0);
@@ -536,7 +541,7 @@ test("the picker works with the keyboard and on a phone without sideways scrolli
     await page.screenshot({ path: "test-results/soldier-picker-mobile.png" });
 
     // Keyboard: type, move into the list, choose with the arrow keys.
-    const search = dialog.getByLabel("חיפוש חייל לפי שם או מספר אישי");
+    const search = dialog.getByLabel("חיפוש חייל לפי שם או מספר זיהוי");
     await search.fill("דנ");
     expect(await names(dialog)).toEqual(["דנה ירוק", "דני כחול"]);
     await dialog.getByRole("radio", { name: /דנה ירוק/ }).focus();
@@ -622,7 +627,7 @@ test("a seat in a change proposal uses the same finder, and follows the times be
   await expect(list.getByRole("radio", { name: /איתן פטור/ })).toBeVisible();
 
   // Escape closes the finder and leaves the dialog open.
-  await editor.getByLabel(/^חיפוש חייל לפי שם או מספר אישי/).focus();
+  await editor.getByLabel(/^חיפוש חייל לפי שם או מספר זיהוי/).focus();
   await page.keyboard.press("Escape");
   await expect(list).toHaveCount(0);
   await expect(editor).toBeVisible();

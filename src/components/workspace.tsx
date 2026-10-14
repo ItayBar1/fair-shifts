@@ -35,6 +35,7 @@ import { FairnessView } from "./fairness";
 import { MyAssignmentsView } from "./my-assignments";
 import { PublishDrafts } from "./publish-drafts";
 import { TechnicalAccount } from "./technical-account";
+import { MyProfileView } from "./my-profile";
 import {
   SoldiersView,
   EligibilityView,
@@ -98,10 +99,20 @@ const settingsLink: NavItem = {
   title: "העדפות אישיות",
   icon: Settings,
 };
+// A soldier's own details and issued number (decision 222).
+const myProfileLink: NavItem = {
+  path: "/me",
+  title: "הפרטים שלי",
+  icon: UserRound,
+};
 const linkByPath = new Map<string, NavItem>(
-  [...commonLinks, ...managementLinks, ...technicalLinks, settingsLink].map(
-    (item) => [item.path, item]
-  )
+  [
+    ...commonLinks,
+    ...managementLinks,
+    ...technicalLinks,
+    settingsLink,
+    myProfileLink,
+  ].map((item) => [item.path, item])
 );
 type NavGroup = { title?: string; paths: string[] };
 // Work comes first, in groups; the person's own account sits at the bottom.
@@ -332,12 +343,12 @@ export function Workspace({
     : manager
       ? managerGroups(ownDuties)
       : soldierGroups;
-  // The account page of a manager or the technical account; a soldier has none.
+  // The account page of a manager or the technical account; a soldier's details.
   const accountPath = technical
     ? "/technical/account"
     : manager
       ? "/manage/account"
-      : null;
+      : "/me";
   const signOut = async () => {
     const response = await fetch("/api/auth/sign-out", {
       method: "POST",
@@ -349,6 +360,7 @@ export function Workspace({
   };
   const restricted =
     (effectivePath === "/constraints" && manager) ||
+    (effectivePath === "/me" && !soldier) ||
     (effectivePath.startsWith("/manage") && !manager) ||
     (effectivePath.startsWith("/technical") && !technical) ||
     (technical &&
@@ -434,6 +446,8 @@ export function Workspace({
       return <NotificationsView state={state} action={action} />;
     if (effectivePath === "/settings")
       return <SettingsView state={state} action={action} />;
+    if (effectivePath === "/me")
+      return <MyProfileView state={state} action={action} />;
     if (effectivePath === "/manage/imports")
       return <ImportsView state={state} action={action} reload={reload} />;
     if (effectivePath === "/manage/audit") return <AuditView state={state} />;
@@ -461,11 +475,6 @@ export function Workspace({
       />
     );
   };
-  const profileRole = technical
-    ? "מנהל טכני"
-    : manager
-      ? "אחראי תורנויות"
-      : "חיילי היחידה";
   // Who is signed in, their own pages and the way out, in one row.
   const profile = (
     <div className="profile">
@@ -474,18 +483,17 @@ export function Workspace({
       </span>
       <span className="profile-text">
         <strong>{state.actor.name}</strong>
-        {accountPath ? (
-          <Link
-            href={accountPath}
-            onClick={() => setMenu(false)}
-            className={`profile-account ${effectivePath === accountPath ? "active" : ""}`}
-            aria-current={effectivePath === accountPath ? "page" : undefined}
-          >
-            החשבון שלי
-          </Link>
-        ) : (
-          <small>{profileRole}</small>
-        )}
+        <Link
+          href={accountPath}
+          onClick={() => {
+            setMenu(false);
+            setMore(false);
+          }}
+          className={`profile-account ${effectivePath === accountPath ? "active" : ""}`}
+          aria-current={effectivePath === accountPath ? "page" : undefined}
+        >
+          {soldier ? "הפרטים שלי" : "החשבון שלי"}
+        </Link>
       </span>
       <Link
         href="/settings"
@@ -664,7 +672,7 @@ export function Workspace({
           ))}
           <button
             type="button"
-            className={`tab ${[...soldierMore, "/settings"].includes(effectivePath) ? "active" : ""}`}
+            className={`tab ${[...soldierMore, "/settings", "/me"].includes(effectivePath) ? "active" : ""}`}
             aria-haspopup="dialog"
             onClick={() => setMore(true)}
           >

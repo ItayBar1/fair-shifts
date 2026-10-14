@@ -88,9 +88,9 @@ export async function linkCommandResult(
     : [];
   for (const account of accounts)
     if (account.soldierId) references.add(account.soldierId);
-  const people = await tx
-    .select({ id: soldiers.id, number: soldiers.personalNumber })
-    .from(soldiers);
+  // Import rows carry their soldier's id once applied, so the issued number is
+  // not matched as text: small numbers would link unrelated people.
+  const people = await tx.select({ id: soldiers.id }).from(soldiers);
   const contacts = await tx.select().from(soldierContacts);
   const contactSubjects = new Set(
     contacts
@@ -102,10 +102,7 @@ export async function linkCommandResult(
       .map((contact) => contact.soldierId)
   );
   const subjects = people.filter(
-    (person) =>
-      references.has(person.id) ||
-      references.has(person.number) ||
-      contactSubjects.has(person.id)
+    (person) => references.has(person.id) || contactSubjects.has(person.id)
   );
   // Applying a new import completes earlier preview/get results' links atomically.
   const commands = batch

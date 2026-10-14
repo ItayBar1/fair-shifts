@@ -4,7 +4,7 @@ import type { Soldier } from "./types";
  * Rules for deleting a soldier (decision 192). They are pure: the server finds
  * the records, these functions say what stays and what is removed.
  *
- * What survives a deletion is the name, the personal number and the history of
+ * What survives a deletion is the name, the issued ID number and the history of
  * duties and score. Contact details, the eligibility conditions a manager
  * recorded about the soldier and every free-text reason that can reveal a
  * personal situation are removed from every active copy.
@@ -58,7 +58,7 @@ export const recordPolicies: Record<string, ErasurePolicy> = {
   },
   import_row: {
     action: "scrub",
-    why: "נשארים מספר שורה, שם, מספר אישי ותוצאה בלי פרטי קשר או שינויים",
+    why: "נשארים מספר שורה, שם, מספר זיהוי ותוצאה בלי פרטי קשר או שינויים",
   },
   lottery_attempt: {
     action: "scrub",
@@ -307,7 +307,7 @@ export function scrubRequest(
   return changed ? next : undefined;
 }
 
-/** An import row of an erased soldier: row number, name, personal number and outcome. */
+/** An import row of an erased soldier: row number, name, ID number and outcome. */
 export function scrubImportRow(data: Json): Scrubbed {
   const keep: Json = {
     batchId: data.batchId,
@@ -315,7 +315,7 @@ export function scrubImportRow(data: Json): Scrubbed {
     mode: data.mode,
     name: data.name,
     erased: true,
-    values: { personalNumber: object(data.values)?.personalNumber },
+    values: { idNumber: object(data.values)?.idNumber },
     changes: [],
   };
   const restored = object(data.newRowRestored);

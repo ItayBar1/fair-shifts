@@ -30,7 +30,7 @@ import { readState } from "../../src/server/state";
 import { settleDue } from "../../src/server/scoring";
 import { eraseSoldier } from "../../src/server/soldier-deletion";
 import { ERASED_NOTE, ERASED_REASON } from "../../src/domain/erasure";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber, testProfile, testNames } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -56,8 +56,8 @@ async function invite(
   await db.insert(soldiers).values({
     id: soldierId,
     name,
-    personalNumber,
-    data: soldier({ id: soldierId, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id: soldierId, name }),
   });
   await db.insert(soldierContacts).values({
     soldierId,
@@ -357,7 +357,7 @@ describe("deleting a user", () => {
     const row = await soldierRow(member);
     expect(row.deletedAt).not.toBeNull();
     expect(row.name).toBe("חייל למחיקה");
-    expect(row.personalNumber).toBe("00203");
+    expect(row.idNumber).toBe(testIdNumber("00203"));
     expect(row.data.exemptions).toEqual([]);
     expect(row.data.qualifications).toEqual([]);
     expect(row.data.inactivePeriods).toEqual([]);
@@ -596,8 +596,8 @@ describe("what is deletion and what is not", () => {
         {
           rowNumber: 2,
           values: {
-            personalNumber: "00203",
-            name: "חייל למחיקה",
+            idNumber: testIdNumber("00203"),
+            ...testNames("חייל למחיקה"),
             phone: "0509998888",
           },
         },
@@ -628,7 +628,10 @@ describe("what is deletion and what is not", () => {
       command(manager, "import.preview", {
         filename: "אחרי המחיקה.xlsx",
         rows: [
-          { rowNumber: 2, values: { personalNumber: "00203", name: "חייל" } },
+          {
+            rowNumber: 2,
+            values: { idNumber: testIdNumber("00203"), ...testNames("חייל") },
+          },
         ],
       })
     ).rejects.toBeDefined();
@@ -646,8 +649,7 @@ describe("every active copy of the sensitive data", () => {
       "soldier.update",
       {
         id: member.soldierId,
-        name: row.name,
-        personalNumber: row.personalNumber,
+        ...testProfile(row.name),
         phone: "0501234567",
         address: "רחוב חדש 9",
       },
@@ -793,7 +795,7 @@ describe("every active copy of the sensitive data", () => {
         rowNumber: 2,
         mode: "update",
         name: row.name,
-        values: { personalNumber: row.personalNumber, phone: "0509999999" },
+        values: { idNumber: row.idNumber, phone: "0509999999" },
         changes: [{ key: "phone", before: "1", after: "0509999999" }],
       },
     });
@@ -1155,8 +1157,8 @@ describe("import restore: deleting the user of a new soldier with activity", () 
         {
           rowNumber: 2,
           values: {
-            personalNumber: "00777",
-            name: "נקלט בייבוא",
+            ...testNames("נקלט בייבוא"),
+            gender: "male",
             email: "import-777@example.invalid",
             phone: "0507770000",
             address: "כתובת בייבוא",
@@ -1174,7 +1176,7 @@ describe("import restore: deleting the user of a new soldier with activity", () 
     const [person] = await db
       .select()
       .from(soldiers)
-      .where(eq(soldiers.personalNumber, "00777"));
+      .where(eq(soldiers.name, "נקלט בייבוא"));
     await db
       .update(user)
       .set({ firstSignInAt: new Date() })
@@ -1234,7 +1236,7 @@ describe("import restore: deleting the user of a new soldier with activity", () 
     const row = await soldierRow({ soldierId: person.id } as Actor);
     expect(row.deletedAt).not.toBeNull();
     expect(row.name).toBe("נקלט בייבוא");
-    expect(row.personalNumber).toBe("00777");
+    expect(row.idNumber).toBeGreaterThan(0);
     const [contact] = await db
       .select()
       .from(soldierContacts)

@@ -37,8 +37,8 @@ beforeEach(async () => {
   await db.insert(soldiers).values({
     id,
     name: "חייל אות",
-    personalNumber: "5000001",
-    data: soldier({ id, name: "חייל אות", personalNumber: "5000001" }),
+    idNumber: 1005000001,
+    data: soldier({ id, name: "חייל אות" }),
   });
   await db
     .insert(soldierContacts)

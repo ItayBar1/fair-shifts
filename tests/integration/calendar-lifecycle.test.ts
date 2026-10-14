@@ -65,7 +65,7 @@ beforeEach(async () => {
   await db.insert(soldiers).values({
     id,
     name: "חייל סינתטי",
-    personalNumber: "00921",
+    idNumber: 1000000921,
     data: soldier({ id }),
   });
   const invited = await createInvitedAccount({

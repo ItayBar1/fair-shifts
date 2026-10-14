@@ -26,7 +26,7 @@ import { settleDue } from "../../src/server/scoring";
 import { refreshRankReminders } from "../../src/server/ranks";
 import { announceDepartures } from "../../src/server/departures";
 import type { Soldier } from "../../src/domain/types";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber, testProfile } from "../fixtures";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -51,8 +51,8 @@ async function invite(
   await db.insert(soldiers).values({
     id,
     name,
-    personalNumber,
-    data: soldier({ id, name, personalNumber }),
+    idNumber: testIdNumber(personalNumber),
+    data: soldier({ id, name }),
   });
   const email = `${personalNumber}@example.invalid`;
   await db.insert(soldierContacts).values({ soldierId: id, email });
@@ -407,8 +407,7 @@ describe("service dates", () => {
       "soldier.update",
       {
         id: member.soldierId,
-        name: before.name,
-        personalNumber: before.personalNumber,
+        ...testProfile(before.name),
         population: "mandatory",
         serviceType: "mandatory",
         releaseDate: israelDate(),
@@ -426,8 +425,7 @@ describe("service dates", () => {
 
   it("grants grace only when marked eligible and leaves the balance when it ends", async () => {
     const created = await command(manager, "soldier.create", {
-      name: "חייל חדש",
-      personalNumber: "00105",
+      ...testProfile("חייל חדש"),
       email: "00105@example.invalid",
       arrivalDate: israelDate(-3),
     });

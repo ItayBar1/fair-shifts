@@ -9,6 +9,7 @@ import {
 } from "../src/server/auth/accounts";
 import { invariant } from "../src/server/errors";
 import type { Soldier } from "../src/domain/types";
+import { fullName, gender, phone } from "../src/server/validation";
 
 try {
   const input = z
@@ -16,8 +17,11 @@ try {
       TECHNICAL_EMAIL: z.email(),
       TECHNICAL_NAME: z.string().min(1),
       MANAGER_EMAIL: z.email(),
-      MANAGER_NAME: z.string().min(1),
-      MANAGER_PERSONAL_NUMBER: z.string().regex(/^\d{1,20}$/),
+      // The first manager has the details every intake requires (decision 222).
+      MANAGER_FIRST_NAME: z.string().trim().min(1).max(100),
+      MANAGER_LAST_NAME: z.string().trim().min(1).max(100),
+      MANAGER_GENDER: gender,
+      MANAGER_PHONE: phone,
     })
     .parse(process.env);
   const recovery = await unitTransaction(async (tx) => {
@@ -37,8 +41,10 @@ try {
     const id = randomUUID();
     const data: Soldier = {
       id,
-      name: input.MANAGER_NAME,
-      personalNumber: input.MANAGER_PERSONAL_NUMBER,
+      name: fullName(input.MANAGER_FIRST_NAME, input.MANAGER_LAST_NAME),
+      firstName: input.MANAGER_FIRST_NAME,
+      lastName: input.MANAGER_LAST_NAME,
+      gender: input.MANAGER_GENDER,
       version: 1,
       currentScore: 0,
       service: {
@@ -53,15 +59,12 @@ try {
       inactivePeriods: [],
       constraints: [],
     };
-    await tx.insert(soldiers).values({
-      id,
-      name: data.name,
-      personalNumber: data.personalNumber,
-      data,
+    await tx.insert(soldiers).values({ id, name: data.name, data });
+    await tx.insert(soldierContacts).values({
+      soldierId: id,
+      email: input.MANAGER_EMAIL.toLowerCase(),
+      phone: input.MANAGER_PHONE,
     });
-    await tx
-      .insert(soldierContacts)
-      .values({ soldierId: id, email: input.MANAGER_EMAIL.toLowerCase() });
     await tx.insert(balances).values({ soldierId: id });
     await createInvitedAccount(
       {

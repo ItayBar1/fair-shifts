@@ -16,7 +16,7 @@ import {
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
 import { openSecret } from "../../src/server/operations/email";
-import { soldier } from "../fixtures";
+import { soldier, testIdNumber } from "../fixtures";
 import { signedInHome, submitAuth } from "./auth-submit";
 
 // The fairness table with the score ledger folded in (card #165, decision 220).
@@ -35,10 +35,13 @@ const actors = {} as Record<Key, Actor>;
 async function invite(key: Key, role: Actor["role"]) {
   const [name, personalNumber, email, balance] = people[key];
   const soldierId = randomUUID();
-  const data = soldier({ id: soldierId, name, personalNumber });
-  await db
-    .insert(soldiers)
-    .values({ id: soldierId, name, personalNumber, data });
+  const data = soldier({ id: soldierId, name });
+  await db.insert(soldiers).values({
+    id: soldierId,
+    name,
+    idNumber: testIdNumber(personalNumber),
+    data,
+  });
   await db.insert(soldierContacts).values({ soldierId, email });
   await db.insert(balances).values({ soldierId, current: balance });
   const account = await createInvitedAccount({ name, email, role, soldierId });

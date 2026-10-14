@@ -153,6 +153,10 @@ const genders: Record<string, string> = {
 };
 const profileLabels: Record<string, string> = {
   name: "שם",
+  firstName: "שם פרטי",
+  lastName: "שם משפחה",
+  gender: "מגדר",
+  // Entries written before decision 222 still name the old field.
   personalNumber: "מספר אישי",
   serviceType: "סוג שירות",
   basePopulation: "אוכלוסיית בסיס",
@@ -438,11 +442,13 @@ export function projectAudit(
                   : "לא"
                 : field === "serviceType" || field === "basePopulation"
                   ? (populations[String(value)] ?? value)
-                  : /Date|From$/.test(field)
-                    ? value
-                      ? formatDate(value)
-                      : "—"
-                    : value;
+                  : field === "gender"
+                    ? (genders[String(value)] ?? "—")
+                    : /Date|From$/.test(field)
+                      ? value
+                        ? formatDate(value)
+                        : "—"
+                      : value;
             change(
               profileLabels[field] ?? field,
               format(item.before),

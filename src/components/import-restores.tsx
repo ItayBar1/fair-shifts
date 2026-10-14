@@ -181,7 +181,7 @@ export function ImportRestore({
                   <thead>
                     <tr>
                       <th>חייל</th>
-                      <th>מספר אישי</th>
+                      <th>מספר זיהוי</th>
                       <th>מצב</th>
                       <th>פעילות מאז הייבוא</th>
                       <th>החלטה</th>
@@ -203,7 +203,7 @@ export function ImportRestore({
                             {str(row.name)} · שורה {num(row.rowNumber)}
                           </td>
                           <td>
-                            <bdi>{str(row.personalNumber)}</bdi>
+                            <bdi dir="ltr">{str(row.idNumber, "—")}</bdi>
                           </td>
                           <td>
                             <Badge

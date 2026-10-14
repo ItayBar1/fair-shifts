@@ -32,16 +32,21 @@ if (
   throw new Error("Integration tests require a dedicated *_test database");
 
 let technical: Actor;
+// The same required details as any intake (decision 222).
 const form = {
-  name: "משתמש חדש לבדיקה",
-  personalNumber: "00000114",
+  firstName: "משתמש",
+  lastName: "חדש לבדיקה",
+  gender: "other",
   email: "New.Technical.User@Example.invalid",
+  phone: "0500000114",
 };
 const invalidIdentityFields = [
-  { name: "" },
-  { name: "   " },
-  { personalNumber: "12a" },
-  { personalNumber: "" },
+  { firstName: "" },
+  { firstName: "   " },
+  { lastName: "" },
+  { gender: undefined },
+  { phone: undefined },
+  { personalNumber: "1234567" },
   { email: "" },
   { email: undefined },
   { email: "bad" },
@@ -111,10 +116,10 @@ describe("technical single-user intake", () => {
     const [person] = await db.select().from(soldiers);
     expect(person).toMatchObject({
       id: created.id,
-      name: form.name,
-      personalNumber: form.personalNumber,
+      name: "משתמש חדש לבדיקה",
       version: 1,
     });
+    expect(person.idNumber).toBeGreaterThan(0);
     expect(person.data).toMatchObject({
       qualifications: [],
       exemptions: [],
@@ -125,7 +130,7 @@ describe("technical single-user intake", () => {
       {
         soldierId: created.id,
         email: form.email.toLowerCase(),
-        phone: null,
+        phone: form.phone,
         address: null,
       },
     ]);
@@ -153,7 +158,7 @@ describe("technical single-user intake", () => {
       targetId: account.id,
     });
     expect(JSON.stringify(event.data)).not.toContain(form.email);
-    expect(JSON.stringify(event.data)).not.toContain(form.personalNumber);
+    expect(JSON.stringify(event.data)).not.toContain(form.phone);
     const state = await readState(technical);
     expect(state.soldiers).toEqual([]);
     expect(state.ledger).toEqual([]);
@@ -166,7 +171,7 @@ describe("technical single-user intake", () => {
       },
     ]);
     expect(JSON.stringify(state)).not.toContain(form.email.toLowerCase());
-    expect(JSON.stringify(state)).not.toContain(form.personalNumber);
+    expect(JSON.stringify(state)).not.toContain(form.phone);
   });
   it("grants the existing manager role, revokes old access and lets a fresh manager intake another soldier", async () => {
     const created = await create();
@@ -215,9 +220,11 @@ describe("technical single-user intake", () => {
       securityEpoch: updated.securityEpoch,
     };
     await send(manager, "soldier.create", {
-      name: "קליטה על ידי אחראי חדש",
-      personalNumber: "00000115",
+      firstName: "קליטה",
+      lastName: "על ידי אחראי חדש",
+      gender: "female",
       email: "next-114@example.invalid",
+      phone: "0500000115",
     });
     expect(await db.select().from(soldiers)).toHaveLength(2);
     expect(
@@ -261,7 +268,7 @@ describe("technical single-user intake", () => {
       expect(await snapshot()).toEqual(before);
     }
   );
-  it("rejects duplicate identity and normalized email, including a deleted personal number", async () => {
+  it("refuses a normalized email that is taken and warns on the same name until it is confirmed", async () => {
     const created = await create();
     await db
       .update(balances)
@@ -270,26 +277,30 @@ describe("technical single-user intake", () => {
     const before = await snapshot();
     expect(
       await refused(create({ ...form, email: "other@example.invalid" }))
-    ).toEqual({ status: 409, code: "personal_number_exists" });
+    ).toEqual({ status: 409, code: "duplicate_name" });
     expect(
       await refused(
         create({
           ...form,
-          personalNumber: "00000116",
+          firstName: "אחר",
           email: form.email.toLowerCase(),
         })
       )
     ).toEqual({ status: 409, code: "email_exists" });
     expect(await snapshot()).toEqual(before);
+    await create({
+      ...form,
+      email: "other@example.invalid",
+      duplicateNameConfirmed: true,
+    });
+    expect(await db.select().from(soldiers)).toHaveLength(2);
+    // A deleted soldier keeps the name, but no longer prompts the warning.
     await db
       .update(soldiers)
       .set({ deletedAt: new Date() })
-      .where(eq(soldiers.id, created.id));
-    const erased = await snapshot();
-    expect(
-      await refused(create({ ...form, email: "other@example.invalid" }))
-    ).toEqual({ status: 409, code: "personal_number_exists" });
-    expect(await snapshot()).toEqual(erased);
+      .where(eq(soldiers.name, "משתמש חדש לבדיקה"));
+    await create({ ...form, email: "third@example.invalid" });
+    expect(await db.select().from(soldiers)).toHaveLength(3);
   });
   it("replays one idempotent result and refuses a reused key for a different identity", async () => {
     const key = randomUUID();
@@ -297,15 +308,17 @@ describe("technical single-user intake", () => {
     const before = await snapshot();
     expect(await create(form, key)).toEqual(first);
     expect(await snapshot()).toEqual(before);
-    expect(await refused(create({ ...form, name: "אחר" }, key))).toMatchObject({
+    expect(
+      await refused(create({ ...form, firstName: "אחר" }, key))
+    ).toMatchObject({
       status: 409,
       code: "idempotency_conflict",
     });
   });
   it.each([
     {},
-    { personalNumber: "00000999" },
-    { email: "same-number-114@example.invalid" },
+    { duplicateNameConfirmed: true },
+    { email: "same-name-114@example.invalid" },
   ])(
     "serializes competing creations from two technical accounts without duplicate invitations: %j",
     async (change) => {

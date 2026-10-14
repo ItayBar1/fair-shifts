@@ -188,8 +188,8 @@ assert.equal(process.getuid(), 999);
 assert.equal(execFileSync('find', ['node_modules', '-type', 'f', '-path', '*/esbuild/bin/esbuild'], {encoding:'utf8'}), '');
 const workbook = new ExcelJS.Workbook();
 const sheet = workbook.addWorksheet('\u05d7\u05d9\u05d9\u05dc\u05d9\u05dd');
-sheet.addRow(['\u05de\u05e1\u05e4\u05e8 \u05d0\u05d9\u05e9\u05d9']);
-sheet.addRow(['0000002']);
+sheet.addRow(['\u05de\u05e1\u05e4\u05e8 \u05d6\u05d9\u05d4\u05d5\u05d9']);
+sheet.addRow(['2']);
 const child = fork('runtime/src/server/import-workbook-child.mjs', [], {
   execArgv: ['--max-old-space-size=128', '--max-semi-space-size=4'],
   env: {NODE_ENV:'production'}, serialization:'advanced', stdio:['ignore','ignore','ignore','ipc']
@@ -204,15 +204,15 @@ const result = await new Promise((resolve,reject) => {
 clearTimeout(timeout);
 child.kill('SIGKILL');
 assert.equal(result.error, undefined, 'Compiled workbook parser rejected the synthetic template');
-assert.equal(result.rows?.[0]?.values.personalNumber, '0000002');
+assert.equal(result.rows?.[0]?.values.idNumber, 2);
 console.log('Compiled workbook IPC and runtime UID verified');
 NODE
 
 step 'Operations restores an encrypted backup; decryption key stays outside server containers'
 # Synthetic accounts: a restore without a technical account does not pass its checks.
 production exec -T -e TECHNICAL_EMAIL=technical@example.invalid -e TECHNICAL_NAME="Technical admin" \
-  -e MANAGER_EMAIL=manager@example.invalid -e MANAGER_NAME="Test manager" \
-  -e MANAGER_PERSONAL_NUMBER=0000001 app node scripts/run-runtime.mjs scripts/bootstrap.ts >/dev/null
+  -e MANAGER_EMAIL=manager@example.invalid -e MANAGER_FIRST_NAME=Test -e MANAGER_LAST_NAME=Manager \
+  -e MANAGER_GENDER=other -e MANAGER_PHONE=0500000001 app node scripts/run-runtime.mjs scripts/bootstrap.ts >/dev/null
 # The identity lives on this computer only; the server gets the public key.
 key_dir=$(mktemp -d "${TMPDIR:-/tmp}/fair-shifts-smoke-key.XXXXXX")
 chmod 755 "$key_dir"
