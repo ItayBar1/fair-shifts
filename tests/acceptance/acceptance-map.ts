@@ -102,6 +102,7 @@ const I = {
   techIntake: "tests/integration/technical-user-create.test.ts",
 } as const;
 const E = {
+  soldierRank: "tests/e2e/soldier-rank-edit.spec.ts",
   myProfile: "tests/e2e/my-profile.spec.ts",
   mine: "tests/e2e/my-assignments.spec.ts",
   access: "tests/e2e/access-lifecycle.spec.ts",
@@ -900,6 +901,16 @@ export const stories: Record<number, Entry> = {
   ),
   55: covered([
     ...t(
+      I.intake,
+      "stores an initial approved rank from the catalog with its effective date, once across retries",
+      "keeps a confirmed future rank out of the current rank until its effective date",
+      "rejects a record of another kind as a rank without creating a soldier"
+    ),
+    ...t(
+      E.soldierRank,
+      "manager adds a soldier with a rank and updates it in the profile"
+    ),
+    ...t(
       I.auth,
       "creates one tenure reminder without promoting and requires an explicit versioned decision",
       "recalculates open reminders on a rule change and never overwrites a manually approved future rank"
@@ -1130,6 +1141,10 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   4: covered([
+    ...t(
+      E.soldierRank,
+      "manager adds a soldier with a rank and updates it in the profile"
+    ),
     ...t(
       I.invitations,
       "stores soldiers and permits sign-in before any invitation is published",
@@ -1721,6 +1736,15 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   38: covered([
+    ...t(
+      I.intake,
+      "stores an initial approved rank from the catalog with its effective date, once across retries",
+      "keeps a confirmed future rank out of the current rank until its effective date"
+    ),
+    ...t(
+      E.soldierRank,
+      "manager adds a soldier with a rank and updates it in the profile"
+    ),
     ...t(
       I.auth,
       "creates one tenure reminder without promoting and requires an explicit versioned decision",

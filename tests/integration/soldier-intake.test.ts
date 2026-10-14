@@ -7,6 +7,7 @@ import {
   assignments,
   balances,
   ledger,
+  records,
   soldierContacts,
   soldiers,
 } from "../../src/server/schema";
@@ -17,6 +18,7 @@ import {
 import { executeAction } from "../../src/server/actions";
 import { errorResponse } from "../../src/server/http";
 import { soldier, testIdNumber } from "../fixtures";
+import { rankAt } from "../../src/domain/eligibility";
 
 if (
   !process.env.TEST_DATABASE_URL ||
@@ -102,6 +104,51 @@ beforeEach(async () => {
 afterAll(async () => pool.end());
 
 describe("adding a soldier with the form", () => {
+  it("stores an initial approved rank from the catalog with its effective date, once across retries", async () => {
+    const rankId = randomUUID();
+    await db.insert(records).values({
+      id: rankId,
+      kind: "rank_catalog",
+      data: { name: "סמל לבדיקה", track: "חוגרים", order: 2 },
+    });
+    const key = randomUUID();
+    const payload = { ...form, rankId, rankEffectiveDate: "2026-01-15" };
+    const created = await create(payload, key);
+    expect(await create(payload, key)).toEqual(created);
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, created.id));
+    expect(person.data.rankHistory).toEqual([
+      { rankId, trackId: "חוגרים", order: 2, effectiveFrom: "2026-01-15" },
+    ]);
+    expect(created.version).toBe(1);
+    expect(rankAt(person.data, "2026-01-14T21:59:59Z")).toBeUndefined();
+    expect(rankAt(person.data, "2026-01-14T22:00:00Z")?.rankId).toBe(rankId);
+  });
+
+  it("keeps a confirmed future rank out of the current rank until its effective date", async () => {
+    const rankId = randomUUID();
+    await db.insert(records).values({
+      id: rankId,
+      kind: "rank_catalog",
+      data: { name: "קא״ב לבדיקה", track: "קמ״א", order: 1 },
+    });
+    const created = await create({
+      ...form,
+      population: "academic",
+      rankId,
+      rankEffectiveDate: "2099-06-01",
+    });
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, created.id));
+    expect(rankAt(person.data, "2099-05-31T20:59:59Z")).toBeUndefined();
+    expect(rankAt(person.data, "2099-05-31T21:00:00Z")?.rankId).toBe(rankId);
+    expect(person.data.service.basePopulation).toBe("academic");
+  });
+
   it("creates the record, the contact, a zero balance, an invited account and its invitation", async () => {
     const created = await create(form);
     const [person] = await db
@@ -244,6 +291,30 @@ describe("a form that cannot be saved", () => {
       422,
       "invalid_input",
     ],
+    [
+      "with a rank but no effective date",
+      { rankId: randomUUID() },
+      422,
+      "invalid_input",
+    ],
+    [
+      "with an effective date but no rank",
+      { rankEffectiveDate: "2026-01-15" },
+      422,
+      "invalid_input",
+    ],
+    [
+      "with an invalid rank date",
+      { rankId: randomUUID(), rankEffectiveDate: "2026-02-30" },
+      422,
+      "invalid_input",
+    ],
+    [
+      "with an unknown rank",
+      { rankId: randomUUID(), rankEffectiveDate: "2026-01-15" },
+      404,
+      "not_found",
+    ],
   ];
   it.each(bad)(
     "refuses a form %s and writes nothing",
@@ -290,6 +361,19 @@ describe("a form that cannot be saved", () => {
       .from(soldiers)
       .where(eq(soldiers.id, created.id));
     expect(person.idNumber).not.toBe(987654);
+  });
+  it("rejects a record of another kind as a rank without creating a soldier", async () => {
+    const rankId = randomUUID();
+    await db
+      .insert(records)
+      .values({ id: rankId, kind: "notification", data: {} });
+    const before = await counts();
+    expect(
+      await refused(
+        create({ ...form, rankId, rankEffectiveDate: "2026-01-15" })
+      )
+    ).toMatchObject({ status: 404, code: "not_found" });
+    expect(await counts()).toEqual(before);
   });
   it("creates one soldier when the same form is sent twice, and refuses the key for another form", async () => {
     const key = randomUUID();

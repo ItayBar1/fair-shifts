@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   fullName,
+  initialRankInput,
   nameKey,
   profileInput,
   technicalUserInput,
@@ -10,6 +11,7 @@ import {
 import {
   audit,
   currentVersion,
+  findRecord,
   loadDomain,
   manager,
   type Actor,
@@ -133,6 +135,20 @@ async function persistSoldier(
     );
   const id = existing?.id ?? randomUUID();
   const data = profileData(id, input, existing?.data, existing?.version);
+  if (!existing) {
+    const initialRank = initialRankInput.parse(payload);
+    if (initialRank.rankId) {
+      const rank = await findRecord(tx, "rank_catalog", initialRank.rankId);
+      data.rankHistory = [
+        {
+          rankId: rank.id,
+          trackId: String(rank.data.track),
+          order: Number(rank.data.order),
+          effectiveFrom: initialRank.rankEffectiveDate!,
+        },
+      ];
+    }
+  }
   if (existing && populationMoves(existing.data, data)) {
     if (!options.populationReviewed) {
       const confirmation = z

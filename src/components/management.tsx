@@ -72,7 +72,7 @@ const nameParts = (s?: Row) => {
     lastName: str(s?.lastName, rest.join(" ")),
   };
 };
-const soldierFields = (s?: Row): Field[] => [
+const soldierFields = (state: AppState, s?: Row): Field[] => [
   {
     name: "firstName",
     label: "שם פרטי",
@@ -132,6 +132,7 @@ const soldierFields = (s?: Row): Field[] => [
     ],
     value: str(s?.serviceType, "mandatory"),
   },
+  ...(s ? [] : initialRankFields(state)),
   {
     name: "enlistmentDate",
     label: "תאריך גיוס",
@@ -184,6 +185,92 @@ const soldierFields = (s?: Row): Field[] => [
   },
   ...(s ? [] : [duplicateNameField]),
 ];
+const rankOptions = (state: AppState) =>
+  rows(state.rankCatalog).map((rank) => ({
+    value: rank.id,
+    label: `${str(rank.name)} · ${str(rank.track)}`,
+  }));
+const initialRankFields = (state: AppState): Field[] => [
+  {
+    name: "rankId",
+    label: "דרגה מאושרת (רשות)",
+    type: "select",
+    options: rankOptions(state),
+    hint: rows(state.rankCatalog).length
+      ? "אפשר לקלוט חייל ללא דרגה. בחירת דרגה מחייבת תאריך תחולה."
+      : "עדיין אין דרגות לבחירה. אפשר להוסיף אותן במסך דרגות ופז״ם, או לקלוט ללא דרגה.",
+  },
+  {
+    name: "rankEffectiveDate",
+    label: "תאריך תחולת הדרגה",
+    type: "date",
+    hint: "ממלאים יחד עם הדרגה; אפשר להזין גם שינוי עתידי שכבר אושר.",
+  },
+];
+
+function SoldierRankEdit({
+  state,
+  person,
+  action,
+  onDone,
+}: {
+  state: AppState;
+  person: Row;
+  action: Action;
+  onDone: () => void;
+}) {
+  return (
+    <section className="subsection" aria-label="עדכון דרגת החייל">
+      <h3>עדכון דרגה מאושרת</h3>
+      <p className="muted">
+        השינוי נשמר בהיסטוריה לפי תאריך התחולה. שיבוצים שנפגעו יסומנו לטיפול.
+      </p>
+      {rows(state.rankCatalog).length ? (
+        <Form
+          fields={[
+            {
+              name: "rankId",
+              label: "דרגה מאושרת",
+              type: "select",
+              required: true,
+              options: rankOptions(state),
+              value: str(person.rankId),
+            },
+            {
+              name: "effectiveDate",
+              label: "תאריך תחולת הדרגה",
+              type: "date",
+              required: true,
+            },
+            {
+              name: "reason",
+              label: "סיבת עדכון הדרגה",
+              required: true,
+              full: true,
+            },
+          ]}
+          submitLabel="שמירת הדרגה המאושרת"
+          onSubmit={async (values) => {
+            await action(
+              "rank.set",
+              { ...values, soldierId: person.id },
+              person.version
+            );
+            onDone();
+          }}
+        />
+      ) : (
+        <Notice>
+          כדי לבחור דרגה, יש להוסיף תחילה דרגות ב
+          <Link className="text-link" href="/manage/ranks">
+            דרגות ופז״ם
+          </Link>
+          .
+        </Notice>
+      )}
+    </section>
+  );
+}
 /** Service dates derived by the server, shown so a manager sees them before planning. */
 function ServiceDates({ person }: { person: Row }) {
   const facts = [
@@ -242,7 +329,7 @@ export function SoldiersView({
         actions={
           <ActionDialog
             title="הוספת חייל"
-            fields={soldierFields()}
+            fields={soldierFields(state)}
             action={action}
             type="soldier.create"
             description="לאחר הקליטה החייל יוכל להתחבר באמצעות המייל המאושר."
@@ -403,11 +490,23 @@ export function SoldiersView({
             <AuditLink id={selected.id} label="יומן הפעולות של החייל" />
           </div>
           <ServiceDates person={selected} />
+          <p>
+            דרגה נוכחית: <strong>{str(selected.rankName, "דרגה חסרה")}</strong>
+            {selected.rankTrack ? (
+              <> · מסלול {str(selected.rankTrack)}</>
+            ) : null}
+          </p>
           <ProfileEdit
             person={selected}
-            fields={soldierFields(selected).filter(
+            fields={soldierFields(state, selected).filter(
               (f) => !["email", "currentScore"].includes(f.name)
             )}
+            action={action}
+            onDone={() => setSelected(null)}
+          />
+          <SoldierRankEdit
+            state={state}
+            person={selected}
             action={action}
             onDone={() => setSelected(null)}
           />
