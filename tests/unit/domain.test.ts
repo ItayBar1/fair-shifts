@@ -182,21 +182,61 @@ describe("eligibility", () => {
       "rank",
     ]);
   });
-  it("checks qualification throughout the execution", () => {
+  it("checks a dated capability throughout the execution", () => {
     const long = duty({
       end: "2026-09-28T08:00:00+03:00",
-      requirements: { qualificationIds: ["q"] },
+      requirements: { capabilityIds: ["q"] },
     });
     const person = soldier({
-      qualifications: [
-        { qualificationId: "q", start: "2026-01-01", end: "2026-09-27" },
+      capabilities: [
+        { capabilityId: "q", start: "2026-01-01", end: "2026-09-27" },
       ],
     });
     expect(
       evaluateEligibility(person, long, long.slots[0], context).blockers.map(
-        (item) => item.code
+        (item) => item.message
       )
-    ).toContain("qualification");
+    ).toContain("יכולת נדרשת אינה בתוקף לכל הביצוע");
+  });
+  it("treats missing capability and exemption dates as open (decision 224)", () => {
+    const required = duty({ requirements: { capabilityIds: ["q"] } });
+    const codes = (person: ReturnType<typeof soldier>) =>
+      evaluateEligibility(person, required, required.slots[0], context)
+        .blockers.map((item) => item.code)
+        .filter((code) => code === "capability");
+    expect(codes(soldier({ capabilities: [{ capabilityId: "q" }] }))).toEqual(
+      []
+    );
+    expect(
+      codes(
+        soldier({ capabilities: [{ capabilityId: "q", start: "2026-01-01" }] })
+      )
+    ).toEqual([]);
+    expect(
+      codes(
+        soldier({ capabilities: [{ capabilityId: "q", end: "2026-01-01" }] })
+      )
+    ).toEqual(["capability"]);
+    expect(
+      codes(
+        soldier({ capabilities: [{ capabilityId: "q", start: "2099-01-01" }] })
+      )
+    ).toEqual(["capability"]);
+    const blocking = duty({ requirements: { blockingExemptionIds: ["x"] } });
+    const exempt = (person: ReturnType<typeof soldier>) =>
+      evaluateEligibility(person, blocking, blocking.slots[0], {
+        ...context,
+        mode: "automatic",
+      }).blockers.some((item) => item.code === "exemption");
+    expect(exempt(soldier({ exemptions: [{ exemptionId: "x" }] }))).toBe(true);
+    expect(
+      exempt(
+        soldier({ exemptions: [{ exemptionId: "x", start: "2026-01-01" }] })
+      )
+    ).toBe(true);
+    expect(
+      exempt(soldier({ exemptions: [{ exemptionId: "x", end: "2026-01-01" }] }))
+    ).toBe(false);
   });
   it("checks populations for the entire duty", () => {
     const long = duty({

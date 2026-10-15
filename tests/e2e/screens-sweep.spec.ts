@@ -68,7 +68,7 @@ const screens: Record<Key, { path: string; title: string }[]> = {
     { path: "/notifications", title: "הודעות" },
     { path: "/settings", title: "העדפות אישיות" },
     { path: "/manage/soldiers", title: "חיילי היחידה" },
-    { path: "/manage/eligibility", title: "פטורים וכשירויות" },
+    { path: "/manage/eligibility", title: "פטורים ויכולות" },
     { path: "/manage/ranks", title: "דרגות ופז״ם" },
     { path: "/manage/constraints", title: "סבבי אילוצים" },
     { path: "/manage/catalog", title: "קטלוג תורנויות" },

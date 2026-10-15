@@ -54,7 +54,6 @@ try {
       },
       populationHistory: [],
       rankHistory: [],
-      qualifications: [],
       exemptions: [],
       inactivePeriods: [],
       constraints: [],

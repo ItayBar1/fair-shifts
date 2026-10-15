@@ -134,6 +134,13 @@
       "when": 1792001476296,
       "tag": "0018_drop_personal_number",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792103773060,
+      "tag": "0019_capability_validity",
+      "breakpoints": true
     }
   ]
 }

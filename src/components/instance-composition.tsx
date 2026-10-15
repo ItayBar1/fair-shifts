@@ -300,14 +300,6 @@ export function CompositionEditor({
                 }
               />
               <ConditionToggles
-                legend={`כשירויות נדרשות לתפקיד ${role.name || index + 1}`}
-                options={catalogOptions("qualification")}
-                value={role.requirements.qualificationIds ?? []}
-                onChange={(value) =>
-                  updateRequirements(index, { qualificationIds: value })
-                }
-              />
-              <ConditionToggles
                 legend={`פטורים פוסלים לתפקיד ${role.name || index + 1}`}
                 options={catalogOptions("exemption")}
                 value={role.requirements.blockingExemptionIds ?? []}

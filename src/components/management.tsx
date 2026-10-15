@@ -37,11 +37,18 @@ import { DutyList, dutyStatus } from "./views";
 import {
   defaultPopulations,
   filterSoldiers,
+  noHeldFilter,
   rankTracks,
 } from "@/client/soldier-filters";
 import { RankRequirements } from "./rank-requirements";
 import { PeriodPlanning } from "./planning";
-import { AddPeriod, PersonnelHistory, ProfileEdit } from "./personnel-history";
+import {
+  AddPeriod,
+  CatalogEntryAdd,
+  PersonnelHistory,
+  ProfileEdit,
+} from "./personnel-history";
+import { HeldFilters } from "./held-filters";
 import { AuditLink } from "./audit";
 import { SoldierDeletion } from "./soldier-deletion";
 import {
@@ -305,6 +312,7 @@ export function SoldiersView({
   const defaults = defaultPopulations(state.actor.responsibility);
   const [shown, setShown] = useState<string[]>(defaults);
   const [rank, setRank] = useState("");
+  const [held, setHeld] = useState(noHeldFilter);
   const tracks = rankTracks(rows(state.rankCatalog));
   const [selectedRecord, setSelected] = useState<Row | null>(null);
   const selected = selectedRecord
@@ -315,9 +323,12 @@ export function SoldiersView({
     search,
     populations: shown,
     rank,
+    held,
   });
   const isDefault =
     !rank &&
+    !held.capability &&
+    !held.exemption &&
     shown.length === defaults.length &&
     defaults.every((value) => shown.includes(value));
   return (
@@ -384,12 +395,14 @@ export function SoldiersView({
               </optgroup>
             ))}
           </select>
+          <HeldFilters state={state} value={held} onChange={setHeld} />
           {!isDefault && (
             <button
               className="btn small secondary"
               onClick={() => {
                 setShown(defaults);
                 setRank("");
+                setHeld(noHeldFilter());
               }}
             >
               חזרה לברירת המחדל
@@ -510,12 +523,32 @@ export function SoldiersView({
             onDone={() => setSelected(null)}
           />
           <details className="disclosure">
-            <summary>מועדי שירות, כשירות והיסטוריה</summary>
+            <summary>יכולות ופטורים</summary>
             <div className="stack">
               <PersonnelHistory
                 state={state}
                 action={action}
                 person={selected}
+                kinds={["capability", "exemption"]}
+                empty="אין יכולות או פטורים."
+              />
+              <h3>הוספת יכולת או פטור</h3>
+              <CatalogEntryAdd
+                state={state}
+                action={action}
+                soldierId={selected.id}
+              />
+            </div>
+          </details>
+          <details className="disclosure">
+            <summary>מועדי שירות, אי־פעילות והיסטוריה</summary>
+            <div className="stack">
+              <PersonnelHistory
+                state={state}
+                action={action}
+                person={selected}
+                kinds={["inactive"]}
+                empty="אין תקופות אי־פעילות."
               />
               {["populationHistory", "rankHistory"].map((key) =>
                 rows(selected[key]).map((entry, i) => (
@@ -595,11 +628,10 @@ export function SoldiersView({
             </div>
           </details>
           <details className="disclosure">
-            <summary>תנאי התאמה אישיים: מגדר, יכולות ושעות</summary>
+            <summary>תנאי התאמה אישיים: מגדר ושעות</summary>
             <div className="stack">
               <SoldierConditions
                 key={String(selected.version)}
-                state={state}
                 action={action}
                 person={selected}
               />
@@ -673,23 +705,31 @@ export function EligibilityView({
   action: Action;
 }) {
   const catalogs = rows(state.eligibilityCatalog);
-  const peopleWithPeriods = state.soldiers.filter(
+  const [catalogId, setCatalogId] = useState("");
+  const listed = state.soldiers.filter(
     (person) =>
       !person.deletedAt &&
-      [person.qualifications, person.exemptions, person.inactivePeriods].some(
-        (value) => rows(value).length
-      )
+      (catalogId
+        ? [person.capabilities, person.exemptions].some((value) =>
+            rows(value).some(
+              (entry) => (entry.capabilityId ?? entry.exemptionId) === catalogId
+            )
+          )
+        : [person.capabilities, person.exemptions, person.inactivePeriods].some(
+            (value) => rows(value).length
+          ))
   );
   return (
     <>
       <Notice>
-        פטורים, כשירויות ויכולות מוזנים לאחר בדיקת האחראי. יכולות משויכות לחייל
-        בפרופיל שלו, בלי תוקף. שינוי נתונים מסמן שיבוצים שנפגעו לטיפול ואינו
-        מבטל אותם אוטומטית.
+        יכולות ופטורים מוזנים לאחר בדיקת האחראי, עם תאריך התחלה ותאריך סיום. בלי
+        תאריך סיום הם קבועים. יכולת נדרשת חייבת להיות בתוקף לכל משך התורנות;
+        פטור חוסם אם הוא חל בחלק ממנה. שינוי נתונים מסמן שיבוצים שנפגעו לטיפול
+        ואינו מבטל אותם אוטומטית.
       </Notice>
       <div className="two-columns">
         <Panel
-          title="סוגי פטורים, כשירויות ויכולות"
+          title="סוגי פטורים ויכולות"
           actions={
             <ActionDialog
               title="הגדרה חדשה"
@@ -700,9 +740,8 @@ export function EligibilityView({
                   type: "select",
                   required: true,
                   options: [
-                    { value: "qualification", label: "כשירות נדרשת" },
+                    { value: "capability", label: "יכולת" },
                     { value: "exemption", label: "פטור" },
-                    { value: "capability", label: "יכולת (ללא תוקף)" },
                   ],
                 },
                 { name: "name", label: "שם", required: true },
@@ -728,13 +767,7 @@ export function EligibilityView({
                   <strong>{str(c.name)}</strong>
                   <small>{str(c.description)}</small>
                 </span>
-                <Badge>
-                  {c.kind === "exemption"
-                    ? "פטור"
-                    : c.kind === "capability"
-                      ? "יכולת"
-                      : "כשירות"}
-                </Badge>
+                <Badge>{c.kind === "exemption" ? "פטור" : "יכולת"}</Badge>
                 <ActionDialog
                   title={`עריכת ${str(c.name)}`}
                   action={action}
@@ -762,80 +795,49 @@ export function EligibilityView({
           ) : (
             <Empty
               title="הקטלוג עדיין ריק"
-              text="מגדירים סוג פטור או כשירות, ואז משייכים אותו לחיילים ולסוגי תורנות."
+              text="מגדירים יכולת (למשל מטווחים או רישיון נהיגה) או פטור, ואז משייכים אותם לחיילים ולסוגי תורנות."
             />
           )}
         </Panel>
-        <Panel title="שיוך לחייל" subtitle="תוקף הכשירות נבדק לכל משך התורנות">
-          <AddPeriod
-            state={state}
-            action={action}
-            fields={[
-              {
-                name: "soldierId",
-                label: "חייל",
-                type: "select",
-                required: true,
-                options: state.soldiers
-                  .filter((s) => !s.deletedAt)
-                  .map((s) => ({ value: s.id, label: str(s.name) })),
-              },
-              {
-                name: "kind",
-                label: "מה משייכים",
-                type: "select",
-                required: true,
-                options: [
-                  { value: "qualification", label: "כשירות" },
-                  { value: "exemption", label: "פטור" },
-                ],
-              },
-              {
-                name: "value",
-                label: "סוג מהקטלוג",
-                type: "select",
-                required: true,
-                options: catalogs
-                  .filter((c) => c.kind !== "capability")
-                  .map((c) => ({
-                    value: c.id,
-                    label: str(c.name),
-                  })),
-              },
-              {
-                name: "startDate",
-                label: "תחילת תוקף",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "endDate",
-                label: "סיום תוקף (כולל)",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "reason",
-                label: "הערת אחראי",
-                type: "textarea",
-                full: true,
-              },
-            ]}
-            submitLabel="בדיקת השפעת השיוך"
-          />
+        <Panel
+          title="שיוך לחייל"
+          subtitle="תחילת התוקף היא היום כברירת מחדל; בלי תאריך סיום השיוך קבוע"
+        >
+          <CatalogEntryAdd state={state} action={action} />
         </Panel>
       </div>
-      <Panel title="תקופות קיימות ועריכה">
-        {!peopleWithPeriods.length && (
+      <Panel
+        title="יכולות ופטורים קיימים"
+        actions={
+          <select
+            aria-label="סינון לפי סוג מהקטלוג"
+            value={catalogId}
+            onChange={(e) => setCatalogId(e.target.value)}
+          >
+            <option value="">כל השיוכים ותקופות אי־הפעילות</option>
+            {catalogs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {str(c.name)} · {c.kind === "exemption" ? "פטור" : "יכולת"}
+              </option>
+            ))}
+          </select>
+        }
+      >
+        {!listed.length && (
           <Empty
-            title="אין תקופות קיימות"
-            text="לאחר שיוך לחייל אפשר לשנות תוקף או להסיר תקופה, עם בדיקת ההשפעה על השיבוצים."
+            title={catalogId ? "אין חיילים עם השיוך הזה" : "אין שיוכים קיימים"}
+            text="לאחר שיוך לחייל אפשר לשנות תוקף או להסיר, עם בדיקת ההשפעה על השיבוצים."
           />
         )}
-        {peopleWithPeriods.map((person) => (
+        {listed.map((person) => (
           <div className="subsection" key={person.id}>
             <h3>{str(person.name)}</h3>
-            <PersonnelHistory state={state} action={action} person={person} />
+            <PersonnelHistory
+              state={state}
+              action={action}
+              person={person}
+              catalogId={catalogId}
+            />
           </div>
         ))}
       </Panel>
@@ -939,17 +941,6 @@ function CatalogForm({
       value: str(initial?.description),
     },
     {
-      name: "qualificationIds",
-      label: "כשירויות נדרשות",
-      type: "multiselect",
-      options: rows(state.eligibilityCatalog)
-        .filter((r) => r.kind === "qualification")
-        .map((r) => ({ value: r.id, label: str(r.name) })),
-      value: Array.isArray(initial?.qualificationIds)
-        ? initial.qualificationIds.map(String)
-        : [],
-    },
-    {
       name: "exemptionIds",
       label: "פטורים פוסלים",
       type: "multiselect",
@@ -976,6 +967,7 @@ function CatalogForm({
       value: Array.isArray(initial?.capabilityIds)
         ? initial.capabilityIds.map(String)
         : [],
+      hint: "כל יכולת נדרשת חייבת להיות בתוקף לכל משך התורנות",
     },
   ];
   if (bonus)
@@ -1065,7 +1057,6 @@ function CatalogForm({
               },
               restBeforeMinutes: v.restBeforeMinutes,
               restAfterMinutes: v.restAfterMinutes,
-              qualificationIds: v.qualificationIds,
               exemptionIds: v.exemptionIds,
               genders: v.genders,
               capabilityIds: v.capabilityIds,

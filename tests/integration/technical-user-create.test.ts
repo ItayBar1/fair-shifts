@@ -121,7 +121,7 @@ describe("technical single-user intake", () => {
     });
     expect(person.idNumber).toBeGreaterThan(0);
     expect(person.data).toMatchObject({
-      qualifications: [],
+      capabilities: [],
       exemptions: [],
       rankHistory: [],
       service: { graceEligible: false },

@@ -6,6 +6,7 @@ import {
   instant,
   interval,
   localDate,
+  openDatesToInstants,
   overlaps,
   releaseBoundary,
 } from "./time";
@@ -315,21 +316,18 @@ export function evaluateEligibility(
       else if (!genders.includes(soldier.gender))
         block("gender", "תנאי המגדר אינו מתקיים", reference);
     }
-    for (const capability of requirements.capabilityIds ?? []) {
-      if (!soldier.capabilities?.includes(capability))
-        block("capability", "יכולת נדרשת אינה רשומה לחייל", capability);
-    }
-    for (const qualificationId of requirements.qualificationIds ?? []) {
-      const ranges = soldier.qualifications
-        .filter(
-          (qualification) => qualification.qualificationId === qualificationId
-        )
-        .map(datesToInstants);
+    // A required capability must be valid for the whole duty (decision 224).
+    for (const capabilityId of requirements.capabilityIds ?? []) {
+      const ranges = (soldier.capabilities ?? [])
+        .filter((capability) => capability.capabilityId === capabilityId)
+        .map(openDatesToInstants);
       if (!coveredByRanges(target, ranges))
         block(
-          "qualification",
-          "כשירות נדרשת אינה תקפה לכל הביצוע",
-          qualificationId
+          "capability",
+          ranges.length
+            ? "יכולת נדרשת אינה בתוקף לכל הביצוע"
+            : "יכולת נדרשת אינה רשומה לחייל",
+          capabilityId
         );
     }
     for (const exemptionId of requirements.blockingExemptionIds ?? []) {
@@ -337,7 +335,7 @@ export function evaluateEligibility(
         !soldier.exemptions.some(
           (exemption) =>
             exemption.exemptionId === exemptionId &&
-            overlaps(target, datesToInstants(exemption))
+            overlaps(target, openDatesToInstants(exemption))
         )
       )
         continue;

@@ -122,7 +122,6 @@ export function withoutConditions(person: Soldier): Soldier {
   const next: Soldier = {
     ...person,
     exemptions: [],
-    qualifications: [],
     inactivePeriods: [],
     constraints: [],
     capabilities: [],
@@ -136,7 +135,6 @@ export function withoutConditions(person: Soldier): Soldier {
 export function hasConditions(person: Soldier) {
   return (
     person.exemptions.length > 0 ||
-    person.qualifications.length > 0 ||
     person.inactivePeriods.length > 0 ||
     Boolean(person.gender) ||
     (person.capabilities ?? []).length > 0 ||

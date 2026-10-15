@@ -1,6 +1,5 @@
 "use client";
-import { type ReactNode, useState } from "react";
-import Link from "next/link";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import {
   type AppState,
@@ -40,14 +39,12 @@ export function ConditionToggles({
   value,
   onChange,
   hint,
-  empty = "אין ערכים בקטלוג",
 }: {
   legend: string;
   options: { value: string; label: string }[];
   value: string[];
   onChange: (value: string[]) => void;
   hint?: string;
-  empty?: ReactNode;
 }) {
   return (
     <fieldset className="toggle-group">
@@ -70,7 +67,7 @@ export function ConditionToggles({
           </label>
         ))
       ) : (
-        <span className="muted">{empty}</span>
+        <span className="muted">אין ערכים בקטלוג</span>
       )}
       {hint && <small className="muted">{hint}</small>}
     </fieldset>
@@ -126,22 +123,18 @@ export function describeWindow(window: Row) {
 }
 
 /**
- * The manager replaces a soldier's gender, capabilities and personal hours
- * limits as one set, after reviewing which reserved assignments it affects.
+ * The manager replaces a soldier's gender and personal hours limits as one set,
+ * after reviewing which reserved assignments it affects. Capabilities are dated
+ * entries since decision 224 and are added beside exemptions.
  */
 export function SoldierConditions({
-  state,
   action,
   person,
 }: {
-  state: AppState;
   action: Action;
   person: Row;
 }) {
   const [gender, setGender] = useState(str(person.gender));
-  const [capabilities, setCapabilities] = useState<string[]>(
-    Array.isArray(person.capabilities) ? person.capabilities.map(String) : []
-  );
   const [limits, setLimits] = useState<Limit[]>(() => limitsOf(person));
   const [reason, setReason] = useState("");
   const [draft, setDraft] = useState<{
@@ -149,7 +142,6 @@ export function SoldierConditions({
     version?: number;
     preview: Record<string, unknown>;
   } | null>(null);
-  const options = capabilityOptions(state);
   const updateLimit = (key: string, change: Partial<Limit>) =>
     setLimits(
       limits.map((limit) =>
@@ -226,7 +218,6 @@ export function SoldierConditions({
         const payload = {
           soldierId: person.id,
           gender,
-          capabilityIds: capabilities,
           allowedHours: limits.map((limit) => ({
             id: limit.id,
             start: limit.start,
@@ -259,22 +250,6 @@ export function SoldierConditions({
             ))}
           </select>
         </label>
-        <ConditionToggles
-          legend="יכולות"
-          options={options}
-          value={capabilities}
-          onChange={setCapabilities}
-          hint="מאפיינים קבועים בלי תוקף, כמו רישיון נהיגה, שסוג תורנות או תפקיד יכולים לדרוש. פטורים וכשירויות מנוהלים בנפרד."
-          empty={
-            <>
-              עדיין לא הוגדרו יכולות. מגדירים אותן ב
-              <Link className="text-link" href="/manage/eligibility">
-                פטורים וכשירויות
-              </Link>
-              .
-            </>
-          }
-        />
         <h3>הגבלות שעות</h3>
         <p className="muted">
           בתקופת ההגבלה כל תורנות חייבת להיות בתוך החלונות, לכל משכה ולפי שעון

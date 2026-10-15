@@ -65,7 +65,6 @@ const genderList = z
 export const requirementsInput = z.object({
   populations: z.array(population).min(1).optional(),
   ranks: z.array(rankClause).optional(),
-  qualificationIds: z.array(id).optional(),
   blockingExemptionIds: z.array(id).optional(),
   genders: genderList.optional(),
   capabilityIds: z.array(id).max(50).optional(),
@@ -76,7 +75,6 @@ const catalogInput = z.object({
   description: z.string().max(2000).default(""),
   populations: z.array(population).min(1).optional(),
   ranks: z.array(rankClause).default([]),
-  qualificationIds: z.array(id).default([]),
   exemptionIds: z.array(id).default([]),
   genders: genderList.default([]),
   capabilityIds: z.array(id).max(50).default([]),
@@ -111,7 +109,7 @@ const catalogInput = z.object({
       .default([]),
   }),
 });
-/** Rank, qualification, exemption and capability conditions must name existing catalog entries. */
+/** Rank, exemption and capability conditions must name existing catalog entries. */
 export async function assertRequirementReferences(
   tx: DbTransaction,
   conditions: Requirements[]
@@ -132,7 +130,6 @@ export async function assertRequirementReferences(
       );
     }
     for (const [kind, ids] of [
-      ["qualification", condition.qualificationIds],
       ["exemption", condition.blockingExemptionIds],
       ["capability", condition.capabilityIds],
     ] as const)
@@ -187,7 +184,6 @@ export async function saveDutyType(
   const requirements: Requirements = {
     populations: input.populations,
     ranks: input.ranks,
-    qualificationIds: input.qualificationIds,
     blockingExemptionIds: input.exemptionIds,
     genders: input.genders,
     capabilityIds: input.capabilityIds,

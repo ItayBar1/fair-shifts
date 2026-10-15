@@ -2056,14 +2056,14 @@ describe("first duty vertical slice", () => {
       "חריג נקודתי"
     );
   });
-  it("rejects an obsolete exception preview and never permits it to bypass a missing qualification", async () => {
+  it("rejects an obsolete exception preview and never permits it to bypass a missing capability", async () => {
     const { actor, upper } = await rankFixture();
     const exemption = await command("eligibility.catalog.save", {
       kind: "exemption",
       name: "פטור סינתטי",
     });
     const qualification = await command("eligibility.catalog.save", {
-      kind: "qualification",
+      kind: "capability",
       name: "כשירות סינתטית",
     });
     const type = await command("dutyType.save", {
@@ -2123,7 +2123,7 @@ describe("first duty vertical slice", () => {
           ...duty.data,
           requirements: {
             ...duty.data.requirements,
-            qualificationIds: [qualification.id],
+            capabilityIds: [qualification.id],
           },
         },
       })
@@ -2358,13 +2358,13 @@ describe("first duty vertical slice", () => {
     const { actor } = await fixtureDuty();
     await peerSoldier();
     const qualification = await command("eligibility.catalog.save", {
-      kind: "qualification",
+      kind: "capability",
       name: "כשירות נדירה לבדיקה",
     });
     await addPeriod(
       {
         soldierId: actor.soldierId,
-        kind: "qualification",
+        kind: "capability",
         startDate: "2029-01-01",
         endDate: "2029-12-31",
         value: qualification.id,
@@ -2379,7 +2379,7 @@ describe("first duty vertical slice", () => {
     const rare = await command("dutyType.save", {
       name: "תפקיד נדיר",
       pricing: { mode: "fixed", base: 4 },
-      qualificationIds: [qualification.id],
+      capabilityIds: [qualification.id],
       roles: [{ name: "נדיר", count: 1 }],
     });
     await command("duty.create", {
@@ -2408,7 +2408,7 @@ describe("first duty vertical slice", () => {
         {
           name: "נדיר",
           count: 1,
-          requirements: { qualificationIds: [qualification.id] },
+          requirements: { capabilityIds: [qualification.id] },
         },
       ],
     });
@@ -2794,16 +2794,16 @@ describe("first duty vertical slice", () => {
       impact: { before: string; after: string; reasons: { code: string }[] }[];
     };
   }
-  it("previews a shortened qualification for the whole performance, retains the assignment and flags it after explicit confirmation", async () => {
+  it("previews a shortened capability for the whole performance, retains the assignment and flags it after explicit confirmation", async () => {
     const { row, actor } = await fixtureDuty();
     const qualification = await command("eligibility.catalog.save", {
-      kind: "qualification",
+      kind: "capability",
       name: "הכשרה לבדיקה",
     });
     await addPeriod(
       {
         soldierId: actor.soldierId,
-        kind: "qualification",
+        kind: "capability",
         value: qualification.id,
         startDate: "2026-01-01",
         endDate: "2030-12-31",
@@ -2815,7 +2815,7 @@ describe("first duty vertical slice", () => {
       .set({
         data: {
           ...row.data,
-          requirements: { qualificationIds: [qualification.id] },
+          requirements: { capabilityIds: [qualification.id] },
         },
       })
       .where(eq(duties.id, row.id));
@@ -2830,7 +2830,7 @@ describe("first duty vertical slice", () => {
     );
     const input = {
       soldierId: actor.soldierId,
-      kind: "qualification",
+      kind: "capability",
       operation: "replace",
       index: 0,
       value: qualification.id,
@@ -2844,9 +2844,7 @@ describe("first duty vertical slice", () => {
       after: "blocked",
     });
     expect(
-      preview.impact[0].reasons.some(
-        (reason) => reason.code === "qualification"
-      )
+      preview.impact[0].reasons.some((reason) => reason.code === "capability")
     ).toBe(true);
     expect(
       (
@@ -2854,7 +2852,7 @@ describe("first duty vertical slice", () => {
           .select()
           .from(soldiers)
           .where(eq(soldiers.id, actor.soldierId!))
-      )[0].data.qualifications[0].end
+      )[0].data.capabilities![0].end
     ).toBe("2030-12-31");
     await command(
       "soldier.timeline.edit",
@@ -2863,11 +2861,11 @@ describe("first duty vertical slice", () => {
     );
     const [assigned] = await db.select().from(assignments);
     expect(assigned.status).toBe("reserved");
-    expect(assigned.data.needsAttention).toContain("qualification");
+    expect(assigned.data.needsAttention).toContain("capability");
     expect(assigned.data.version).toBe(assigned.version);
     expect(
       (await readState(actor)).soldiers.every(
-        (person) => !("qualifications" in person)
+        (person) => !("capabilities" in person)
       )
     ).toBe(true);
     expect(await db.select().from(ledger)).toHaveLength(0);
@@ -3142,16 +3140,16 @@ describe("first duty vertical slice", () => {
       (await readState(actor)).soldiers.every((item) => !("exemptions" in item))
     ).toBe(true);
   });
-  it("counts combined qualification periods over the whole duty and clears the attention flag only when they cover it", async () => {
+  it("counts combined capability periods over the whole duty and clears the attention flag only when they cover it", async () => {
     const { row, actor } = await fixtureDuty();
     const qualification = await command("eligibility.catalog.save", {
-      kind: "qualification",
+      kind: "capability",
       name: "כשירות מחולקת",
     });
     await addPeriod(
       {
         soldierId: actor.soldierId,
-        kind: "qualification",
+        kind: "capability",
         value: qualification.id,
         startDate: "2026-01-01",
         endDate: "2030-12-31",
@@ -3163,7 +3161,7 @@ describe("first duty vertical slice", () => {
       .set({
         data: {
           ...row.data,
-          requirements: { qualificationIds: [qualification.id] },
+          requirements: { capabilityIds: [qualification.id] },
         },
       })
       .where(eq(duties.id, row.id));
@@ -3184,7 +3182,7 @@ describe("first duty vertical slice", () => {
       .toISODate()!;
     const edit = {
       soldierId: actor.soldierId,
-      kind: "qualification",
+      kind: "capability",
       operation: "replace",
       index: 0,
       value: qualification.id,
@@ -3200,11 +3198,11 @@ describe("first duty vertical slice", () => {
     );
     expect(
       (await db.select().from(assignments))[0].data.needsAttention
-    ).toContain("qualification");
+    ).toContain("capability");
     const partial = await periodPreview(
       {
         soldierId: actor.soldierId,
-        kind: "qualification",
+        kind: "capability",
         value: qualification.id,
         startDate: firstDay,
         endDate: firstDay,
@@ -3217,7 +3215,7 @@ describe("first duty vertical slice", () => {
     });
     const covering = {
       soldierId: actor.soldierId,
-      kind: "qualification",
+      kind: "capability",
       value: qualification.id,
       startDate: firstDay,
       endDate: lastDay,
@@ -3308,7 +3306,7 @@ describe("first duty vertical slice", () => {
     await expect(
       command(
         "eligibility.catalog.save",
-        { id: exemption.id, kind: "qualification", name: "אין שינוי סוג" },
+        { id: exemption.id, kind: "capability", name: "אין שינוי סוג" },
         2
       )
     ).rejects.toMatchObject({ code: "catalog_kind" });
@@ -7372,6 +7370,19 @@ describe("gender, capability and personal hours conditions", () => {
       version
     );
   }
+  /** Gives the soldier a catalog capability or exemption through the reviewed timeline add. */
+  async function addEntry(payload: Record<string, unknown>, version: number) {
+    const preview = (await command(
+      "soldier.timeline.preview",
+      payload,
+      version
+    )) as unknown as ConditionsPreview;
+    return command(
+      "soldier.timeline",
+      { ...payload, confirmed: true, previewToken: preview.previewToken },
+      version
+    );
+  }
   async function member() {
     const [row] = await db.select().from(user).where(eq(user.id, memberId));
     const actor: Actor = {
@@ -7437,16 +7448,17 @@ describe("gender, capability and personal hours conditions", () => {
       "capability",
       "gender",
     ]);
-    const base = {
-      soldierId: actor.soldierId,
-      gender: "female",
-      capabilityIds: [capability.id],
-    };
+    const base = { soldierId: actor.soldierId, gender: "female" };
     await expect(previewConditions(base, 1, actor)).rejects.toMatchObject({
       code: "forbidden",
       status: 403,
     });
     await saveConditions(base, 1);
+    // A capability without dates is permanent (decision 224).
+    await addEntry(
+      { soldierId: actor.soldierId, kind: "capability", value: capability.id },
+      2
+    );
     await command(
       "duty.assign",
       {
@@ -7461,7 +7473,7 @@ describe("gender, capability and personal hours conditions", () => {
       .set({ current: 9 })
       .where(eq(balances.soldierId, actor.soldierId!));
     const change = { ...base, gender: "male", reason: "תיקון נתון" };
-    const preview = await previewConditions(change, 2);
+    const preview = await previewConditions(change, 3);
     expect(preview.impact).toHaveLength(1);
     expect(preview.impact[0]).toMatchObject({
       before: "eligible",
@@ -7475,22 +7487,22 @@ describe("gender, capability and personal hours conditions", () => {
       .select()
       .from(soldiers)
       .where(eq(soldiers.id, actor.soldierId!));
-    expect(unchanged).toMatchObject({ version: 2 });
+    expect(unchanged).toMatchObject({ version: 3 });
     expect(unchanged.data.gender).toBe("female");
-    await expect(command("soldier.conditions", change, 2)).rejects.toThrow();
+    await expect(command("soldier.conditions", change, 3)).rejects.toThrow();
     await expect(
       command(
         "soldier.conditions",
         { ...change, confirmed: false, previewToken: preview.previewToken },
-        2
+        3
       )
     ).rejects.toThrow();
     const saved = await command(
       "soldier.conditions",
       { ...change, confirmed: true, previewToken: preview.previewToken },
-      2
+      3
     );
-    expect(saved).toMatchObject({ version: 3, flagged: 1 });
+    expect(saved).toMatchObject({ version: 4, flagged: 1 });
     const [assigned] = await db.select().from(assignments);
     expect(assigned.status).toBe("reserved");
     expect(assigned.data.needsAttention).toEqual(["gender"]);
@@ -7511,7 +7523,8 @@ describe("gender, capability and personal hours conditions", () => {
           eq(records.subjectId, actor.soldierId!)
         )
       );
-    expect(changes.map((item) => item.data.kind)).toEqual([
+    expect(changes.map((item) => item.data.kind).sort()).toEqual([
+      "capability",
       "conditions",
       "conditions",
     ]);
@@ -7519,7 +7532,7 @@ describe("gender, capability and personal hours conditions", () => {
       changes.find((item) => item.data.reason === "תיקון נתון")!.data
     ).toMatchObject({
       before: { gender: "female" },
-      after: { gender: "male", capabilities: [capability.id] },
+      after: { gender: "male" },
     });
     const visible = JSON.stringify((await readState(actor)).soldiers);
     for (const key of ["gender", "capabilities", "allowedHours"])
@@ -7529,16 +7542,19 @@ describe("gender, capability and personal hours conditions", () => {
     ) as Record<string, unknown>;
     expect(managed).toMatchObject({
       gender: "male",
-      capabilities: [capability.id],
+      capabilities: [{ capabilityId: capability.id }],
     });
   });
 
   it("validates condition input and catalog references on the server", async () => {
     const actor = await member();
-    const qualification = await command("eligibility.catalog.save", {
-      kind: "qualification",
-      name: "כשירות ולא יכולת",
-    });
+    // Qualifications became capabilities with dates (decision 224).
+    await expect(
+      command("eligibility.catalog.save", {
+        kind: "qualification",
+        name: "כשירות ולא יכולת",
+      })
+    ).rejects.toThrow();
     const exemption = await command("eligibility.catalog.save", {
       kind: "exemption",
       name: "פטור ולא יכולת",
@@ -7550,8 +7566,32 @@ describe("gender, capability and personal hours conditions", () => {
     };
     const soldierId = actor.soldierId;
     await expect(
-      previewConditions({ soldierId, capabilityIds: [qualification.id] }, 1)
+      command(
+        "soldier.timeline.preview",
+        { soldierId, kind: "capability", value: exemption.id },
+        1
+      )
     ).rejects.toMatchObject({ code: "catalog_kind" });
+    await expect(
+      command(
+        "soldier.timeline.preview",
+        {
+          soldierId,
+          kind: "exemption",
+          value: exemption.id,
+          startDate: day(10),
+          endDate: day(),
+        },
+        1
+      )
+    ).rejects.toMatchObject({ code: "date_range" });
+    await expect(
+      command(
+        "soldier.timeline.preview",
+        { soldierId, kind: "inactive", startDate: day() },
+        1
+      )
+    ).rejects.toMatchObject({ code: "date_range" });
     await expect(
       previewConditions(
         { soldierId, allowedHours: [{ ...limit, start: day(10), end: day() }] },

@@ -190,7 +190,7 @@ test.beforeAll(async () => {
   ).id;
   ids.qualification = (
     await run("eligibility.catalog.save", {
-      kind: "qualification",
+      kind: "capability",
       name: "נשק אישי",
     })
   ).id;
@@ -217,7 +217,7 @@ test.beforeAll(async () => {
   });
   const trained = [
     {
-      qualificationId: ids.qualification,
+      capabilityId: ids.qualification,
       start: day(-40),
       end: day(40),
     },
@@ -225,50 +225,49 @@ test.beforeAll(async () => {
 
   await addSoldier("dana", "דנה ירוק", "880001", {
     gender: "female",
-    capabilities: [ids.capability],
-    qualifications: trained,
+    capabilities: [{ capabilityId: ids.capability }, ...trained],
     rankHistory: [rank("sergeant", 2, day(-60))],
   });
   await addSoldier("danny", "דני כחול", "880002", {
     gender: "male",
-    qualifications: trained,
+    capabilities: trained,
     rankHistory: [rank("private", 1, day(-60))],
   });
-  // The qualification ended the day before the duty.
+  // The dated capability ended the day before the duty.
   await addSoldier("noa", "נועה אדומה", "880003", {
     gender: "female",
-    qualifications: [
-      { qualificationId: ids.qualification, start: day(-40), end: day(-1) },
+    capabilities: [
+      { capabilityId: ids.qualification, start: day(-40), end: day(-1) },
     ],
     rankHistory: [rank("sergeant", 2, day(-60))],
   });
   // The exemption covers the duty day; the next soldier's ended the day before.
   await addSoldier("eitan", "איתן פטור", "880004", {
     gender: "male",
-    qualifications: trained,
+    capabilities: trained,
     exemptions: [{ exemptionId: ids.exemption, start: day(-2), end: day(0) }],
   });
   await addSoldier("gil", "גיל פטור שהסתיים", "880005", {
     gender: "male",
-    qualifications: trained,
+    capabilities: trained,
     exemptions: [{ exemptionId: ids.exemption, start: day(-10), end: day(-1) }],
   });
   // Promoted the day after the duty, so a private when it starts.
   await addSoldier("rotem", "רותם מתקדמת", "880006", {
     gender: "female",
-    qualifications: trained,
+    capabilities: trained,
     rankHistory: [rank("private", 1, day(-60)), rank("sergeant", 2, day(1))],
   });
   await addSoldier("yuval", "יובל קבע", "880007", {
     gender: "male",
-    qualifications: trained,
+    capabilities: trained,
     service: { type: "career", basePopulation: "career", graceEligible: false },
   });
   await addSoldier(
     "gone",
     "מחוק לשעבר",
     "880008",
-    { qualifications: trained },
+    { capabilities: trained },
     true
   );
 
@@ -277,7 +276,7 @@ test.beforeAll(async () => {
       name: "שמירה בוחרת",
       pricing: { mode: "fixed", base: 4 },
       populations: ["mandatory"],
-      qualificationIds: [ids.qualification],
+      capabilityIds: [ids.qualification],
       exemptionIds: [ids.exemption],
       roles: [{ name: "תורן", count: 1 }],
     })
@@ -305,7 +304,7 @@ test("the picker opens filtered by the duty and the role, and finds by name and 
   const open = await createDuty("תורנות לחיפוש");
   const dialog = await openManual(page, open.id);
 
-  // Mandatory soldiers with a valid qualification and no exemption on the day: no manager,
+  // Mandatory soldiers with a valid capability and no exemption on the day: no manager,
   // no deleted soldier, nobody of the career population.
   await expect(count(dialog)).toHaveText("4 מתוך 7 חיילים");
   expect(await names(dialog)).toEqual([
@@ -366,14 +365,11 @@ test("the role's own conditions fill the filters, next to the duty's", async ({
   await expect(count(dialog)).toHaveText("1 מתוך 7 חיילים");
   await expect(dialog.getByText("מסונן לפי:")).toContainText("נהיגה");
   await openFilters(dialog);
-  await expect(
-    dialog.getByRole("group", { name: "יכולת" }).getByLabel("נהיגה")
-  ).toBeChecked();
-  await expect(
-    dialog
-      .getByRole("group", { name: "כשירות בתוקף לכל משך התורנות" })
-      .getByLabel("נשק אישי")
-  ).not.toBeChecked();
+  const capabilities = dialog.getByRole("group", {
+    name: "יכולת בתוקף לכל משך התורנות",
+  });
+  await expect(capabilities.getByLabel("נהיגה")).toBeChecked();
+  await expect(capabilities.getByLabel("נשק אישי")).not.toBeChecked();
 });
 
 test("each filter keeps to the rules of the duty date, and the manager can clear them", async ({
@@ -389,8 +385,7 @@ test("each filter keeps to the rules of the duty date, and the manager can clear
     "אוכלוסיית שיבוץ לכל משך התורנות",
     "מגדר",
     "הסתרת מי שיש לו פטור במועד התורנות",
-    "כשירות בתוקף לכל משך התורנות",
-    "יכולת",
+    "יכולת בתוקף לכל משך התורנות",
     "דרגה בתחילת התורנות",
   ])
     await expect(dialog.getByRole("group", { name: legend })).toBeVisible();
@@ -399,17 +394,19 @@ test("each filter keeps to the rules of the duty date, and the manager can clear
     group("אוכלוסיית שיבוץ לכל משך התורנות").getByLabel("חובה")
   ).toBeChecked();
   await expect(
-    group("כשירות בתוקף לכל משך התורנות").getByLabel("נשק אישי")
+    group("יכולת בתוקף לכל משך התורנות").getByLabel("נשק אישי")
   ).toBeChecked();
   await expect(
     group("הסתרת מי שיש לו פטור במועד התורנות").getByLabel("פטור מאבטחה")
   ).toBeChecked();
-  await expect(group("יכולת").getByLabel("נהיגה")).not.toBeChecked();
+  await expect(
+    group("יכולת בתוקף לכל משך התורנות").getByLabel("נהיגה")
+  ).not.toBeChecked();
 
-  // Capability: only someone who holds it.
-  await group("יכולת").getByLabel("נהיגה").check();
+  // A permanent capability: only someone who holds it.
+  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נהיגה").check();
   expect(await names(dialog)).toEqual(["דנה ירוק"]);
-  await group("יכולת").getByLabel("נהיגה").uncheck();
+  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נהיגה").uncheck();
 
   // Gender.
   await group("מגדר").getByLabel("נקבה").check();
@@ -442,13 +439,13 @@ test("each filter keeps to the rules of the duty date, and the manager can clear
     "דני כחול",
     "רותם מתקדמת",
   ]);
-  // Qualification: valid for the whole duty only.
-  await group("כשירות בתוקף לכל משך התורנות").getByLabel("נשק אישי").uncheck();
+  // A dated capability: valid for the whole duty only.
+  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נשק אישי").uncheck();
   await group("אוכלוסיית שיבוץ לכל משך התורנות").getByLabel("חובה").uncheck();
   await expect(count(dialog)).toHaveText("7 חיילים");
   expect(await names(dialog)).toContain("נועה אדומה");
   expect(await names(dialog)).toContain("יובל קבע");
-  await group("כשירות בתוקף לכל משך התורנות").getByLabel("נשק אישי").check();
+  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נשק אישי").check();
   expect(await names(dialog)).not.toContain("נועה אדומה");
 
   // Back to the duty's own filters, then everything cleared.
@@ -653,7 +650,7 @@ test("a duty type with every gender is no gender condition: the form says so and
   const page = await signedIn(browser);
   // Added here and removed at the end, so the counts of the other tests stay.
   const unknownId = await addSoldier("unknown", "ללא מגדר", "880009", {
-    qualifications: [],
+    capabilities: [],
   });
   try {
     await page.goto("/manage/catalog");

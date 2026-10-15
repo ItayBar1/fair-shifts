@@ -238,11 +238,11 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page
     .getByRole("dialog")
     .getByLabel("סוג ההגדרה")
-    .selectOption("qualification");
+    .selectOption("capability");
   await page
     .getByRole("dialog")
     .getByLabel("שם", { exact: true })
-    .fill("כשירות לדוגמה");
+    .fill("מטווח לדוגמה");
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "שמירה", exact: true })
@@ -251,10 +251,9 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page
     .getByLabel("חייל", { exact: true })
     .selectOption({ label: "חייל סינתטי" });
-  await page.getByLabel("מה משייכים").selectOption("qualification");
   await page
     .getByLabel("סוג מהקטלוג", { exact: true })
-    .selectOption({ label: "כשירות לדוגמה" });
+    .selectOption({ label: "מטווח לדוגמה · יכולת" });
   await page.getByLabel("תחילת תוקף", { exact: true }).fill("2026-01-01");
   await page.getByLabel("סיום תוקף (כולל)", { exact: true }).fill("2030-12-31");
   await page
@@ -276,7 +275,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     has: page.getByRole("heading", { name: "חייל סינתטי", exact: true }),
   });
   await history
-    .getByRole("button", { name: "עריכת כשירות לדוגמה", exact: true })
+    .getByRole("button", { name: "עריכת מטווח לדוגמה", exact: true })
     .click();
   await page
     .getByRole("dialog")
@@ -285,7 +284,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page
     .getByRole("dialog")
     .getByLabel("סיבת השינוי")
-    .fill("עדכון כשירות לבדיקה");
+    .fill("עדכון תוקף מטווח לבדיקה");
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "בדיקת השפעת השינוי" })
@@ -298,7 +297,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page.getByRole("button", { name: "אישור שינוי התקופה" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await history
-    .getByRole("button", { name: "הסרת כשירות לדוגמה", exact: true })
+    .getByRole("button", { name: "הסרת מטווח לדוגמה", exact: true })
     .click();
   await page
     .getByRole("dialog")
@@ -312,7 +311,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await page.getByRole("button", { name: "אישור הסרת התקופה" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(
-    page.getByRole("button", { name: "הסרת כשירות לדוגמה", exact: true })
+    page.getByRole("button", { name: "הסרת מטווח לדוגמה", exact: true })
   ).toHaveCount(0);
   await page.goto(`/duties/${state.duties[0].id}`);
   await page.screenshot({
@@ -328,7 +327,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     .getByRole("button", { name: "פרופיל ועריכה" })
     .click();
   const profile = page.getByRole("dialog");
-  await profile.getByText("מועדי שירות, כשירות והיסטוריה").click();
+  await profile.getByText("מועדי שירות, אי־פעילות והיסטוריה").click();
   await profile.getByLabel("אי־פעילות מתאריך", { exact: true }).fill(date);
   await profile
     .getByLabel("אי־פעילות עד תאריך (כולל)", { exact: true })
@@ -588,8 +587,8 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   };
   await api("soldier.update", { ...member, releaseDate }, member.version);
   const specialty = await api("eligibility.catalog.save", {
-    kind: "qualification",
-    name: "כשירות להגרלת בדיקה",
+    kind: "capability",
+    name: "יכולת להגרלת בדיקה",
   });
   const freshState = await (await page.request.get("/api/v1/state")).json();
   const freshMember = freshState.soldiers.find(
@@ -597,7 +596,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   );
   const specialtyPeriod = {
     soldierId: member.id,
-    kind: "qualification",
+    kind: "capability",
     startDate: lateDate,
     endDate: lateDate,
     value: specialty.id,
@@ -618,7 +617,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   );
   const lotteryType = await api("dutyType.save", {
     name: "הגרלה עם אישור",
-    qualificationIds: [specialty.id],
+    capabilityIds: [specialty.id],
     pricing: { mode: "fixed", base: 4 },
     roles: [{ name: "תורן", count: 1 }],
   });
@@ -1789,7 +1788,7 @@ test("population moves preview their impact before saving in the transition, the
 
   // 1. The explicit population transition.
   let profile = await openProfile("חייל מעבר מפורש");
-  await profile.getByText("מועדי שירות, כשירות והיסטוריה").click();
+  await profile.getByText("מועדי שירות, אי־פעילות והיסטוריה").click();
   await profile.getByLabel("אוכלוסייה חדשה").selectOption("career");
   await profile
     .getByLabel("בתוקף מתאריך", { exact: true })
