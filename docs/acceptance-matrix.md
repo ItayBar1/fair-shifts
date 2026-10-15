@@ -321,6 +321,8 @@
 
 ### 55. כאחראי, אני רוצה לשמור ולעדכן את דרגת החייל כדי שהשיבוץ יתבסס על הדרגה הרלוונטית. — מכוסה
 
+- [soldier-intake.test.ts](../tests/integration/soldier-intake.test.ts): `stores an initial approved rank from the catalog with its effective date, once across retries`; `keeps a confirmed future rank out of the current rank until its effective date`; `rejects a record of another kind as a rank without creating a soldier`
+- [soldier-rank-edit.spec.ts](../tests/e2e/soldier-rank-edit.spec.ts): `manager adds a soldier with a rank and updates it in the profile`
 - [auth.test.ts](../tests/integration/auth.test.ts): `creates one tenure reminder without promoting and requires an explicit versioned decision`; `recalculates open reminders on a rule change and never overwrites a manually approved future rank`
 - [soldier-filters.test.ts](../tests/unit/soldier-filters.test.ts): `filters an exact rank without treating another track as equivalent`
 - [rank-conditions.test.ts](../tests/unit/rank-conditions.test.ts): `accepts an exact rank and no other`
@@ -413,6 +415,7 @@
 
 ### 4. קליטה ידנית ובאקסל — חיילים וחשבונות — מכוסה
 
+- [soldier-rank-edit.spec.ts](../tests/e2e/soldier-rank-edit.spec.ts): `manager adds a soldier with a rank and updates it in the profile`
 - [import-invitations.test.ts](../tests/integration/import-invitations.test.ts): `stores soldiers and permits sign-in before any invitation is published`; `requires confirmation and publishes only new accounts once across two tabs and retries`; `keeps manual intake invitations automatic and needs none for an update-only batch`
 - [soldier-identity.test.ts](../tests/integration/soldier-identity.test.ts): `updates the soldier whose number the row carries and creates one for a row without a number`; `rejects a number the unit does not have, and a new row without the required details`; `warns on the same first and last name, against the unit and within the file, and still saves`; `does not queue an invitation to a reserved test address when the real provider is set`
 - [import-invitations.spec.ts](../tests/e2e/import-invitations.spec.ts): `imports without mail and explicitly publishes invitations after reopening the batch`
@@ -631,6 +634,8 @@
 
 ### 38. פז״ם ואישור דרגה — חיילים וחשבונות — מכוסה
 
+- [soldier-intake.test.ts](../tests/integration/soldier-intake.test.ts): `stores an initial approved rank from the catalog with its effective date, once across retries`; `keeps a confirmed future rank out of the current rank until its effective date`
+- [soldier-rank-edit.spec.ts](../tests/e2e/soldier-rank-edit.spec.ts): `manager adds a soldier with a rank and updates it in the profile`
 - [auth.test.ts](../tests/integration/auth.test.ts): `creates one tenure reminder without promoting and requires an explicit versioned decision`; `recalculates open reminders on a rule change and never overwrites a manually approved future rank`; `shows missing enlistment data and permits a sourced personal deadline without guessing equivalence`
 
 ### 39. גבולות שירות וזמן — כשירות וחשבונות — מכוסה

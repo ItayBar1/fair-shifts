@@ -61,6 +61,19 @@ export const profileInput = z.object({
   /** The manager saw the same-name warning and saves anyway. */
   duplicateNameConfirmed: z.boolean().optional(),
 });
+/** Initial rank is optional, but a chosen rank always has an explicit date. */
+export const initialRankInput = z
+  .object({
+    rankId: z.preprocess(blank, id.optional()),
+    rankEffectiveDate: optionalDate,
+  })
+  .refine(
+    (input) => Boolean(input.rankId) === Boolean(input.rankEffectiveDate),
+    {
+      message: "יש לבחור דרגה ותאריך תחולה יחד, או להשאיר את שניהם ריקים",
+      path: ["rankEffectiveDate"],
+    }
+  );
 // The technical form asks for the same required details as any intake
 // (decision 222); extra fields cannot grant roles, edit a person, supply a
 // balance or attach sensitive personnel information.
