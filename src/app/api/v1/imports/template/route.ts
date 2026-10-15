@@ -6,6 +6,7 @@ import { errorResponse } from "@/server/http";
 import { createImportTemplate } from "@/server/import-workbook";
 import { manager } from "@/server/repository";
 import { records, soldiers } from "@/server/schema";
+import { rankMemberships } from "@/domain/rank-tracks";
 
 export async function GET(request: Request) {
   try {
@@ -25,10 +26,12 @@ export async function GET(request: Request) {
         lastName: row.data.lastName ?? "",
       }));
     const data = await createImportTemplate(
-      ranks.map((rank) => ({
-        name: String(rank.data.name),
-        track: String(rank.data.track),
-      })),
+      ranks.flatMap((rank) =>
+        rankMemberships(rank.data).map((membership) => ({
+          name: String(rank.data.name),
+          track: membership.track,
+        }))
+      ),
       people
     );
     return new Response(new Uint8Array(data), {

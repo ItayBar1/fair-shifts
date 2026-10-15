@@ -11,7 +11,6 @@ import {
 import {
   audit,
   currentVersion,
-  findRecord,
   loadDomain,
   manager,
   type Actor,
@@ -32,7 +31,7 @@ import {
   reassessAssignments,
 } from "./personnel";
 import { populationAt, populationMoves } from "../domain/eligibility";
-import { refreshRankReminders } from "./ranks";
+import { refreshRankReminders, resolveRankChoice } from "./ranks";
 
 export async function saveSoldier(
   tx: DbTransaction,
@@ -138,12 +137,16 @@ async function persistSoldier(
   if (!existing) {
     const initialRank = initialRankInput.parse(payload);
     if (initialRank.rankId) {
-      const rank = await findRecord(tx, "rank_catalog", initialRank.rankId);
+      const { rank, membership } = await resolveRankChoice(
+        tx,
+        initialRank.rankId,
+        initialRank.trackId
+      );
       data.rankHistory = [
         {
           rankId: rank.id,
-          trackId: String(rank.data.track),
-          order: Number(rank.data.order),
+          trackId: membership.track,
+          order: membership.order,
           effectiveFrom: initialRank.rankEffectiveDate!,
         },
       ];

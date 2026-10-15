@@ -47,13 +47,25 @@ test.beforeEach(async () => {
     {
       id: initialRankId,
       kind: "rank_catalog",
-      data: { name: "סמל", track: "חוגרים", order: 2 },
+      data: { name: "סמל", tracks: [{ track: "חוגרים", order: 2 }] },
     },
     {
+      // One rank in two tracks (decision 223): the soldier holds it in one.
       id: nextRankId,
       kind: "rank_catalog",
-      data: { name: "סמ״ר", track: "חוגרים", order: 3 },
+      data: {
+        name: "סמ״ר",
+        tracks: [
+          { track: "חוגרים", order: 3 },
+          { track: "נגדים", order: 1 },
+        ],
+      },
     },
+    ...["חוגרים", "נגדים"].map((name) => ({
+      id: randomUUID(),
+      kind: "rank_track",
+      data: { name, source: "נתוני בדיקה" },
+    })),
   ]);
 });
 
@@ -110,7 +122,9 @@ for (const width of [1280, 390]) {
       .fill("new-ranked@example.invalid");
     await intake.getByLabel("טלפון נייד").fill("0500000175");
     await intake.getByLabel("אוכלוסיית שיבוץ").selectOption("mandatory");
-    await intake.getByLabel("דרגה מאושרת (רשות)").selectOption(initialRankId);
+    await intake
+      .getByLabel("דרגה מאושרת (רשות)")
+      .selectOption(`${initialRankId}|חוגרים`);
     // A chosen rank cannot silently lose its missing effective date.
     await intake.getByRole("button", { name: "שמירה", exact: true }).click();
     await expect(intake.getByRole("alert")).toBeVisible();
@@ -124,10 +138,10 @@ for (const width of [1280, 390]) {
     const rankForm = profile.getByRole("region", { name: "עדכון דרגת החייל" });
     await expect(
       rankForm.getByLabel("דרגה מאושרת", { exact: true })
-    ).toHaveValue(initialRankId);
+    ).toHaveValue(`${initialRankId}|חוגרים`);
     await rankForm
       .getByLabel("דרגה מאושרת", { exact: true })
-      .selectOption(nextRankId);
+      .selectOption({ label: "סמ״ר · נגדים" });
     await rankForm.getByLabel("תאריך תחולת הדרגה").fill("2026-02-01");
     await rankForm.getByLabel("סיבת עדכון הדרגה").fill("דרגה מאושרת לבדיקה");
     await rankForm.getByRole("button", { name: "שמירת הדרגה המאושרת" }).click();
@@ -137,7 +151,7 @@ for (const width of [1280, 390]) {
     await row.getByRole("button", { name: "פרופיל ועריכה" }).click();
     await expect(
       rankForm.getByLabel("דרגה מאושרת", { exact: true })
-    ).toHaveValue(nextRankId);
+    ).toHaveValue(`${nextRankId}|נגדים`);
     await profile
       .getByText("מועדי שירות, כשירות והיסטוריה", { exact: true })
       .click();
@@ -151,9 +165,11 @@ for (const width of [1280, 390]) {
     const [person] = (await db.select().from(soldiers)).filter(
       (person) => person.name === "חייל דרגה"
     );
-    expect(person.data.rankHistory.map((rank) => rank.rankId)).toEqual([
-      initialRankId,
-      nextRankId,
+    expect(
+      person.data.rankHistory.map((rank) => [rank.rankId, rank.trackId])
+    ).toEqual([
+      [initialRankId, "חוגרים"],
+      [nextRankId, "נגדים"],
     ]);
     const revisions = (await db.select().from(records)).filter(
       (record) =>
