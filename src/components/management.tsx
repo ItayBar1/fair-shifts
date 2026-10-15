@@ -46,7 +46,6 @@ import { AuditLink } from "./audit";
 import { SoldierDeletion } from "./soldier-deletion";
 import {
   ConditionToggles,
-  ConditionsSummary,
   SoldierConditions,
   capabilityOptions,
   genderHint,
@@ -598,7 +597,6 @@ export function SoldiersView({
           <details className="disclosure">
             <summary>תנאי התאמה אישיים: מגדר, יכולות ושעות</summary>
             <div className="stack">
-              <ConditionsSummary state={state} person={selected} />
               <SoldierConditions
                 key={String(selected.version)}
                 state={state}

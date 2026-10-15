@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import Link from "next/link";
 import { Plus } from "lucide-react";
 import {
   type AppState,
@@ -7,9 +8,8 @@ import {
   type Row,
   rows,
   str,
-  displayDate,
 } from "@/client/types";
-import { Badge, Form, Notice } from "./ui";
+import { Fields, Form, Notice } from "./ui";
 import { ImpactList } from "./personnel-history";
 
 /** Shown beside every gender condition: all three is the same as none (decision 198). */
@@ -40,12 +40,14 @@ export function ConditionToggles({
   value,
   onChange,
   hint,
+  empty = "אין ערכים בקטלוג",
 }: {
   legend: string;
   options: { value: string; label: string }[];
   value: string[];
   onChange: (value: string[]) => void;
   hint?: string;
+  empty?: ReactNode;
 }) {
   return (
     <fieldset className="toggle-group">
@@ -68,7 +70,7 @@ export function ConditionToggles({
           </label>
         ))
       ) : (
-        <span className="muted">אין ערכים בקטלוג</span>
+        <span className="muted">{empty}</span>
       )}
       {hint && <small className="muted">{hint}</small>}
     </fieldset>
@@ -141,6 +143,7 @@ export function SoldierConditions({
     Array.isArray(person.capabilities) ? person.capabilities.map(String) : []
   );
   const [limits, setLimits] = useState<Limit[]>(() => limitsOf(person));
+  const [reason, setReason] = useState("");
   const [draft, setDraft] = useState<{
     payload: Record<string, unknown>;
     version?: number;
@@ -217,16 +220,9 @@ export function SoldierConditions({
   }
   return (
     <Form
-      fields={[
-        {
-          name: "reason",
-          label: "הערת אחראי לשינוי",
-          type: "textarea",
-          full: true,
-        },
-      ]}
+      fields={[]}
       submitLabel="בדיקת השפעת השינוי"
-      onSubmit={async (values) => {
+      onSubmit={async () => {
         const payload = {
           soldierId: person.id,
           gender,
@@ -237,7 +233,7 @@ export function SoldierConditions({
             end: limit.end,
             windows: limit.windows,
           })),
-          reason: values.reason,
+          reason,
         };
         const preview = await action(
           "soldier.conditions.preview",
@@ -268,6 +264,16 @@ export function SoldierConditions({
           options={options}
           value={capabilities}
           onChange={setCapabilities}
+          hint="מאפיינים קבועים בלי תוקף, כמו רישיון נהיגה, שסוג תורנות או תפקיד יכולים לדרוש. פטורים וכשירויות מנוהלים בנפרד."
+          empty={
+            <>
+              עדיין לא הוגדרו יכולות. מגדירים אותן ב
+              <Link className="text-link" href="/manage/eligibility">
+                פטורים וכשירויות
+              </Link>
+              .
+            </>
+          }
         />
         <h3>הגבלות שעות</h3>
         <p className="muted">
@@ -406,51 +412,18 @@ export function SoldierConditions({
           <Plus size={15} />
           הוספת הגבלת שעות
         </button>
+        <Fields
+          fields={[
+            {
+              name: "reason",
+              label: "הערת אחראי לשינוי",
+              type: "textarea",
+              full: true,
+              onChange: setReason,
+            },
+          ]}
+        />
       </div>
     </Form>
-  );
-}
-
-/** Read-only summary of a soldier's conditions for the profile. */
-export function ConditionsSummary({
-  state,
-  person,
-}: {
-  state: AppState;
-  person: Row;
-}) {
-  const names = capabilityOptions(state);
-  const held = Array.isArray(person.capabilities)
-    ? person.capabilities.map(String)
-    : [];
-  return (
-    <div className="stack">
-      <div className="history-row">
-        <strong>מגדר</strong>
-        <span>{genderLabel(person.gender)}</span>
-      </div>
-      <div className="history-row">
-        <strong>יכולות</strong>
-        <span>
-          {held.length
-            ? held.map((id) => (
-                <Badge key={id}>
-                  {names.find((item) => item.value === id)?.label ??
-                    "יכולת מהקטלוג"}
-                </Badge>
-              ))
-            : "אין"}
-        </span>
-      </div>
-      {rows(person.allowedHours).map((limit) => (
-        <div className="history-row" key={limit.id}>
-          <strong>הגבלת שעות</strong>
-          <span>
-            {displayDate(limit.start)} — {displayDate(limit.end)} ·{" "}
-            {rows(limit.windows).map(describeWindow).join(" ; ")}
-          </span>
-        </div>
-      ))}
-    </div>
   );
 }
