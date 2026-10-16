@@ -31,10 +31,18 @@ export interface ServiceProfile {
   officerFrom?: LocalDate;
   releaseDate?: LocalDate;
 }
-export interface TimedQualification extends DateRange {
-  qualificationId: string;
+/**
+ * Validity of a capability or exemption (decision 224). A missing start means
+ * it applies from always, a missing end means it is permanent; both are inclusive.
+ */
+export interface OpenDateRange {
+  start?: LocalDate;
+  end?: LocalDate;
 }
-export interface TimedExemption extends DateRange {
+export interface TimedCapability extends OpenDateRange {
+  capabilityId: string;
+}
+export interface TimedExemption extends OpenDateRange {
   exemptionId: string;
 }
 export interface Constraint extends DateRange {
@@ -79,12 +87,12 @@ export interface Soldier {
   service: ServiceProfile;
   populationHistory: EffectivePopulation[];
   rankHistory: EffectiveRank[];
-  qualifications: TimedQualification[];
   exemptions: TimedExemption[];
   inactivePeriods: DateRange[];
   constraints: Constraint[];
   gender?: Gender;
-  capabilities?: string[];
+  /** Capabilities from the catalog, with or without an end date (decision 224). */
+  capabilities?: TimedCapability[];
   allowedHours?: AllowedHours[];
 }
 export interface RankClause {
@@ -97,7 +105,6 @@ export interface RankClause {
 export interface Requirements {
   populations?: Population[];
   ranks?: RankClause[];
-  qualificationIds?: string[];
   blockingExemptionIds?: string[];
   genders?: Gender[];
   capabilityIds?: string[];

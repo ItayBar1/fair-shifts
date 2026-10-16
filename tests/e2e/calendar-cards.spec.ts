@@ -141,7 +141,7 @@ test.beforeEach(async () => {
         data: {
           ...row,
           ...(item.name === "מטווח חלקי"
-            ? { needsAttention: ["qualification"] }
+            ? { needsAttention: ["capability"] }
             : {}),
         },
       });

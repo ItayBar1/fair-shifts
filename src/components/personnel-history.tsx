@@ -10,23 +10,55 @@ import {
   displayDate,
   population,
 } from "@/client/types";
+import { unitToday } from "@/client/soldier-filters";
 import { Badge, Form, Modal, Notice, type Field } from "./ui";
 import type { ReactNode } from "react";
 
-type Kind = "qualification" | "exemption" | "inactive";
+type Kind = "capability" | "exemption" | "inactive";
 const definitions = [
-  { kind: "qualification", field: "qualifications", label: "כשירות" },
+  { kind: "capability", field: "capabilities", label: "כשירות" },
   { kind: "exemption", field: "exemptions", label: "פטור" },
   { kind: "inactive", field: "inactivePeriods", label: "אי־פעילות" },
 ] as const;
+const catalogIdOf = (entry: Row) =>
+  str(entry.capabilityId ?? entry.exemptionId);
+/**
+ * The validity of a capability or an exemption: either date may be missing
+ * (decision 224). A missing end means the entry is permanent.
+ */
+export function validityText(entry: Record<string, unknown>) {
+  const start = str(entry.start);
+  const end = str(entry.end);
+  if (start && end) return `${displayDate(start)} — ${displayDate(end)}`;
+  if (start) return `מ־${displayDate(start)} · קבוע, בלי תאריך סיום`;
+  if (end) return `עד ${displayDate(end)}`;
+  return "קבוע, בלי תאריכים";
+}
+function ValidityState({ entry }: { entry: Row }) {
+  const today = unitToday();
+  if (str(entry.end) && str(entry.end) < today)
+    return <Badge tone="warning">פג תוקף</Badge>;
+  if (str(entry.start) > today) return <Badge tone="info">טרם החל</Badge>;
+  return null;
+}
+/**
+ * A soldier's dated entries, each with edit and remove. `kinds` limits the
+ * list, and `catalogId` keeps one catalog value only.
+ */
 export function PersonnelHistory({
   state,
   action,
   person,
+  kinds = ["capability", "exemption", "inactive"],
+  catalogId = "",
+  empty = "אין כשירויות, פטורים או תקופות אי־פעילות.",
 }: {
   state: AppState;
   action: Action;
   person: Row;
+  kinds?: Kind[];
+  catalogId?: string;
+  empty?: string;
 }) {
   const [selected, select] = useState<{
     kind: Kind;
@@ -35,23 +67,23 @@ export function PersonnelHistory({
     operation: "replace" | "remove";
   } | null>(null);
   const catalog = rows(state.eligibilityCatalog);
-  const entries = definitions.flatMap((definition) =>
-    rows(person[definition.field]).map((entry, index) => ({
-      ...definition,
-      entry,
-      index,
-      name:
-        definition.kind === "inactive"
-          ? "אי־פעילות"
-          : str(
-              catalog.find(
-                (item) =>
-                  item.id === (entry.qualificationId ?? entry.exemptionId)
-              )?.name,
-              "הגדרה מהקטלוג"
-            ),
-    }))
-  );
+  const entries = definitions
+    .filter((definition) => kinds.includes(definition.kind))
+    .flatMap((definition) =>
+      rows(person[definition.field]).map((entry, index) => ({
+        ...definition,
+        entry,
+        index,
+        name:
+          definition.kind === "inactive"
+            ? "אי־פעילות"
+            : str(
+                catalog.find((item) => item.id === catalogIdOf(entry))?.name,
+                "הגדרה מהקטלוג"
+              ),
+      }))
+    )
+    .filter((item) => !catalogId || catalogIdOf(item.entry) === catalogId);
   return (
     <>
       {entries.length ? (
@@ -61,7 +93,17 @@ export function PersonnelHistory({
               <strong>{item.name}</strong> <Badge>{item.label}</Badge>
             </span>
             <span>
-              {displayDate(item.entry.start)} — {displayDate(item.entry.end)}
+              {item.kind === "inactive" ? (
+                <>
+                  {displayDate(item.entry.start)} —{" "}
+                  {displayDate(item.entry.end)}
+                </>
+              ) : (
+                <>
+                  {validityText(item.entry)}{" "}
+                  <ValidityState entry={item.entry} />
+                </>
+              )}
             </span>
             <button
               className="btn secondary small"
@@ -80,7 +122,7 @@ export function PersonnelHistory({
           </div>
         ))
       ) : (
-        <p className="muted">אין תקופות כשירות, פטור או אי־פעילות.</p>
+        <p className="muted">{empty}</p>
       )}
       {selected && (
         <TimelineEdit
@@ -116,6 +158,8 @@ function TimelineEdit({
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [input, setInput] = useState<Record<string, unknown>>({});
   const removing = selected.operation === "remove";
+  // Capabilities and exemptions may stay open on either side (decision 224).
+  const dated = selected.kind === "inactive";
   const fields: Field[] = [
     ...(!removing && selected.kind !== "inactive"
       ? [
@@ -124,9 +168,7 @@ function TimelineEdit({
             label: "סוג מהקטלוג",
             type: "select" as const,
             required: true,
-            value: str(
-              selected.entry.qualificationId ?? selected.entry.exemptionId
-            ),
+            value: catalogIdOf(selected.entry),
             options: rows(state.eligibilityCatalog)
               .filter((item) => item.kind === selected.kind)
               .map((item) => ({ value: item.id, label: str(item.name) })),
@@ -139,15 +181,17 @@ function TimelineEdit({
             name: "startDate",
             label: "תחילת תוקף",
             type: "date" as const,
-            required: true,
+            required: dated,
             value: str(selected.entry.start),
+            hint: dated ? undefined : "ריק = בלי תאריך התחלה",
           },
           {
             name: "endDate",
             label: "סיום תוקף (כולל)",
             type: "date" as const,
-            required: true,
+            required: dated,
             value: str(selected.entry.end),
+            hint: dated ? undefined : "ריק = קבוע, בלי תאריך סיום",
           },
         ]
       : []),
@@ -167,7 +211,7 @@ function TimelineEdit({
   };
   return (
     <Modal
-      title={`${removing ? "הסרת" : "עריכת"} תקופה · ${str(person.name)}`}
+      title={`${removing ? "הסרת" : "עריכת"} ${dated ? "תקופה" : selected.kind === "capability" ? "כשירות" : "פטור"} · ${str(person.name)}`}
       onClose={onDone}
       wide
     >
@@ -303,28 +347,31 @@ export function AffectedAssignments({
   );
 }
 const periodLabels: Record<string, string> = {
-  qualification: "כשירות",
+  capability: "כשירות",
   exemption: "פטור",
   inactive: "תקופת אי־פעילות",
   population: "מעבר אוכלוסיית שיבוץ",
 };
 /**
- * Adds a qualification, exemption or inactivity period, or a population
+ * Adds a capability, exemption or inactivity period, or a population
  * transition, only after the manager reviewed which reserved assignments it
  * affects. `fixed` supplies values the surrounding screen already knows, such
- * as the soldier or the period kind.
+ * as the soldier or the period kind; `prepare` derives values from the form,
+ * such as the kind of the chosen catalog value.
  */
 export function AddPeriod({
   state,
   action,
   fields,
   fixed = {},
+  prepare = (values) => values,
   submitLabel,
 }: {
   state: AppState;
   action: Action;
   fields: Field[];
   fixed?: Record<string, unknown>;
+  prepare?: (values: Record<string, unknown>) => Record<string, unknown>;
   submitLabel: string;
 }) {
   const [draft, setDraft] = useState<{
@@ -343,7 +390,7 @@ export function AddPeriod({
         )}
         submitLabel={submitLabel}
         onSubmit={async (input) => {
-          const merged = { ...input, ...fixed };
+          const merged = prepare({ ...input, ...fixed });
           setValues(input);
           const version = state.soldiers.find(
             (item) => item.id === merged.soldierId
@@ -389,7 +436,14 @@ export function AddPeriod({
         ) : (
           <>
             {catalogName && <> {catalogName}</>} ·{" "}
-            {displayDate(proposal.startDate)} — {displayDate(proposal.endDate)}
+            {kind === "inactive" ? (
+              <>
+                {displayDate(proposal.startDate)} —{" "}
+                {displayDate(proposal.endDate)}
+              </>
+            ) : (
+              validityText({ start: proposal.startDate, end: proposal.endDate })
+            )}
           </>
         )}
       </p>
@@ -443,6 +497,98 @@ export function AddPeriod({
         חזרה לעריכה
       </button>
     </div>
+  );
+}
+const entryKinds: Record<string, string> = {
+  capability: "כשירות",
+  exemption: "פטור",
+};
+/**
+ * Gives a soldier a capability or an exemption from the catalog (decision 224).
+ * The start defaults to today and the end stays empty, which keeps the entry
+ * permanent. Without `soldierId` the manager also picks the soldier.
+ */
+export function CatalogEntryAdd({
+  state,
+  action,
+  soldierId,
+}: {
+  state: AppState;
+  action: Action;
+  soldierId?: string;
+}) {
+  const catalog = rows(state.eligibilityCatalog)
+    .filter((item) => str(item.kind) in entryKinds)
+    .sort(
+      (a, b) =>
+        str(a.kind).localeCompare(str(b.kind)) ||
+        str(a.name).localeCompare(str(b.name), "he")
+    );
+  if (!catalog.length)
+    return (
+      <Notice>
+        עדיין לא הוגדרו כשירויות או פטורים. מגדירים אותם ב
+        <Link className="text-link" href="/manage/eligibility">
+          פטורים וכשירויות
+        </Link>
+        .
+      </Notice>
+    );
+  return (
+    <AddPeriod
+      state={state}
+      action={action}
+      fixed={soldierId ? { soldierId } : {}}
+      prepare={(values) => ({
+        ...values,
+        kind: catalog.find((item) => item.id === values.value)?.kind,
+      })}
+      fields={[
+        ...(soldierId
+          ? []
+          : [
+              {
+                name: "soldierId",
+                label: "חייל",
+                type: "select" as const,
+                required: true,
+                options: state.soldiers
+                  .filter((s) => !s.deletedAt)
+                  .map((s) => ({ value: s.id, label: str(s.name) })),
+              },
+            ]),
+        {
+          name: "value",
+          label: "סוג מהקטלוג",
+          type: "select",
+          required: true,
+          options: catalog.map((item) => ({
+            value: item.id,
+            label: `${str(item.name)} · ${entryKinds[str(item.kind)]}`,
+          })),
+        },
+        {
+          name: "startDate",
+          label: "תחילת תוקף",
+          type: "date",
+          value: unitToday(),
+          hint: "ריק = בלי תאריך התחלה",
+        },
+        {
+          name: "endDate",
+          label: "סיום תוקף (כולל)",
+          type: "date",
+          hint: "ריק = קבוע, בלי תאריך סיום",
+        },
+        {
+          name: "reason",
+          label: "הערת אחראי",
+          type: "textarea",
+          full: true,
+        },
+      ]}
+      submitLabel="בדיקת השפעת השיוך"
+    />
   );
 }
 /**

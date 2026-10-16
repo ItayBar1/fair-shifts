@@ -1,5 +1,10 @@
 import { DateTime } from "luxon";
-import type { DailyWindow, DateRange, InstantRange } from "./types";
+import type {
+  DailyWindow,
+  DateRange,
+  InstantRange,
+  OpenDateRange,
+} from "./types";
 
 export const UNIT_ZONE = "Asia/Jerusalem";
 
@@ -60,6 +65,21 @@ export function datesToInstants(range: DateRange): {
 } {
   const start = localDate(range.start).toMillis();
   const end = localDate(range.end).plus({ days: 1 }).toMillis();
+  if (end <= start) throw new Error("טווח תאריכים לא תקין");
+  return { start, end };
+}
+
+/** An open-ended validity as instants; missing dates reach to infinity. */
+export function openDatesToInstants(range: OpenDateRange): {
+  start: number;
+  end: number;
+} {
+  const start = range.start
+    ? localDate(range.start).toMillis()
+    : Number.NEGATIVE_INFINITY;
+  const end = range.end
+    ? localDate(range.end).plus({ days: 1 }).toMillis()
+    : Number.POSITIVE_INFINITY;
   if (end <= start) throw new Error("טווח תאריכים לא תקין");
   return { start, end };
 }

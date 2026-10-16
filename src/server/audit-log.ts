@@ -135,6 +135,8 @@ const labels: Record<string, string> = {
   "technical.server-recovery": "שחזור גישה טכנית דרך השרת",
 };
 const periodKinds: Record<string, string> = {
+  capability: "כשירות",
+  // Records from before decision 224 merged qualifications into capabilities.
   qualification: "כשירות",
   exemption: "פטור",
   inactive: "אי־פעילות",
@@ -225,7 +227,8 @@ function formatDate(value: unknown) {
 }
 function range(value: unknown) {
   const row = data(value);
-  if (!row.start) return "—";
+  if (!row.start && !row.end) return "ללא תאריכים";
+  if (!row.start) return `עד ${formatDate(row.end)}`;
   return row.end
     ? `${formatDate(row.start)} – ${formatDate(row.end)}`
     : `מ־${formatDate(row.start)}`;
@@ -471,12 +474,13 @@ export function projectAudit(
             kind === "population"
               ? populations[String(record.value)]
               : kind === "rank" ||
+                  kind === "capability" ||
                   kind === "qualification" ||
                   kind === "exemption"
                 ? recordName(record.value)
                 : undefined;
           add("ערך", value);
-          if (record.startDate)
+          if (record.startDate || record.endDate)
             add(
               "תקופה",
               range({ start: record.startDate, end: record.endDate })
@@ -494,7 +498,8 @@ export function projectAudit(
           );
           const catalogOf = (value: unknown) => {
             const row = data(value);
-            const id = row.qualificationId ?? row.exemptionId;
+            const id =
+              row.capabilityId ?? row.qualificationId ?? row.exemptionId;
             return id ? `${recordName(id)}, ` : "";
           };
           if (record.before !== undefined)
@@ -514,6 +519,7 @@ export function projectAudit(
         case "soldier.conditions": {
           const before = data(record.before);
           const after = data(record.after);
+          // Capabilities were part of this set before decision 224.
           const names = (value: unknown) =>
             Array.isArray(value) && value.length
               ? value.map(recordName).join(", ")
@@ -530,7 +536,7 @@ export function projectAudit(
             );
           if (names(before.capabilities) !== names(after.capabilities))
             change(
-              "יכולות",
+              "כשירויות",
               names(before.capabilities),
               names(after.capabilities)
             );

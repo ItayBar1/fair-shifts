@@ -171,7 +171,7 @@ for (const width of [1280, 390]) {
       rankForm.getByLabel("דרגה מאושרת", { exact: true })
     ).toHaveValue(`${nextRankId}|נגדים`);
     await profile
-      .getByText("מועדי שירות, כשירות והיסטוריה", { exact: true })
+      .getByText("מועדי שירות, אי־פעילות והיסטוריה", { exact: true })
       .click();
     const history = profile.locator(".history-row");
     await expect(history.filter({ hasText: "סמל" })).toContainText(

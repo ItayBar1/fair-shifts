@@ -45,15 +45,14 @@ const groupTitles = (
   populations: `אוכלוסיית שיבוץ ${words[scope].all}`,
   genders: "מגדר",
   exemptions: `הסתרת מי שיש לו פטור ${words[scope].at}`,
-  qualifications: `כשירות בתוקף ${words[scope].all}`,
-  capabilities: "יכולת",
+  capabilities: `כשירות בתוקף ${words[scope].all}`,
   ranks: `דרגה ${words[scope].start}`,
 });
 
 /**
  * One way to pick a soldier for a seat, wherever a manager does it (decision 193):
  * search by name or personal number as you type, and filters by population, gender,
- * exemption, qualification, capability and rank. The filters open already filled in
+ * exemption, capability and rank. The filters open already filled in
  * from the duty and the role, and every one can be cleared. They only help find
  * someone; the server still checks eligibility after the choice.
  *
@@ -133,7 +132,6 @@ export function SoldierPicker({
     populations,
     genders,
     exemptions: options.exemptions,
-    qualifications: options.qualifications,
     capabilities: options.capabilities,
     ranks: options.ranks.length
       ? [

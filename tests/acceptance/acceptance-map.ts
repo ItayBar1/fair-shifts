@@ -70,6 +70,7 @@ const I = {
   calendarGrant: "tests/integration/calendar-grant.test.ts",
   calendarLifecycle: "tests/integration/calendar-lifecycle.test.ts",
   genders: "tests/integration/all-genders.test.ts",
+  capabilityValidity: "tests/integration/capability-validity.test.ts",
   digest: "tests/integration/assignment-digest.test.ts",
   inactive: "tests/integration/inactivity-normalization.test.ts",
   publish: "tests/integration/publish-drafts.test.ts",
@@ -381,13 +382,18 @@ export const stories: Record<number, Entry> = {
   13: covered([
     ...t(
       I.auth,
-      "previews a shortened qualification for the whole performance, retains the assignment and flags it after explicit confirmation",
-      "counts combined qualification periods over the whole duty and clears the attention flag only when they cover it"
+      "previews a shortened capability for the whole performance, retains the assignment and flags it after explicit confirmation",
+      "counts combined capability periods over the whole duty and clears the attention flag only when they cover it"
     ),
-    ...t(U.domain, "checks qualification throughout the execution"),
+    ...t(
+      U.domain,
+      "checks a dated capability throughout the execution",
+      "treats missing capability and exemption dates as open (decision 224)"
+    ),
     ...t(
       U.picker,
-      "hides a soldier whose qualification expires, or starts, inside the range"
+      "hides a soldier whose capability expires, or starts, inside the range",
+      "keeps a permanent capability for any range, and one open on either side"
     ),
   ]),
   14: covered([
@@ -406,7 +412,7 @@ export const stories: Record<number, Entry> = {
     ...t(
       I.auth,
       "persists a justified rank exception through another seat assignment and publication",
-      "rejects an obsolete exception preview and never permits it to bypass a missing qualification",
+      "rejects an obsolete exception preview and never permits it to bypass a missing capability",
       "checks personal hours over a night in Israeli time, keeps them out of the lottery and allows only a justified manual exception"
     ),
     ...t(
@@ -966,7 +972,7 @@ export const stories: Record<number, Entry> = {
     ...t(
       I.auth,
       "persists a justified rank exception through another seat assignment and publication",
-      "rejects an obsolete exception preview and never permits it to bypass a missing qualification"
+      "rejects an obsolete exception preview and never permits it to bypass a missing capability"
     ),
     ...t(
       U.domain,
@@ -1234,11 +1240,23 @@ export const scenarios: Record<number, Entry> = {
     ),
   ]),
   8: covered([
-    ...t(U.domain, "checks qualification throughout the execution"),
+    ...t(
+      U.domain,
+      "checks a dated capability throughout the execution",
+      "treats missing capability and exemption dates as open (decision 224)"
+    ),
+    ...t(
+      I.capabilityValidity,
+      "keeps every soldier's qualifications and capabilities, the catalog and the conditions, and runs again without change"
+    ),
+    ...t(
+      E.conditions,
+      "manager gives dated or permanent capabilities and exemptions, filters by them, and reviews gender and hours impact before saving"
+    ),
     ...t(
       I.auth,
       "requires exemption approval for a partial overlap, rejects an obsolete preview and saves one of two competing confirmations",
-      "rejects an obsolete exception preview and never permits it to bypass a missing qualification",
+      "rejects an obsolete exception preview and never permits it to bypass a missing capability",
       "removes an exemption without discarding approved constraints and restricts both preview and catalog edits to managers"
     ),
     ...t(
@@ -2153,7 +2171,7 @@ export const scenarios: Record<number, Entry> = {
       U.picker,
       "matches a name part, or the whole issued ID number",
       "hides a soldier whose exemption covers only part of the range",
-      "hides a soldier whose qualification expires, or starts, inside the range",
+      "hides a soldier whose capability expires, or starts, inside the range",
       "uses Israel days on the night the clocks go back",
       "shows a value added to a catalog with no change in code"
     ),
