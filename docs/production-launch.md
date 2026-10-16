@@ -67,6 +67,8 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 
 **HSTS בדומיין החדש:** כמו ב־staging, ב־**SSL/TLS → Edge Certificates → HSTS** מגדירים `max-age` של שנה, בלי includeSubDomains ובלי preload ([ראיות המעבר](security-live-transition-evidence.md)). הסיומת `.app` כולה כבר ברשימת ה־HSTS preload של הדפדפנים. לכן כל כתובת תחת `fairshifts.app`, כולל תת־דומיינים, נפתחת רק ב־HTTPS בלי קשר להגדרה. זה לא סותר את ההגדרה של האתר, ודרך ה־Tunnel אין גישה ב־HTTP בכל מקרה.
 
+**מצב 16.10.2026:** שלב 3 הושלם. ב־Tunnel, ששמו שונה ל־`fair-shifts` (המזהה וה־token לא השתנו), נוסף route ל־`fairshifts.app` עם הגדרות ברירת מחדל. HSTS הוגדר לשנה, ו־`/api/health` בדומיין עונה 200 בבדיקה חיצונית. בלקוח הכניסה, ששמו שונה ל־`fair-shifts`, נוספו המקור וכתובת החזרה. בפרויקט יש שני דומיינים מורשים, ובו ארבעת ההיקפים ה־non-sensitive בלבד. ב־Brevo הדומיין מאומת (DKIM ו־DMARC), והשולח `no-reply@fairshifts.app` מאומת. תיקיית Drive: לפי ההחלטה למעלה, משתמשים באותה תיקייה.
+
 ## 4. יום ההחלפה
 
 הסדר חשוב: קודם עוצרים את staging, ורק אחר כך מזיזים את התצורה שלו.
