@@ -61,6 +61,8 @@ export const diagnosticActionTypes = new Set([
   "soldier.conditions",
   "rank.catalog.save",
   "rank.rule.save",
+  "rank.track.save",
+  "rank.track.delete",
   "rank.deadline",
   "rank.set",
   "rank.approve",

@@ -86,6 +86,7 @@ export const recordPolicies: Record<string, ErasurePolicy> = {
   rank_reminder: { action: "delete", why: "תזכורת מערכת לחייל שנמחק" },
   rank_rule: { action: "keep", why: "כלל ליחידה" },
   rank_rule_revision: { action: "keep", why: "כלל ליחידה" },
+  rank_track: { action: "keep", why: "מסלול דרגות ליחידה" },
   request: {
     action: "scrub",
     why: "נימוקי בקשה, החלטה ואישור חריג נמחקים; הסטטוס נשאר",

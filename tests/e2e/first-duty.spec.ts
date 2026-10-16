@@ -423,14 +423,23 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     ).needsAttention
   ).toContain("approved_constraint");
   await page.goto("/manage/ranks");
+  await page.getByRole("button", { name: "הוספת מסלול" }).click();
+  await page.getByLabel("שם המסלול").fill("מסלול סינתטי");
+  await page
+    .getByLabel("מקור ההגדרה", { exact: true })
+    .fill("נתוני בדיקה בלבד");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "שמירה", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   for (const [name, order] of [
     ["דרגה א לבדיקה", 1],
     ["דרגה ב לבדיקה", 2],
   ] as const) {
     await page.getByRole("button", { name: "הוספת דרגה לקטלוג" }).click();
     await page.getByLabel("שם הדרגה", { exact: true }).fill(name);
-    await page.getByLabel("מסלול הדרגות", { exact: true }).fill("מסלול סינתטי");
-    await page.getByLabel("סדר בתוך המסלול").fill(String(order));
+    await page.getByLabel("מקום במסלול מסלול סינתטי").fill(String(order));
     await page.getByLabel("מקור ההגדרה המאומת").fill("נתוני בדיקה בלבד");
     await page
       .getByRole("dialog")
@@ -1060,7 +1069,7 @@ test("responsibility filters default per manager, hide KAMA and filter rank with
   await expect(rowsNamed(page).filter({ hasText: "מסנן קבע" })).toHaveCount(1);
   await page
     .getByLabel("סינון לפי דרגה נוכחית")
-    .selectOption(`rank:${sergeant}`);
+    .selectOption(`rank:${sergeant}|נגדים מסנן`);
   await expect.poll(() => visibleNames(page)).toEqual(["מסנן חובה נגד"]);
   await expect(page.getByText("· מסלול נגדים מסנן")).toBeVisible();
   await page

@@ -18,8 +18,9 @@ import type {
   Requirements,
   Soldier,
 } from "@/domain/types";
+import { rankMemberships } from "@/domain/rank-tracks";
 import { rankTracks } from "./soldier-filters";
-import { type Row, num, obj, rows, str } from "./types";
+import { type Row, obj, rows, str } from "./types";
 
 /**
  * The finder behind the soldier picker (decision 193). It only helps a manager find
@@ -293,14 +294,16 @@ export function defaultFilters(
       ? [
           rankCatalog
             .filter((rank) =>
-              matchesRank(
-                {
-                  effectiveFrom: "",
-                  rankId: rank.id,
-                  trackId: str(rank.track),
-                  order: num(rank.order),
-                },
-                set.ranks ?? []
+              rankMemberships(rank).some((membership) =>
+                matchesRank(
+                  {
+                    effectiveFrom: "",
+                    rankId: rank.id,
+                    trackId: membership.track,
+                    order: membership.order,
+                  },
+                  set.ranks ?? []
+                )
               )
             )
             .map((rank) => rank.id),
