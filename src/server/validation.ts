@@ -57,7 +57,8 @@ export const profileInput = z.object({
   releaseDate: optionalDate,
   officerDate: optionalDate,
   permanentDate: optionalDate,
-  graceEligible: z.boolean().default(false),
+  // Left out of an edit after the grace window closes; the stored value stays.
+  graceEligible: z.boolean().optional(),
   rankTrack: z.string().max(100).optional(),
   /** The manager saw the same-name warning and saves anyway. */
   duplicateNameConfirmed: z.boolean().optional(),

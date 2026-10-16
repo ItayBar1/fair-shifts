@@ -1,6 +1,7 @@
 "use client";
 import { CatalogImpact } from "./duty-changes";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { graceEnd, graceWindowOpen, unitToday } from "@/domain/time";
 import Link from "next/link";
 import {
   Search,
@@ -83,7 +84,33 @@ const nameParts = (s?: Row) => {
     lastName: str(s?.lastName, rest.join(" ")),
   };
 };
-const soldierFields = (state: AppState, s?: Row): Field[] => [
+/**
+ * The grace checkbox is shown while it can still matter: from an entered
+ * arrival date until the month after it ends. Grace needs that date (without
+ * it the soldier cannot be assigned), so a new soldier starts as eligible only
+ * once it is entered (decision 225).
+ */
+const graceFields = (s: Row | undefined, arrival: string): Field[] =>
+  (arrival && graceWindowOpen(arrival, unitToday())) ||
+  (!arrival && s?.graceEligible)
+    ? [
+        {
+          name: "graceEligible",
+          label: "זכאי לחודש חסד מתאריך ההגעה",
+          type: "checkbox",
+          value: s ? Boolean(s.graceEligible) : true,
+          hint: arrival
+            ? `ללא תורנויות עד ${displayDate(graceEnd(arrival))}; אפשר לשנות עד אז`
+            : "חסר תאריך הגעה, ולכן אי אפשר לשבץ את החייל",
+        },
+      ]
+    : [];
+const soldierFields = (
+  state: AppState,
+  s?: Row,
+  arrival = str(s?.arrivalDate),
+  onArrival?: (value: string) => void
+): Field[] => [
   {
     name: "firstName",
     label: "שם פרטי",
@@ -155,6 +182,7 @@ const soldierFields = (state: AppState, s?: Row): Field[] => [
     label: "תאריך הגעה ליחידה",
     type: "date",
     value: str(s?.arrivalDate),
+    onChange: onArrival,
   },
   {
     name: "releaseDate",
@@ -174,13 +202,7 @@ const soldierFields = (state: AppState, s?: Row): Field[] => [
     type: "date",
     value: str(s?.permanentDate),
   },
-  {
-    name: "graceEligible",
-    label: "זכאי לחודש חסד מתאריך ההגעה",
-    type: "checkbox",
-    value: Boolean(s?.graceEligible),
-    hint: "קליטת רשומה קיימת אינה מעניקה חסד אוטומטי",
-  },
+  ...graceFields(s, arrival),
   {
     name: "address",
     label: "כתובת (רשות)",
@@ -280,6 +302,47 @@ function SoldierRankEdit({
     </section>
   );
 }
+/** Who the soldier is at a glance, each fact as label and value. */
+function ProfileFacts({ person }: { person: Row }) {
+  const arrival = str(person.arrivalDate);
+  const facts: [string, ReactNode][] = [
+    [
+      "מספר זיהוי",
+      <bdi key="id" dir="ltr">
+        {str(person.idNumber)}
+      </bdi>,
+    ],
+    [
+      "טלפון",
+      <bdi key="phone" dir="ltr">
+        {str(person.phone, "לא הוזן")}
+      </bdi>,
+    ],
+    [
+      "דרגה נוכחית",
+      <span key="rank">
+        {str(person.rankName, "דרגה חסרה")}
+        {person.rankTrack ? ` · מסלול ${str(person.rankTrack)}` : null}
+      </span>,
+    ],
+  ];
+  // After the window closes the checkbox is gone; the month itself stays visible.
+  if (person.graceEligible && arrival && !graceWindowOpen(arrival, unitToday()))
+    facts.push([
+      "חודש חסד",
+      `${displayDate(arrival)} – ${displayDate(graceEnd(arrival))}`,
+    ]);
+  return (
+    <dl className="profile-facts">
+      {facts.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}:</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 /** Service dates derived by the server, shown so a manager sees them before planning. */
 function ServiceDates({ person }: { person: Row }) {
   const facts = [
@@ -318,6 +381,12 @@ export function SoldiersView({
   const [held, setHeld] = useState(noHeldFilter);
   const tracks = rankTracks(rows(state.rankCatalog));
   const [selectedRecord, setSelected] = useState<Row | null>(null);
+  // The arrival date each form holds now, so the grace checkbox follows it.
+  const [newArrival, setNewArrival] = useState("");
+  const [editArrival, setEditArrival] = useState<{
+    id: unknown;
+    value: string;
+  }>();
   const selected = selectedRecord
     ? (state.soldiers.find((person) => person.id === selectedRecord.id) ??
       selectedRecord)
@@ -342,7 +411,8 @@ export function SoldiersView({
         actions={
           <ActionDialog
             title="הוספת חייל"
-            fields={soldierFields(state)}
+            fields={soldierFields(state, undefined, newArrival, setNewArrival)}
+            onOpen={() => setNewArrival("")}
             action={action}
             type="soldier.create"
             description="לאחר הקליטה החייל יוכל להתחבר באמצעות המייל המאושר."
@@ -493,29 +563,25 @@ export function SoldiersView({
           onClose={() => setSelected(null)}
           wide
         >
-          <div className="tabs-heading">
-            <Badge>{population(selected.population)}</Badge>
-            <Status value={selected.serviceStatus || "active"} />
-            <span className="muted">
-              מספר זיהוי <bdi dir="ltr">{str(selected.idNumber)}</bdi>
-            </span>
-            <span className="muted">
-              מייל <bdi dir="ltr">{str(selected.email, "—")}</bdi>
-            </span>
-            <AuditLink id={selected.id} label="יומן הפעולות של החייל" />
+          <div className="profile-head">
+            <div className="profile-badges">
+              <Badge>{population(selected.population)}</Badge>
+              <Status value={selected.serviceStatus || "active"} />
+              <AuditLink id={selected.id} label="יומן הפעולות של החייל" />
+            </div>
+            <ProfileFacts person={selected} />
           </div>
           <ServiceDates person={selected} />
-          <p>
-            דרגה נוכחית: <strong>{str(selected.rankName, "דרגה חסרה")}</strong>
-            {selected.rankTrack ? (
-              <> · מסלול {str(selected.rankTrack)}</>
-            ) : null}
-          </p>
           <ProfileEdit
             person={selected}
-            fields={soldierFields(state, selected).filter(
-              (f) => !["email", "currentScore"].includes(f.name)
-            )}
+            fields={soldierFields(
+              state,
+              selected,
+              editArrival?.id === selected.id
+                ? editArrival.value
+                : str(selected.arrivalDate),
+              (value) => setEditArrival({ id: selected.id, value })
+            ).filter((f) => !["email", "currentScore"].includes(f.name))}
             action={action}
             onDone={() => setSelected(null)}
           />
@@ -643,6 +709,9 @@ export function SoldiersView({
           </details>
           <details className="disclosure">
             <summary>ניהול כתובת מייל וחשבון</summary>
+            <p className="account-email">
+              כתובת מייל: <bdi dir="ltr">{str(selected.email, "—")}</bdi>
+            </p>
             <div className="account-actions">
               <ActionDialog
                 title="שינוי כתובת מייל"

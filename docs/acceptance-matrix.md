@@ -59,9 +59,11 @@
 - [auth.test.ts](../tests/integration/auth.test.ts): `previews a population transition over a night duty that crosses it, keeps earlier transitions and saves one of two competing confirmations`
 - [first-duty.spec.ts](../tests/e2e/first-duty.spec.ts): `population moves preview their impact before saving in the transition, the profile and the import`
 
-### 8. כאחראי, אני רוצה לאשר חודש חסד רק לזכאים כדי שקליטת רשומה קיימת לא תעניק חסד בטעות. — מכוסה
+### 8. כאחראי, אני רוצה שחייל חדש שאני מוסיף יסומן כזכאי לחודש חסד, ושאוכל לבטל זאת, כדי שייבוא של חיילים ותיקים לא יעניק חסד… — מכוסה
 
-- [service-lifecycle.test.ts](../tests/integration/service-lifecycle.test.ts): `grants grace only when marked eligible and leaves the balance when it ends`
+- [service-lifecycle.test.ts](../tests/integration/service-lifecycle.test.ts): `grants grace only when marked eligible and leaves the balance when it ends`; `changes grace eligibility only until the month from arrival ends (decision 225)`
+- [domain.test.ts](../tests/unit/domain.test.ts): `keeps grace eligibility open before arrival and until the return day (decision 225)`
+- [soldier-rank-edit.spec.ts](../tests/e2e/soldier-rank-edit.spec.ts): `manager adds a soldier with a rank and updates it in the profile`
 - [service-lifecycle.test.ts](../tests/unit/service-lifecycle.test.ts): `applies only to an explicitly eligible soldier`; `ends on the last day of a shorter month, which is itself available`
 
 ### 9. כאחראי, אני רוצה להגדיר אי־פעילות לתקופה כדי למנוע שיבוץ בזמן קורס או היעדרות ממושכת. — מכוסה
@@ -427,7 +429,7 @@
 
 ### 5. חסד לפי זכאות — כשירות וזמינות — מכוסה
 
-- [domain.test.ts](../tests/unit/domain.test.ts): `uses a calendar month for grace at month end`; `rejects a nonexistent daylight-saving time and requires disambiguation for a repeated time`
+- [domain.test.ts](../tests/unit/domain.test.ts): `uses a calendar month for grace at month end`; `keeps grace eligibility open before arrival and until the return day (decision 225)`; `reads the unit's date in Israel, not UTC`; `rejects a nonexistent daylight-saving time and requires disambiguation for a repeated time`
 - [service-lifecycle.test.ts](../tests/unit/service-lifecycle.test.ts): `ends on the last day of a shorter month, which is itself available`
 - [service-lifecycle.test.ts](../tests/integration/service-lifecycle.test.ts): `grants grace only when marked eligible and leaves the balance when it ends`
 
