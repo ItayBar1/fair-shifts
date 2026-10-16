@@ -79,33 +79,21 @@ export const capabilityOptions = (state: AppState) =>
     .filter((item) => item.kind === "capability")
     .map((item) => ({ value: item.id, label: str(item.name) }));
 
-type Window = { startTime: string; endTime: string; weekdays: number[] };
-type Limit = {
-  key: string;
-  id?: string;
-  start: string;
-  end: string;
-  windows: Window[];
-};
+export type Window = { startTime: string; endTime: string; weekdays: number[] };
 
-const newWindow = (): Window => ({
+export const newWindow = (): Window => ({
   startTime: "08:00",
   endTime: "17:00",
   weekdays: everyDay,
 });
-function limitsOf(person: Row): Limit[] {
-  return rows(person.allowedHours).map((limit) => ({
-    key: limit.id,
-    id: limit.id,
-    start: str(limit.start),
-    end: str(limit.end),
-    windows: rows(limit.windows).map((window) => ({
-      startTime: str(window.startTime),
-      endTime: str(window.endTime),
-      weekdays: Array.isArray(window.weekdays)
-        ? window.weekdays.map(Number)
-        : everyDay,
-    })),
+/** The windows stored on a catalog entry, ready for the editor. */
+export function windowsOf(value: unknown): Window[] {
+  return rows(value).map((window) => ({
+    startTime: str(window.startTime),
+    endTime: str(window.endTime),
+    weekdays: Array.isArray(window.weekdays)
+      ? window.weekdays.map(Number)
+      : everyDay,
   }));
 }
 export function describeWindow(window: Row) {
@@ -123,9 +111,9 @@ export function describeWindow(window: Row) {
 }
 
 /**
- * The manager replaces a soldier's gender and personal hours limits as one set,
- * after reviewing which reserved assignments it affects. Capabilities are dated
- * entries since decision 224 and are added beside exemptions.
+ * The manager changes a soldier's gender after reviewing which reserved
+ * assignments it affects. Capabilities and exemptions, hours exemptions among
+ * them (decision 226), are dated entries on the eligibility screen.
  */
 export function SoldierConditions({
   action,
@@ -135,31 +123,12 @@ export function SoldierConditions({
   person: Row;
 }) {
   const [gender, setGender] = useState(str(person.gender));
-  const [limits, setLimits] = useState<Limit[]>(() => limitsOf(person));
   const [reason, setReason] = useState("");
   const [draft, setDraft] = useState<{
     payload: Record<string, unknown>;
     version?: number;
     preview: Record<string, unknown>;
   } | null>(null);
-  const updateLimit = (key: string, change: Partial<Limit>) =>
-    setLimits(
-      limits.map((limit) =>
-        limit.key === key ? { ...limit, ...change } : limit
-      )
-    );
-  const updateWindow = (
-    key: string,
-    index: number,
-    change: Partial<Window>
-  ) => {
-    const limit = limits.find((item) => item.key === key)!;
-    updateLimit(key, {
-      windows: limit.windows.map((window, i) =>
-        i === index ? { ...window, ...change } : window
-      ),
-    });
-  };
 
   if (draft) {
     const impact = rows(draft.preview.impact);
@@ -218,12 +187,6 @@ export function SoldierConditions({
         const payload = {
           soldierId: person.id,
           gender,
-          allowedHours: limits.map((limit) => ({
-            id: limit.id,
-            start: limit.start,
-            end: limit.end,
-            windows: limit.windows,
-          })),
           reason,
         };
         const preview = await action(
@@ -250,143 +213,6 @@ export function SoldierConditions({
             ))}
           </select>
         </label>
-        <h3>הגבלות שעות</h3>
-        <p className="muted">
-          בתקופת ההגבלה כל תורנות חייבת להיות בתוך החלונות, לכל משכה ולפי שעון
-          ישראל. חלון שחוצה חצות שייך ליום שבו התחיל. חריגה אפשרית רק בשיבוץ
-          ידני עם אישור ונימוק.
-        </p>
-        {!limits.length && <p className="muted">אין הגבלות שעות.</p>}
-        {limits.map((limit, limitIndex) => (
-          <div
-            className="role-editor"
-            key={limit.key}
-            role="group"
-            aria-label={`הגבלת שעות ${limitIndex + 1}`}
-          >
-            <label className="field">
-              <span>בתוקף מתאריך</span>
-              <input
-                type="date"
-                required
-                value={limit.start}
-                onChange={(e) =>
-                  updateLimit(limit.key, { start: e.target.value })
-                }
-              />
-            </label>
-            <label className="field">
-              <span>עד תאריך (כולל)</span>
-              <input
-                type="date"
-                required
-                value={limit.end}
-                onChange={(e) =>
-                  updateLimit(limit.key, { end: e.target.value })
-                }
-              />
-            </label>
-            {limit.windows.map((window, index) => (
-              <div className="subsection" key={index}>
-                <label className="field">
-                  <span>משעה</span>
-                  <input
-                    type="time"
-                    required
-                    aria-label={`תחילת חלון ${index + 1}`}
-                    value={window.startTime}
-                    onChange={(e) =>
-                      updateWindow(limit.key, index, {
-                        startTime: e.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>עד שעה</span>
-                  <input
-                    type="time"
-                    required
-                    aria-label={`סיום חלון ${index + 1}`}
-                    value={window.endTime}
-                    onChange={(e) =>
-                      updateWindow(limit.key, index, {
-                        endTime: e.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <ConditionToggles
-                  legend="ימים"
-                  options={weekdays.map((day) => ({
-                    value: String(day.value),
-                    label: day.label,
-                  }))}
-                  value={window.weekdays.map(String)}
-                  onChange={(days) =>
-                    updateWindow(limit.key, index, {
-                      weekdays: days.map(Number),
-                    })
-                  }
-                />
-                {limit.windows.length > 1 && (
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() =>
-                      updateLimit(limit.key, {
-                        windows: limit.windows.filter((_, i) => i !== index),
-                      })
-                    }
-                  >
-                    הסרת החלון
-                  </button>
-                )}
-              </div>
-            ))}
-            <div className="subsection">
-              <button
-                type="button"
-                className="text-button"
-                onClick={() =>
-                  updateLimit(limit.key, {
-                    windows: [...limit.windows, newWindow()],
-                  })
-                }
-              >
-                <Plus size={15} />
-                הוספת חלון
-              </button>
-              <button
-                type="button"
-                className="btn secondary small"
-                onClick={() =>
-                  setLimits(limits.filter((item) => item.key !== limit.key))
-                }
-              >
-                הסרת ההגבלה
-              </button>
-            </div>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="text-button"
-          onClick={() =>
-            setLimits([
-              ...limits,
-              {
-                key: crypto.randomUUID(),
-                start: "",
-                end: "",
-                windows: [newWindow()],
-              },
-            ])
-          }
-        >
-          <Plus size={15} />
-          הוספת הגבלת שעות
-        </button>
         <Fields
           fields={[
             {
@@ -400,5 +226,80 @@ export function SoldierConditions({
         />
       </div>
     </Form>
+  );
+}
+
+/**
+ * The daily windows of an hours exemption (decision 226): every part of a duty
+ * must fall in one of them, by Israel time. A window that crosses midnight
+ * belongs to the day it starts.
+ */
+export function WindowsEditor({
+  windows,
+  onChange,
+}: {
+  windows: Window[];
+  onChange: (windows: Window[]) => void;
+}) {
+  const update = (index: number, change: Partial<Window>) =>
+    onChange(
+      windows.map((window, i) =>
+        i === index ? { ...window, ...change } : window
+      )
+    );
+  return (
+    <div className="stack" role="group" aria-label="חלונות השעות המותרים">
+      <strong>חלונות השעות המותרים</strong>
+      {windows.map((window, index) => (
+        <div className="subsection" key={index}>
+          <label className="field">
+            <span>משעה</span>
+            <input
+              type="time"
+              required
+              aria-label={`תחילת חלון ${index + 1}`}
+              value={window.startTime}
+              onChange={(e) => update(index, { startTime: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>עד שעה</span>
+            <input
+              type="time"
+              required
+              aria-label={`סיום חלון ${index + 1}`}
+              value={window.endTime}
+              onChange={(e) => update(index, { endTime: e.target.value })}
+            />
+          </label>
+          <ConditionToggles
+            legend="ימים"
+            options={weekdays.map((day) => ({
+              value: String(day.value),
+              label: day.label,
+            }))}
+            value={window.weekdays.map(String)}
+            onChange={(days) => update(index, { weekdays: days.map(Number) })}
+          />
+          {windows.length > 1 && (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => onChange(windows.filter((_, i) => i !== index))}
+            >
+              הסרת החלון
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        className="text-button"
+        onClick={() => onChange([...windows, newWindow()])}
+      >
+        <Plus size={15} />
+        הוספת חלון
+      </button>
+    </div>
   );
 }

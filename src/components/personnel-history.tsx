@@ -13,6 +13,7 @@ import {
 import { unitToday } from "@/client/soldier-filters";
 import { Badge, Form, Modal, Notice, type Field } from "./ui";
 import type { ReactNode } from "react";
+import { describeWindow } from "./eligibility-conditions";
 
 type Kind = "capability" | "exemption" | "inactive";
 const definitions = [
@@ -90,7 +91,16 @@ export function PersonnelHistory({
         entries.map((item) => (
           <div className="history-row" key={`${item.kind}:${item.index}`}>
             <span>
-              <strong>{item.name}</strong> <Badge>{item.label}</Badge>
+              <strong>{item.name}</strong>{" "}
+              <Badge>
+                {rows(item.entry.windows).length ? "פטור שעות" : item.label}
+              </Badge>
+              {rows(item.entry.windows).length > 0 && (
+                <small className="muted">
+                  {" "}
+                  {rows(item.entry.windows).map(describeWindow).join(" · ")}
+                </small>
+              )}
             </span>
             <span>
               {item.kind === "inactive" ? (
@@ -512,10 +522,13 @@ export function CatalogEntryAdd({
   state,
   action,
   soldierId,
+  presetSoldierId,
 }: {
   state: AppState;
   action: Action;
   soldierId?: string;
+  /** Chosen in advance when the screen opens from a soldier's profile. */
+  presetSoldierId?: string;
 }) {
   const catalog = rows(state.eligibilityCatalog)
     .filter((item) => str(item.kind) in entryKinds)
@@ -555,6 +568,7 @@ export function CatalogEntryAdd({
                 options: state.soldiers
                   .filter((s) => !s.deletedAt)
                   .map((s) => ({ value: s.id, label: str(s.name) })),
+                value: presetSoldierId,
               },
             ]),
         {
@@ -564,7 +578,7 @@ export function CatalogEntryAdd({
           required: true,
           options: catalog.map((item) => ({
             value: item.id,
-            label: `${str(item.name)} · ${entryKinds[str(item.kind)]}`,
+            label: `${str(item.name)} · ${rows(item.windows).length ? "פטור שעות" : entryKinds[str(item.kind)]}`,
           })),
         },
         {

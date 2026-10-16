@@ -71,6 +71,7 @@ const I = {
   calendarLifecycle: "tests/integration/calendar-lifecycle.test.ts",
   genders: "tests/integration/all-genders.test.ts",
   capabilityValidity: "tests/integration/capability-validity.test.ts",
+  hoursExemptions: "tests/integration/hours-exemptions.test.ts",
   digest: "tests/integration/assignment-digest.test.ts",
   inactive: "tests/integration/inactivity-normalization.test.ts",
   publish: "tests/integration/publish-drafts.test.ts",
@@ -414,6 +415,15 @@ export const stories: Record<number, Entry> = {
       "persists a justified rank exception through another seat assignment and publication",
       "rejects an obsolete exception preview and never permits it to bypass a missing capability",
       "checks personal hours over a night in Israeli time, keeps them out of the lottery and allows only a justified manual exception"
+    ),
+    ...t(
+      I.hoursExemptions,
+      "gives each window set one catalog entry, moves every limit and its approvals, and runs again without change"
+    ),
+    ...t(
+      U.eligibility,
+      "never blocks a whole duty that lists it, and a plain exemption still does",
+      "applies with open dates, before and after"
     ),
     ...t(
       E.first,
@@ -1251,7 +1261,7 @@ export const scenarios: Record<number, Entry> = {
     ),
     ...t(
       E.conditions,
-      "manager gives dated or permanent capabilities and exemptions, filters by them, and reviews gender and hours impact before saving"
+      "manager gives dated or permanent capabilities and exemptions, an hours exemption among them, filters by them, and reviews the impact"
     ),
     ...t(
       I.auth,

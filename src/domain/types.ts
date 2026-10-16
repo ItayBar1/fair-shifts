@@ -44,6 +44,11 @@ export interface TimedCapability extends OpenDateRange {
 }
 export interface TimedExemption extends OpenDateRange {
   exemptionId: string;
+  /**
+   * An hours exemption (decision 226): copied from its catalog entry, it limits
+   * every duty to these windows instead of blocking the duty types that list it.
+   */
+  windows?: DailyWindow[];
 }
 export interface Constraint extends DateRange {
   id: string;
@@ -57,14 +62,6 @@ export interface DailyWindow {
   weekdays?: number[];
 }
 export type Gender = "male" | "female" | "other";
-/**
- * A personal hours limit. Within its dates every part of a duty must fall in
- * one of its windows; outside them the limit does not apply.
- */
-export interface AllowedHours extends DateRange {
-  id: string;
-  windows: DailyWindow[];
-}
 export interface Soldier {
   id: string;
   /** Full name for display: first and last name joined (decision 222). */
@@ -93,7 +90,6 @@ export interface Soldier {
   gender?: Gender;
   /** Capabilities from the catalog, with or without an end date (decision 224). */
   capabilities?: TimedCapability[];
-  allowedHours?: AllowedHours[];
 }
 export interface RankClause {
   trackId: string;

@@ -61,20 +61,21 @@ describe("registry of record kinds (decision 192)", () => {
 
 describe("profile conditions", () => {
   const rich = soldier({
-    exemptions: [{ exemptionId: "e", start: "2026-01-01", end: "2026-12-31" }],
+    exemptions: [
+      { exemptionId: "e", start: "2026-01-01", end: "2026-12-31" },
+      // An hours exemption carries its windows (decision 226).
+      {
+        exemptionId: "h",
+        start: "2026-01-01",
+        end: "2026-12-31",
+        windows: [{ startTime: "08:00", endTime: "16:00" }],
+      },
+    ],
     inactivePeriods: [{ start: "2026-02-01", end: "2026-02-03" }],
     gender: "female",
     capabilities: [
       { capabilityId: "q", start: "2026-01-01", end: "2026-12-31" },
       { capabilityId: "driver" },
-    ],
-    allowedHours: [
-      {
-        id: "h",
-        start: "2026-01-01",
-        end: "2026-12-31",
-        windows: [{ startTime: "08:00", endTime: "16:00" }],
-      },
     ],
   });
   it("removes the conditions and keeps the rest of the profile", () => {
@@ -93,7 +94,7 @@ describe("profile conditions", () => {
   });
   it("does not change the profile it was given", () => {
     withoutConditions(rich);
-    expect(rich.exemptions).toHaveLength(1);
+    expect(rich.exemptions).toHaveLength(2);
     expect(rich.gender).toBe("female");
   });
 });
