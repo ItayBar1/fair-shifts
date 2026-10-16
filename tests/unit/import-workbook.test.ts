@@ -4,6 +4,7 @@ import {
   createImportTemplate,
   parseImportWorkbook,
 } from "../../src/server/import-workbook";
+import { importColumns } from "../../src/domain/import-columns";
 
 async function workbook() {
   const book = new ExcelJS.Workbook();
@@ -139,5 +140,31 @@ describe("XLSX import contract", () => {
     await expect(parseImportWorkbook(await serialize(book))).rejects.toThrow(
       "500"
     );
+  });
+});
+describe("import format guide", () => {
+  it("documents every template column, and its examples pass the parser", async () => {
+    const book = await workbook();
+    const sheet = book.getWorksheet("חיילים")!;
+    expect(sheet.getRow(1).values).toEqual([
+      undefined,
+      ...importColumns.map((column) => column.label),
+    ]);
+    for (const column of importColumns) {
+      expect(column.need, column.key).not.toBe("");
+      expect(column.values, column.key).not.toBe("");
+    }
+    // The guide's example row is a valid update of the soldier the site numbered 12.
+    sheet.addRow(importColumns.map((column) => column.example || null));
+    const rows = await parseImportWorkbook(await serialize(book));
+    expect(rows[0].values).toMatchObject({
+      idNumber: 12,
+      gender: "female",
+      phone: "0501234567",
+      population: "mandatory",
+      graceEligible: false,
+      rankName: "סמל",
+      rankEffectiveDate: "2026-05-01",
+    });
   });
 });
