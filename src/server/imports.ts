@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Soldier } from "../domain/types";
 import { populationAt, populationMoves } from "../domain/eligibility";
 import { membershipIn } from "../domain/rank-tracks";
+import { graceWindowOpen, unitToday } from "../domain/time";
 import type { DbTransaction } from "./db";
 import { user } from "./auth-schema";
 import { balances, records, soldierContacts, soldiers } from "./schema";
@@ -181,7 +182,7 @@ function proposedPerson(
     releaseDate: profile.releaseDate,
     officerFrom: profile.officerDate,
     permanentFrom: profile.permanentDate,
-    graceEligible: profile.graceEligible,
+    graceEligible: profile.graceEligible ?? data.service.graceEligible,
   };
   if (
     populationAt(person.data, new Date().toISOString()) !== profile.population
@@ -363,6 +364,18 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
         "releaseDate",
         "שחרור קודם להגעה או לגיוס",
         "יש לתקן את תאריכי השירות"
+      );
+    if (
+      person &&
+      values.graceEligible !== undefined &&
+      values.graceEligible !== person.data.service.graceEligible &&
+      !graceWindowOpen(profile.arrivalDate, unitToday())
+    )
+      problem(
+        row,
+        "graceEligible",
+        "חודש החסד מתאריך ההגעה כבר הסתיים",
+        "משאירים את התא ריק; הזכאות נקבעת רק עד תום החודש מההגעה"
       );
     let changes: ImportChange[];
     let populationImpact: PopulationImpact | undefined;

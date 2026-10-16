@@ -347,6 +347,44 @@ small {
 .disclosure > .stack {
   padding-block: var(--space-2) var(--space-4);
 }
+/* The profile head: status badges on one row, then the soldier's facts, each
+   as "label: value" with room between them. */
+.profile-head {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.profile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.profile-badges > a {
+  margin-inline-start: auto;
+}
+.profile-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+  font-size: var(--text-callout);
+}
+.profile-facts div {
+  display: flex;
+  gap: var(--space-1-5);
+}
+.profile-facts dt {
+  color: var(--text-2);
+}
+.profile-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+.account-email {
+  padding-block-start: var(--space-2);
+  overflow-wrap: anywhere;
+}
 /* Account actions: the routine ones in a row, deletion apart below them. */
 .account-actions {
   display: flex;

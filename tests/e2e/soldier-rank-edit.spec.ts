@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
+import { DateTime } from "luxon";
 import { db } from "../../src/server/db";
 import { user, emailOutbox } from "../../src/server/auth-schema";
 import {
@@ -15,6 +16,8 @@ import { soldier } from "../fixtures";
 import { signedInHome, submitAuth } from "./auth-submit";
 
 const managerEmail = "rank-editor@example.invalid";
+const israelDate = (days: number) =>
+  DateTime.now().setZone("Asia/Jerusalem").plus({ days }).toISODate()!;
 let initialRankId: string;
 let nextRankId: string;
 
@@ -121,6 +124,15 @@ for (const width of [1280, 390]) {
       .getByLabel("מייל מאושר להזמנה")
       .fill("new-ranked@example.invalid");
     await intake.getByLabel("טלפון נייד").fill("0500000175");
+    // A new soldier starts as grace-eligible; an arrival long past hides it (decision 225).
+    // Grace needs an arrival date, so the checkbox waits for one.
+    const grace = intake.getByLabel("זכאי לחודש חסד מתאריך ההגעה");
+    await expect(grace).toHaveCount(0);
+    await intake.getByLabel("תאריך הגעה ליחידה").fill("2026-01-01");
+    await expect(grace).toHaveCount(0);
+    await intake.getByLabel("תאריך הגעה ליחידה").fill(israelDate(-3));
+    await expect(grace).toBeChecked();
+    await grace.uncheck();
     await intake.getByLabel("אוכלוסיית שיבוץ").selectOption("mandatory");
     await intake
       .getByLabel("דרגה מאושרת (רשות)")
@@ -135,6 +147,12 @@ for (const width of [1280, 390]) {
     await expect(row.getByRole("cell").nth(3)).toContainText("סמל");
     await row.getByRole("button", { name: "פרופיל ועריכה" }).click();
     const profile = page.getByRole("dialog");
+    // The head shows each fact as "label: value"; the email moved to the account section.
+    const facts = profile.locator(".profile-facts");
+    await expect(facts).toContainText("מספר זיהוי:");
+    await expect(facts).toContainText("טלפון:");
+    await expect(facts).toContainText("0500000175");
+    await expect(facts).not.toContainText("new-ranked@example.invalid");
     const rankForm = profile.getByRole("region", { name: "עדכון דרגת החייל" });
     await expect(
       rankForm.getByLabel("דרגה מאושרת", { exact: true })

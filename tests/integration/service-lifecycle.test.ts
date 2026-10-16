@@ -484,4 +484,46 @@ describe("service dates", () => {
       )
     ).toMatchObject({ serviceStatus: "active" });
   });
+
+  it("changes grace eligibility only until the month from arrival ends (decision 225)", async () => {
+    const stored = async (id: string) =>
+      (await db.select().from(soldiers).where(eq(soldiers.id, id)))[0];
+    const created = await command(manager, "soldier.create", {
+      ...testProfile("חייל ותיק"),
+      email: "00106@example.invalid",
+      arrivalDate: israelDate(-40),
+    });
+    const update = (fields: Record<string, unknown>, version: number) =>
+      command(
+        manager,
+        "soldier.update",
+        { id: created.id, population: "mandatory", ...fields },
+        version
+      );
+    // Forty days after arrival the month is over, and the server refuses a change.
+    await expect(
+      update(
+        { arrivalDate: israelDate(-40), graceEligible: true },
+        created.version
+      )
+    ).rejects.toMatchObject({ code: "grace_window_closed" });
+    // A corrected arrival within the month opens it again.
+    const corrected = await update(
+      { arrivalDate: israelDate(-3), graceEligible: true },
+      created.version
+    );
+    expect((await stored(created.id)).data.service.graceEligible).toBe(true);
+    // An edit without the hidden checkbox keeps what was set.
+    await update({ arrivalDate: israelDate(-40) }, corrected.version);
+    const kept = await stored(created.id);
+    expect(kept.data.service).toMatchObject({
+      arrivalDate: israelDate(-40),
+      graceEligible: true,
+    });
+    // Sending the stored value unchanged is not a change.
+    await update(
+      { arrivalDate: israelDate(-40), graceEligible: true },
+      kept.version
+    );
+  });
 });
