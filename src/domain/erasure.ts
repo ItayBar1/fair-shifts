@@ -77,7 +77,7 @@ export const recordPolicies: Record<string, ErasurePolicy> = {
   performance_correction: { action: "keep", why: "היסטוריית ביצוע וניקוד" },
   personnel_change: {
     action: "delete",
-    why: "פטורים, יכולות, אי־פעילות ותנאי התאמה שנרשמו",
+    why: "פטורים, כשירויות, אי־פעילות ותנאי התאמה שנרשמו",
   },
   planning_run: { action: "keep", why: "מזהים של תורנויות ומקומות בלבד" },
   rank_catalog: { action: "keep", why: "קטלוג ליחידה" },

@@ -406,7 +406,7 @@ async function inspectTimelineAdd(
   invariant(
     isReviewedKind(input.kind),
     "period_kind",
-    "תצוגת השפעה זמינה להוספת יכולת, פטור, אי־פעילות או מעבר אוכלוסייה"
+    "תצוגת השפעה זמינה להוספת כשירות, פטור, אי־פעילות או מעבר אוכלוסייה"
   );
   const person = await loadSoldierForTimeline(
     tx,

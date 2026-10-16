@@ -87,7 +87,7 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
   await login(page, managerEmail);
   const dialog = page.getByRole("dialog");
   const conditions = "תנאי התאמה אישיים: מגדר ושעות";
-  const entries = "יכולות ופטורים";
+  const entries = "כשירויות ופטורים";
   const openProfile = async (section: string) => {
     await page
       .getByRole("row")
@@ -100,8 +100,8 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
   // With an empty catalog the profile points to where capabilities are defined.
   await page.goto("/manage/soldiers");
   await openProfile(entries);
-  await expect(dialog).toContainText("עדיין לא הוגדרו יכולות או פטורים.");
-  await dialog.getByRole("link", { name: "פטורים ויכולות" }).click();
+  await expect(dialog).toContainText("עדיין לא הוגדרו כשירויות או פטורים.");
+  await dialog.getByRole("link", { name: "פטורים וכשירויות" }).click();
   await expect(page).toHaveURL(/\/manage\/eligibility$/);
 
   await page.goto("/manage/eligibility");
@@ -112,7 +112,7 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
   await expect(dialog).not.toBeVisible();
   await expect(
     page.locator(".task-item").filter({ hasText: "נשיאת משקל" })
-  ).toContainText("יכולת");
+  ).toContainText("כשירות");
   await page.getByRole("button", { name: "הגדרה חדשה", exact: true }).click();
   await dialog.getByLabel("סוג ההגדרה").selectOption("exemption");
   await dialog.getByLabel("שם", { exact: true }).fill("פטור שמירות");
@@ -121,7 +121,7 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
   // Capabilities and exemptions are assigned here as well as in the profile.
   await expect(
     page.getByLabel("סוג מהקטלוג", { exact: true }).locator("option", {
-      hasText: "נשיאת משקל · יכולת",
+      hasText: "נשיאת משקל · כשירות",
     })
   ).toHaveCount(1);
 
@@ -133,7 +133,7 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
   await page.getByLabel("ניקוד בסיס").fill("4");
   await page.getByLabel("מגדר מותר", { exact: true }).selectOption(["female"]);
   await dialog
-    .getByRole("group", { name: "יכולות נדרשות לתפקיד 1" })
+    .getByRole("group", { name: "כשירויות נדרשות לתפקיד 1" })
     .getByLabel("נשיאת משקל")
     .check();
   await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
@@ -152,7 +152,7 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
 
   await page.goto("/manage/soldiers");
   await openProfile(entries);
-  await expect(dialog).toContainText("אין יכולות או פטורים.");
+  await expect(dialog).toContainText("אין כשירויות או פטורים.");
   // A capability from today with no end date is permanent (decision 224).
   const addEntry = async (label: string, end = "") => {
     await dialog
@@ -174,7 +174,7 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
     await added.getByRole("button", { name: "אישור הוספת התקופה" }).click();
     await expect(added).toHaveCount(0);
   };
-  await addEntry("נשיאת משקל · יכולת");
+  await addEntry("נשיאת משקל · כשירות");
   await expect(
     dialog.locator(".history-row").filter({ hasText: "נשיאת משקל" })
   ).toContainText("קבוע, בלי תאריך סיום");
@@ -313,8 +313,8 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
   const member_ = page.getByRole("row").filter({ hasText: "חיילת תנאים" });
   const validOn = page.getByLabel("בתוקף בתאריך");
   await page
-    .getByLabel("סינון לפי יכולת")
-    .selectOption({ label: "יכולת: נשיאת משקל" });
+    .getByLabel("סינון לפי כשירות")
+    .selectOption({ label: "כשירות: נשיאת משקל" });
   await expect(validOn).toHaveValue(day(0));
   await expect(member_).toHaveCount(1);
   await expect(page.getByText("1 חיילים מוצגים")).toBeVisible();
@@ -322,7 +322,7 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
   await expect(member_).toHaveCount(0);
   await validOn.fill("");
   await expect(member_).toHaveCount(1);
-  await page.getByLabel("סינון לפי יכולת").selectOption("");
+  await page.getByLabel("סינון לפי כשירות").selectOption("");
   await page
     .getByLabel("סינון לפי פטור")
     .selectOption({ label: "פטור: פטור שמירות" });
@@ -333,8 +333,8 @@ test("manager gives dated or permanent capabilities and exemptions, filters by t
 
   await page.goto("/fairness");
   await page
-    .getByLabel("סינון לפי יכולת")
-    .selectOption({ label: "יכולת: נשיאת משקל" });
+    .getByLabel("סינון לפי כשירות")
+    .selectOption({ label: "כשירות: נשיאת משקל" });
   await expect(member_).toHaveCount(1);
   await page.getByLabel("בתוקף בתאריך").fill(day(-1));
   await expect(member_).toHaveCount(0);

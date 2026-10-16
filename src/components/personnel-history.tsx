@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 
 type Kind = "capability" | "exemption" | "inactive";
 const definitions = [
-  { kind: "capability", field: "capabilities", label: "יכולת" },
+  { kind: "capability", field: "capabilities", label: "כשירות" },
   { kind: "exemption", field: "exemptions", label: "פטור" },
   { kind: "inactive", field: "inactivePeriods", label: "אי־פעילות" },
 ] as const;
@@ -51,7 +51,7 @@ export function PersonnelHistory({
   person,
   kinds = ["capability", "exemption", "inactive"],
   catalogId = "",
-  empty = "אין יכולות, פטורים או תקופות אי־פעילות.",
+  empty = "אין כשירויות, פטורים או תקופות אי־פעילות.",
 }: {
   state: AppState;
   action: Action;
@@ -211,7 +211,7 @@ function TimelineEdit({
   };
   return (
     <Modal
-      title={`${removing ? "הסרת" : "עריכת"} ${dated ? "תקופה" : selected.kind === "capability" ? "יכולת" : "פטור"} · ${str(person.name)}`}
+      title={`${removing ? "הסרת" : "עריכת"} ${dated ? "תקופה" : selected.kind === "capability" ? "כשירות" : "פטור"} · ${str(person.name)}`}
       onClose={onDone}
       wide
     >
@@ -347,7 +347,7 @@ export function AffectedAssignments({
   );
 }
 const periodLabels: Record<string, string> = {
-  capability: "יכולת",
+  capability: "כשירות",
   exemption: "פטור",
   inactive: "תקופת אי־פעילות",
   population: "מעבר אוכלוסיית שיבוץ",
@@ -500,7 +500,7 @@ export function AddPeriod({
   );
 }
 const entryKinds: Record<string, string> = {
-  capability: "יכולת",
+  capability: "כשירות",
   exemption: "פטור",
 };
 /**
@@ -527,9 +527,9 @@ export function CatalogEntryAdd({
   if (!catalog.length)
     return (
       <Notice>
-        עדיין לא הוגדרו יכולות או פטורים. מגדירים אותם ב
+        עדיין לא הוגדרו כשירויות או פטורים. מגדירים אותם ב
         <Link className="text-link" href="/manage/eligibility">
-          פטורים ויכולות
+          פטורים וכשירויות
         </Link>
         .
       </Notice>

@@ -64,7 +64,7 @@ const managementLinks = [
   { path: "/manage/account", title: "החשבון שלי", icon: UserRound },
   { path: "/manage", title: "מרכז טיפול", icon: ListChecks },
   { path: "/manage/soldiers", title: "חיילי היחידה", icon: UsersRound },
-  { path: "/manage/eligibility", title: "פטורים ויכולות", icon: ShieldCheck },
+  { path: "/manage/eligibility", title: "פטורים וכשירויות", icon: ShieldCheck },
   { path: "/manage/ranks", title: "דרגות ופז״ם", icon: Award },
   { path: "/manage/constraints", title: "סבבי אילוצים", icon: CalendarOff },
   { path: "/manage/catalog", title: "קטלוג תורנויות", icon: ClipboardList },

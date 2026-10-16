@@ -196,7 +196,7 @@ describe("eligibility", () => {
       evaluateEligibility(person, long, long.slots[0], context).blockers.map(
         (item) => item.message
       )
-    ).toContain("יכולת נדרשת אינה בתוקף לכל הביצוע");
+    ).toContain("כשירות נדרשת אינה בתוקף לכל הביצוע");
   });
   it("treats missing capability and exemption dates as open (decision 224)", () => {
     const required = duty({ requirements: { capabilityIds: ["q"] } });

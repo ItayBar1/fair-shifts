@@ -325,8 +325,8 @@ export function evaluateEligibility(
         block(
           "capability",
           ranges.length
-            ? "יכולת נדרשת אינה בתוקף לכל הביצוע"
-            : "יכולת נדרשת אינה רשומה לחייל",
+            ? "כשירות נדרשת אינה בתוקף לכל הביצוע"
+            : "כשירות נדרשת אינה רשומה לחייל",
           capabilityId
         );
     }

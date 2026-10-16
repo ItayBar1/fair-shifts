@@ -7590,12 +7590,12 @@ describe("gender, capability and personal hours conditions", () => {
     await expect(
       command("eligibility.catalog.save", {
         kind: "qualification",
-        name: "כשירות ולא יכולת",
+        name: "כשירות ישנה שנדחית",
       })
     ).rejects.toThrow();
     const exemption = await command("eligibility.catalog.save", {
       kind: "exemption",
-      name: "פטור ולא יכולת",
+      name: "פטור שאינו כשירות",
     });
     const limit = {
       start: day(),
@@ -7667,7 +7667,7 @@ describe("gender, capability and personal hours conditions", () => {
     ).rejects.toMatchObject({ status: 409 });
     await expect(
       command("dutyType.save", {
-        name: "יכולת שגויה",
+        name: "כשירות שגויה",
         pricing: { mode: "fixed", base: 4 },
         capabilityIds: [exemption.id],
         roles: [{ name: "תורן", count: 1 }],

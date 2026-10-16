@@ -45,7 +45,7 @@ const groupTitles = (
   populations: `אוכלוסיית שיבוץ ${words[scope].all}`,
   genders: "מגדר",
   exemptions: `הסתרת מי שיש לו פטור ${words[scope].at}`,
-  capabilities: `יכולת בתוקף ${words[scope].all}`,
+  capabilities: `כשירות בתוקף ${words[scope].all}`,
   ranks: `דרגה ${words[scope].start}`,
 });
 

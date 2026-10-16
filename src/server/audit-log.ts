@@ -84,8 +84,8 @@ const labels: Record<string, string> = {
   "soldier.timeline": "הוספת תקופה בפרופיל",
   "soldier.timeline.edit": "עריכת תקופה בפרופיל",
   "soldier.conditions": "עדכון תנאים אישיים",
-  "eligibility.catalog.create": "הוספה לקטלוג פטורים ויכולות",
-  "eligibility.catalog.update": "עדכון בקטלוג פטורים ויכולות",
+  "eligibility.catalog.create": "הוספה לקטלוג פטורים וכשירויות",
+  "eligibility.catalog.update": "עדכון בקטלוג פטורים וכשירויות",
   "rank.catalog.save": "עדכון קטלוג דרגות",
   "rank.rule.save": "עדכון כלל פז״ם",
   "rank.deadline": "קביעת מועד פז״ם אישי",
@@ -135,7 +135,7 @@ const labels: Record<string, string> = {
   "technical.server-recovery": "שחזור גישה טכנית דרך השרת",
 };
 const periodKinds: Record<string, string> = {
-  capability: "יכולת",
+  capability: "כשירות",
   // Records from before decision 224 merged qualifications into capabilities.
   qualification: "כשירות",
   exemption: "פטור",
@@ -536,7 +536,7 @@ export function projectAudit(
             );
           if (names(before.capabilities) !== names(after.capabilities))
             change(
-              "יכולות",
+              "כשירויות",
               names(before.capabilities),
               names(after.capabilities)
             );

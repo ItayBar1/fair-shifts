@@ -367,7 +367,7 @@ test("the role's own conditions fill the filters, next to the duty's", async ({
   await expect(dialog.getByText("מסונן לפי:")).toContainText("נהיגה");
   await openFilters(dialog);
   const capabilities = dialog.getByRole("group", {
-    name: "יכולת בתוקף לכל משך התורנות",
+    name: "כשירות בתוקף לכל משך התורנות",
   });
   await expect(capabilities.getByLabel("נהיגה")).toBeChecked();
   await expect(capabilities.getByLabel("נשק אישי")).not.toBeChecked();
@@ -386,7 +386,7 @@ test("each filter keeps to the rules of the duty date, and the manager can clear
     "אוכלוסיית שיבוץ לכל משך התורנות",
     "מגדר",
     "הסתרת מי שיש לו פטור במועד התורנות",
-    "יכולת בתוקף לכל משך התורנות",
+    "כשירות בתוקף לכל משך התורנות",
     "דרגה בתחילת התורנות",
   ])
     await expect(dialog.getByRole("group", { name: legend })).toBeVisible();
@@ -395,19 +395,19 @@ test("each filter keeps to the rules of the duty date, and the manager can clear
     group("אוכלוסיית שיבוץ לכל משך התורנות").getByLabel("חובה")
   ).toBeChecked();
   await expect(
-    group("יכולת בתוקף לכל משך התורנות").getByLabel("נשק אישי")
+    group("כשירות בתוקף לכל משך התורנות").getByLabel("נשק אישי")
   ).toBeChecked();
   await expect(
     group("הסתרת מי שיש לו פטור במועד התורנות").getByLabel("פטור מאבטחה")
   ).toBeChecked();
   await expect(
-    group("יכולת בתוקף לכל משך התורנות").getByLabel("נהיגה")
+    group("כשירות בתוקף לכל משך התורנות").getByLabel("נהיגה")
   ).not.toBeChecked();
 
   // A permanent capability: only someone who holds it.
-  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נהיגה").check();
+  await group("כשירות בתוקף לכל משך התורנות").getByLabel("נהיגה").check();
   expect(await names(dialog)).toEqual(["דנה ירוק"]);
-  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נהיגה").uncheck();
+  await group("כשירות בתוקף לכל משך התורנות").getByLabel("נהיגה").uncheck();
 
   // Gender.
   await group("מגדר").getByLabel("נקבה").check();
@@ -441,12 +441,12 @@ test("each filter keeps to the rules of the duty date, and the manager can clear
     "רותם מתקדמת",
   ]);
   // A dated capability: valid for the whole duty only.
-  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נשק אישי").uncheck();
+  await group("כשירות בתוקף לכל משך התורנות").getByLabel("נשק אישי").uncheck();
   await group("אוכלוסיית שיבוץ לכל משך התורנות").getByLabel("חובה").uncheck();
   await expect(count(dialog)).toHaveText("7 חיילים");
   expect(await names(dialog)).toContain("נועה אדומה");
   expect(await names(dialog)).toContain("יובל קבע");
-  await group("יכולת בתוקף לכל משך התורנות").getByLabel("נשק אישי").check();
+  await group("כשירות בתוקף לכל משך התורנות").getByLabel("נשק אישי").check();
   expect(await names(dialog)).not.toContain("נועה אדומה");
 
   // Back to the duty's own filters, then everything cleared.
@@ -470,7 +470,7 @@ test("each filter keeps to the rules of the duty date, and the manager can clear
   const fresh = await openManual(page, open.id);
   await openFilters(fresh);
   await expect(
-    fresh.getByRole("group", { name: "יכולת" }).getByLabel("עזרה ראשונה")
+    fresh.getByRole("group", { name: "כשירות" }).getByLabel("עזרה ראשונה")
   ).toBeVisible();
 });
 

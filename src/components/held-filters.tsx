@@ -27,14 +27,14 @@ export function HeldFilters({
     <>
       {capabilities.length > 0 && (
         <select
-          aria-label="סינון לפי יכולת"
+          aria-label="סינון לפי כשירות"
           value={value.capability}
           onChange={(e) => set({ capability: e.target.value })}
         >
-          <option value="">בלי סינון יכולת</option>
+          <option value="">בלי סינון כשירות</option>
           {capabilities.map((item) => (
             <option key={item.value} value={item.value}>
-              יכולת: {item.label}
+              כשירות: {item.label}
             </option>
           ))}
         </select>

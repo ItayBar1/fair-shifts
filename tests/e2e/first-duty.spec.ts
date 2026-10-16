@@ -253,7 +253,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     .selectOption({ label: "חייל סינתטי" });
   await page
     .getByLabel("סוג מהקטלוג", { exact: true })
-    .selectOption({ label: "מטווח לדוגמה · יכולת" });
+    .selectOption({ label: "מטווח לדוגמה · כשירות" });
   await page.getByLabel("תחילת תוקף", { exact: true }).fill("2026-01-01");
   await page.getByLabel("סיום תוקף (כולל)", { exact: true }).fill("2030-12-31");
   await page
@@ -597,7 +597,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await api("soldier.update", { ...member, releaseDate }, member.version);
   const specialty = await api("eligibility.catalog.save", {
     kind: "capability",
-    name: "יכולת להגרלת בדיקה",
+    name: "כשירות להגרלת בדיקה",
   });
   const freshState = await (await page.request.get("/api/v1/state")).json();
   const freshMember = freshState.soldiers.find(

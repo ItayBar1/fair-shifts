@@ -143,7 +143,7 @@ export async function assertRequirementReferences(
               row.data.kind === kind
           ),
           "invalid_requirement",
-          "תנאי הפטור או היכולת אינו קיים בקטלוג"
+          "תנאי הפטור או הכשירות אינו קיים בקטלוג"
         );
   }
 }

@@ -522,16 +522,16 @@ export function SoldiersView({
             onDone={() => setSelected(null)}
           />
           <details className="disclosure">
-            <summary>יכולות ופטורים</summary>
+            <summary>כשירויות ופטורים</summary>
             <div className="stack">
               <PersonnelHistory
                 state={state}
                 action={action}
                 person={selected}
                 kinds={["capability", "exemption"]}
-                empty="אין יכולות או פטורים."
+                empty="אין כשירויות או פטורים."
               />
-              <h3>הוספת יכולת או פטור</h3>
+              <h3>הוספת כשירות או פטור</h3>
               <CatalogEntryAdd
                 state={state}
                 action={action}
@@ -721,14 +721,14 @@ export function EligibilityView({
   return (
     <>
       <Notice>
-        יכולות ופטורים מוזנים לאחר בדיקת האחראי, עם תאריך התחלה ותאריך סיום. בלי
-        תאריך סיום הם קבועים. יכולת נדרשת חייבת להיות בתוקף לכל משך התורנות;
-        פטור חוסם אם הוא חל בחלק ממנה. שינוי נתונים מסמן שיבוצים שנפגעו לטיפול
-        ואינו מבטל אותם אוטומטית.
+        כשירויות ופטורים מוזנים לאחר בדיקת האחראי, עם תאריך התחלה ותאריך סיום.
+        בלי תאריך סיום הם קבועים. כשירות נדרשת חייבת להיות בתוקף לכל משך
+        התורנות; פטור חוסם אם הוא חל בחלק ממנה. שינוי נתונים מסמן שיבוצים שנפגעו
+        לטיפול ואינו מבטל אותם אוטומטית.
       </Notice>
       <div className="two-columns">
         <Panel
-          title="סוגי פטורים ויכולות"
+          title="סוגי פטורים וכשירויות"
           actions={
             <ActionDialog
               title="הגדרה חדשה"
@@ -739,7 +739,7 @@ export function EligibilityView({
                   type: "select",
                   required: true,
                   options: [
-                    { value: "capability", label: "יכולת" },
+                    { value: "capability", label: "כשירות" },
                     { value: "exemption", label: "פטור" },
                   ],
                 },
@@ -766,7 +766,7 @@ export function EligibilityView({
                   <strong>{str(c.name)}</strong>
                   <small>{str(c.description)}</small>
                 </span>
-                <Badge>{c.kind === "exemption" ? "פטור" : "יכולת"}</Badge>
+                <Badge>{c.kind === "exemption" ? "פטור" : "כשירות"}</Badge>
                 <ActionDialog
                   title={`עריכת ${str(c.name)}`}
                   action={action}
@@ -794,7 +794,7 @@ export function EligibilityView({
           ) : (
             <Empty
               title="הקטלוג עדיין ריק"
-              text="מגדירים יכולת (למשל מטווחים או רישיון נהיגה) או פטור, ואז משייכים אותם לחיילים ולסוגי תורנות."
+              text="מגדירים כשירות (למשל מטווחים או רישיון נהיגה) או פטור, ואז משייכים אותם לחיילים ולסוגי תורנות."
             />
           )}
         </Panel>
@@ -806,7 +806,7 @@ export function EligibilityView({
         </Panel>
       </div>
       <Panel
-        title="יכולות ופטורים קיימים"
+        title="כשירויות ופטורים קיימים"
         actions={
           <select
             aria-label="סינון לפי סוג מהקטלוג"
@@ -816,7 +816,7 @@ export function EligibilityView({
             <option value="">כל השיוכים ותקופות אי־הפעילות</option>
             {catalogs.map((c) => (
               <option key={c.id} value={c.id}>
-                {str(c.name)} · {c.kind === "exemption" ? "פטור" : "יכולת"}
+                {str(c.name)} · {c.kind === "exemption" ? "פטור" : "כשירות"}
               </option>
             ))}
           </select>
@@ -960,13 +960,13 @@ function CatalogForm({
     },
     {
       name: "capabilityIds",
-      label: "יכולות נדרשות",
+      label: "כשירויות נדרשות",
       type: "multiselect",
       options: capabilityOptions(state),
       value: Array.isArray(initial?.capabilityIds)
         ? initial.capabilityIds.map(String)
         : [],
-      hint: "כל יכולת נדרשת חייבת להיות בתוקף לכל משך התורנות",
+      hint: "כל כשירות נדרשת חייבת להיות בתוקף לכל משך התורנות",
     },
   ];
   if (bonus)
@@ -1146,7 +1146,7 @@ function CatalogForm({
                   }
                 />
                 <ConditionToggles
-                  legend={`יכולות נדרשות לתפקיד ${i + 1}`}
+                  legend={`כשירויות נדרשות לתפקיד ${i + 1}`}
                   options={capabilityOptions(state)}
                   value={role.requirements.capabilityIds ?? []}
                   onChange={(value) =>
