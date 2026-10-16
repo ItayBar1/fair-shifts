@@ -765,6 +765,12 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await memberPage.goto(`/duties/${cancelled.id}`);
   await expect(memberPage.getByText("בוטלה", { exact: true })).toBeVisible();
   await page.goto("/manage/imports");
+  await expect(
+    page.getByRole("link", { name: "הורדת תבנית XLSX" })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("rowheader", { name: "טלפון", exact: true })
+  ).toBeVisible();
   const download = await page.request.get("/api/v1/imports/template");
   expect(download.status()).toBe(200);
   expect(download.headers()["content-type"]).toContain("spreadsheetml");

@@ -14,6 +14,44 @@ import { Empty, Notice, Panel, Status } from "./ui";
 import { importValue } from "@/client/import-values";
 import { ImportRestore } from "./import-restores";
 import { AffectedAssignments, PopulationChange } from "./personnel-history";
+import { Download } from "lucide-react";
+import { importColumns } from "@/domain/import-columns";
+
+/** The file format, from the same column list the parser reads. */
+function ImportFormat() {
+  return (
+    <details className="disclosure import-format" open>
+      <summary>מבנה הקובץ — {importColumns.length} עמודות</summary>
+      <p className="muted">
+        גיליון ״חיילים״, שורת כותרות אחת בלי שינוי, עד 500 שורות ו־5MB. ערכים
+        בלבד, בלי נוסחאות. שגיאה אחת דוחה את כל הקובץ, והתצוגה המקדימה מפרטת
+        שורה, שדה ותיקון.
+      </p>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>עמודה</th>
+              <th>מילוי</th>
+              <th>ערכים מותרים</th>
+              <th>דוגמה</th>
+            </tr>
+          </thead>
+          <tbody>
+            {importColumns.map((column) => (
+              <tr key={column.key}>
+                <th scope="row">{column.label}</th>
+                <td>{column.need}</td>
+                <td>{column.values}</td>
+                <td dir="auto">{column.example || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
 export function ImportsView({
   state,
   action,
@@ -140,16 +178,23 @@ export function ImportsView({
       <Panel
         title="ייבוא Excel"
         subtitle="קליטה ועדכון לפי מספר זיהוי, עם אישור לפני שמירה"
-        actions={
+      >
+        <div className="import-template">
+          <div>
+            <strong>מתחילים מהתבנית</strong>
+            <p className="muted">
+              קובץ Excel עם העמודות הנכונות, החיילים הקיימים, גיליון הוראות
+              וקטלוג הדרגות של היחידה.
+            </p>
+          </div>
           <a
             className="btn secondary"
             href="/api/v1/imports/template"
             download="fair-shifts-import.xlsx"
           >
-            הורדת תבנית XLSX
+            <Download size={16} aria-hidden="true" /> הורדת תבנית XLSX
           </a>
-        }
-      >
+        </div>
         <p className="muted">
           התבנית כוללת את החיילים הקיימים ואת מספרי הזיהוי שלהם. חייל חדש נכנס
           בשורה בלי מספר, והמערכת מייצרת לו מספר בשמירה. בעדכון ממלאים רק את מה
@@ -176,6 +221,7 @@ export function ImportsView({
             </button>
           </div>
         </form>
+        <ImportFormat />
       </Panel>
       {error && <Notice tone="danger">{error}</Notice>}
       {problems.length > 0 && (

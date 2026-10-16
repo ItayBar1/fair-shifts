@@ -4,6 +4,11 @@ import { AppError, invariant } from "./errors";
 import { date, gender, population } from "./validation";
 import { validateWorkbookArchive } from "./workbook-archive";
 import { parseWorkbookInProcess } from "./workbook-process";
+import {
+  importColumns,
+  type ImportColumn,
+  type ImportColumnKey,
+} from "@/domain/import-columns";
 
 export const importValues = z
   .object({
@@ -50,41 +55,15 @@ export type ImportProblem = {
   reason: string;
   fix: string;
 };
-type Column = {
-  key: keyof ImportValues;
-  label: string;
-  kind?:
-    | "idNumber"
-    | "identifier"
-    | "date"
-    | "score"
-    | "population"
-    | "service"
-    | "boolean"
-    | "gender";
-  width?: number;
-};
-export const importColumns: Column[] = [
-  { key: "idNumber", label: "מספר זיהוי", kind: "idNumber", width: 14 },
-  { key: "firstName", label: "שם פרטי", width: 18 },
-  { key: "lastName", label: "שם משפחה", width: 18 },
-  { key: "gender", label: "מגדר", kind: "gender", width: 10 },
-  { key: "email", label: "מייל", width: 35 },
-  { key: "phone", label: "טלפון", kind: "identifier" },
-  { key: "address", label: "כתובת", width: 35 },
-  { key: "currentScore", label: "ניקוד נוכחי", kind: "score" },
-  { key: "population", label: "אוכלוסיית שיבוץ", kind: "population" },
-  { key: "serviceType", label: "סוג שירות", kind: "service" },
-  { key: "arrivalDate", label: "תאריך הגעה", kind: "date" },
-  { key: "enlistmentDate", label: "תאריך גיוס", kind: "date" },
-  { key: "releaseDate", label: "תאריך שחרור", kind: "date" },
-  { key: "officerDate", label: "תחילת קצונה", kind: "date" },
-  { key: "permanentDate", label: "תחילת קבע", kind: "date" },
-  { key: "graceEligible", label: "זכאות לחסד", kind: "boolean" },
-  { key: "rankName", label: "דרגה" },
-  { key: "rankTrack", label: "מסלול דרגה" },
-  { key: "rankEffectiveDate", label: "תחולת דרגה", kind: "date" },
-];
+type Column = ImportColumn;
+// The shared column list names exactly the fields the parser accepts.
+const columnKeysMatch: [ImportColumnKey] extends [keyof ImportValues]
+  ? [keyof ImportValues] extends [ImportColumnKey]
+    ? true
+    : false
+  : false = true;
+void columnKeysMatch;
+export { importColumns };
 
 /**
  * The template lists the unit's active soldiers by issued number and name, so
