@@ -10,6 +10,8 @@ import {
   personName,
 } from "@/client/types";
 import { ActionDialog, Empty, Panel, Form, Notice, type Field } from "./ui";
+import { rankMemberships } from "@/domain/rank-tracks";
+import { rankChoices } from "@/client/soldier-filters";
 export function RanksView({
   state,
   action,
@@ -18,6 +20,13 @@ export function RanksView({
   action: Action;
 }) {
   const catalog = rows(state.rankCatalog);
+  const tracks = rows(state.rankTracks).sort((a, b) =>
+    str(a.name).localeCompare(str(b.name), "he")
+  );
+  const placesText = (row: Row) =>
+    rankMemberships(row)
+      .map((m) => `${m.track} (מקום ${m.order})`)
+      .join(" · ");
   const rules = rows(state.rankRules);
   const reminders = rows(state.rankReminders).filter((row) =>
     ["pending", "scheduled", "missing_data"].includes(str(row.status))
@@ -27,34 +36,69 @@ export function RanksView({
     .map((row) => ({ value: row.id, label: str(row.name) }));
   const rankOptions = catalog.map((row) => ({
     value: row.id,
-    label: `${str(row.name)} · ${str(row.track)}`,
+    label: `${str(row.name)} · ${rankMemberships(row)
+      .map((m) => m.track)
+      .join(" / ")}`,
   }));
+  const trackFields = (row?: Row): Field[] => [
+    { name: "name", label: "שם המסלול", required: true, value: str(row?.name) },
+    {
+      name: "source",
+      label: "מקור ההגדרה",
+      required: true,
+      value: str(row?.source),
+    },
+  ];
   const rankName = (id: unknown) =>
     str(catalog.find((row) => row.id === id)?.name, "לא הוגדרה");
   const catalogFields = (row?: Row): Field[] => [
     { name: "name", label: "שם הדרגה", required: true, value: str(row?.name) },
-    {
-      name: "track",
-      label: "מסלול הדרגות",
-      required: true,
-      value: str(row?.track),
-      hint: "מסלולים נפרדים לחוגרים, נגדים, קצינים וקמ״א; ניתן להגדיר מסלולי משנה לפי הכללים המאומתים.",
-    },
-    {
-      name: "order",
-      label: "סדר בתוך המסלול",
+    ...tracks.map((track, index): Field => ({
+      name: `place:${track.id}`,
+      label: `מקום במסלול ${str(track.name)}`,
       type: "number",
       min: 0,
-      required: true,
-      value: num(row?.order),
-    },
+      value: row
+        ? (rankMemberships(row)
+            .find((m) => m.track === track.name)
+            ?.order.toString() ?? "")
+        : "",
+      hint:
+        index === 0
+          ? "ריק — הדרגה אינה במסלול. דרגה יכולה להיות בכמה מסלולים, למשל סמ״ר אחרון בחוגרים וראשון בנגדים. מספר נמוך יותר הוא דרגה נמוכה יותר."
+          : undefined,
+      group: "places",
+    })),
     {
       name: "source",
       label: "מקור ההגדרה המאומת",
       required: true,
       value: str(row?.source),
     },
+    ...(row
+      ? [
+          {
+            name: "usageConfirmed",
+            label:
+              "לשמור גם אם ההסרה או שינוי המקום משפיעים על חיילים, כללים או תנאים",
+            type: "checkbox",
+            full: true,
+            hint: "אם יש שימוש קיים, השמירה תיעצר עם פירוט עד שמסמנים כאן",
+          } satisfies Field,
+        ]
+      : []),
   ];
+  const catalogPayload = (values: Record<string, unknown>) => ({
+    name: values.name,
+    source: values.source,
+    usageConfirmed: values.usageConfirmed === true,
+    tracks: tracks.flatMap((track) => {
+      const place = values[`place:${track.id}`];
+      return place === "" || place === undefined
+        ? []
+        : [{ track: str(track.name), order: Number(place) }];
+    }),
+  });
   const ruleFields = (row?: Row): Field[] => [
     {
       name: "name",
@@ -77,6 +121,17 @@ export function RanksView({
       required: true,
       options: rankOptions,
       value: str(row?.toRankId),
+    },
+    {
+      name: "track",
+      label: "מסלול הכלל",
+      type: "select",
+      options: tracks.map((track) => ({
+        value: str(track.name),
+        label: str(track.name),
+      })),
+      value: str(row?.track),
+      hint: "נדרש כששתי הדרגות נמצאות יחד בכמה מסלולים; אחרת נקבע לפי הדרגות.",
     },
     {
       name: "months",
@@ -112,25 +167,94 @@ export function RanksView({
         להזין כללים מאומתים המתאימים למסלולים ביחידה; אין ערכי ברירת מחדל.
       </Notice>
       <Panel
-        title="קטלוג דרגות ומסלולים"
+        title="מסלולי דרגות"
+        subtitle="מסלול הוא סדר של דרגות. השוואת דרגות וכללי פז״ם נעשות בתוך מסלול"
         actions={
           <ActionDialog
-            title="הוספת דרגה לקטלוג"
-            fields={catalogFields()}
+            title="הוספת מסלול"
+            fields={trackFields()}
             action={action}
-            type="rank.catalog.save"
+            type="rank.track.save"
           />
+        }
+      >
+        {tracks.length ? (
+          tracks.map((track) => {
+            const members = catalog
+              .flatMap((row) => {
+                const m = rankMemberships(row).find(
+                  (item) => item.track === track.name
+                );
+                return m ? [{ name: str(row.name), order: m.order }] : [];
+              })
+              .sort((a, b) => a.order - b.order);
+            return (
+              <div className="task-item" key={track.id}>
+                <div className="grow">
+                  <strong>{str(track.name)}</strong>
+                  <p>
+                    {members.length
+                      ? members.map((m) => m.name).join(" ← ")
+                      : "אין עדיין דרגות במסלול"}
+                  </p>
+                  <small>מקור: {str(track.source)}</small>
+                </div>
+                <ActionDialog
+                  title="עריכת מסלול"
+                  buttonLabel="עריכה"
+                  fields={trackFields(track)}
+                  action={action}
+                  type="rank.track.save"
+                  payload={{ id: track.id }}
+                  version={track.version}
+                  description="אפשר לשנות שם רק למסלול שאין בו חיילים, כללי פז״ם או תנאי תורנות."
+                />
+                {!members.length && (
+                  <ActionDialog
+                    title="מחיקת מסלול"
+                    buttonLabel="מחיקה"
+                    danger
+                    fields={[]}
+                    action={action}
+                    type="rank.track.delete"
+                    payload={{ id: track.id }}
+                    version={track.version}
+                    description={`המסלול ${str(track.name)} יימחק. אפשר למחוק רק מסלול ריק שאינו בשימוש.`}
+                    submitLabel="מחיקת המסלול"
+                  />
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <Empty
+            title="יש להגדיר תחילה את מסלולי הדרגות"
+            text="למשל חוגרים, נגדים, קצינים וקמ״א, לפי הכללים המאומתים ביחידה."
+          />
+        )}
+      </Panel>
+      <Panel
+        title="קטלוג דרגות"
+        actions={
+          tracks.length > 0 && (
+            <ActionDialog
+              title="הוספת דרגה לקטלוג"
+              fields={catalogFields()}
+              action={action}
+              type="rank.catalog.save"
+              transform={catalogPayload}
+            />
+          )
         }
       >
         {catalog.length ? (
           catalog.map((row) => (
             <div className="task-item" key={row.id}>
               <div className="grow">
-                <strong>
-                  {str(row.name)} · {str(row.track)}
-                </strong>
+                <strong>{str(row.name)}</strong>
                 <p>
-                  סדר במסלול: {num(row.order)} · מקור: {str(row.source)}
+                  {placesText(row) || "לא משויכת למסלול"} · מקור:{" "}
+                  {str(row.source)}
                 </p>
               </div>
               <ActionDialog
@@ -140,11 +264,12 @@ export function RanksView({
                 type="rank.catalog.save"
                 payload={{ id: row.id }}
                 version={row.version}
+                transform={catalogPayload}
               />
             </div>
           ))
         ) : (
-          <Empty title="יש להגדיר תחילה את הדרגות והמסלולים" />
+          <Empty title="עדיין לא הוגדרו דרגות" />
         )}
       </Panel>
       {catalog.length > 0 && (
@@ -164,7 +289,7 @@ export function RanksView({
                   label: "דרגה מאושרת",
                   type: "select",
                   required: true,
-                  options: rankOptions,
+                  options: rankChoices(catalog),
                 },
                 {
                   name: "effectiveDate",
@@ -288,8 +413,8 @@ export function RanksView({
               <div className="grow">
                 <strong>{str(row.name)}</strong>
                 <p>
-                  {rankName(row.fromRankId)} ← {rankName(row.toRankId)} ·{" "}
-                  {num(row.months)} חודשים ·{" "}
+                  {rankName(row.fromRankId)} ← {rankName(row.toRankId)} · מסלול{" "}
+                  {str(row.track)} · {num(row.months)} חודשים ·{" "}
                   {row.base === "enlistment" ? "מתאריך גיוס" : "מתאריך הדרגה"}
                 </p>
                 <small>

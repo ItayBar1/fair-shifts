@@ -1,6 +1,7 @@
 "use client";
 import type { RankClause } from "@/domain/types";
-import { type Row, str, num } from "@/client/types";
+import { type Row, str } from "@/client/types";
+import { rankMemberships, membershipIn } from "@/domain/rank-tracks";
 export function RankRequirements({
   catalog,
   value,
@@ -12,7 +13,11 @@ export function RankRequirements({
   onChange: (value: RankClause[]) => void;
   label: string;
 }) {
-  const tracks = [...new Set(catalog.map((row) => str(row.track)))];
+  const tracks = [
+    ...new Set(
+      catalog.flatMap((row) => rankMemberships(row).map((m) => m.track))
+    ),
+  ].sort((a, b) => a.localeCompare(b, "he"));
   const update = (index: number, clause: RankClause) =>
     onChange(value.map((row, i) => (i === index ? clause : row)));
   return (
@@ -23,9 +28,15 @@ export function RankRequirements({
         התפקיד נדרשים יחד.
       </p>
       {value.map((clause, index) => {
+        // Each rank with its place in this clause's track.
         const ranks = catalog
-          .filter((row) => row.track === clause.trackId)
-          .sort((a, b) => num(a.order) - num(b.order));
+          .flatMap((row) => {
+            const membership = membershipIn(row, clause.trackId);
+            return membership
+              ? [{ id: row.id, name: row.name, order: membership.order }]
+              : [];
+          })
+          .sort((a, b) => a.order - b.order);
         return (
           <div className="stack" key={index}>
             <label className="field">
@@ -55,7 +66,7 @@ export function RankRequirements({
                       ? { trackId: clause.trackId, rankIds: [] }
                       : {
                           trackId: clause.trackId,
-                          minOrder: num(ranks[0]?.order),
+                          minOrder: ranks[0]?.order ?? 0,
                         }
                   )
                 }
@@ -108,7 +119,7 @@ export function RankRequirements({
                     >
                       <option value="">ללא גבול</option>
                       {ranks.map((rank) => (
-                        <option key={rank.id} value={num(rank.order)}>
+                        <option key={rank.id} value={rank.order}>
                           {str(rank.name)}
                         </option>
                       ))}

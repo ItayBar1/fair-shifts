@@ -1517,12 +1517,20 @@ describe("first duty vertical slice", () => {
   });
   async function rankFixture() {
     const { actor } = await fixtureDuty();
+    await command("rank.track.save", {
+      name: "מסלול סינתטי",
+      source: "בדיקה",
+    }).catch(() => undefined);
     const lower = await command("rank.catalog.save", {
       name: "דרגה א לבדיקה",
       track: "מסלול סינתטי",
       order: 1,
       source: "נתוני בדיקה בלבד",
     });
+    await command("rank.track.save", {
+      name: "מסלול סינתטי",
+      source: "בדיקה",
+    }).catch(() => undefined);
     const upper = await command("rank.catalog.save", {
       name: "דרגה ב לבדיקה",
       track: "מסלול סינתטי",
@@ -1672,6 +1680,10 @@ describe("first duty vertical slice", () => {
   });
   it("shows missing enlistment data and permits a sourced personal deadline without guessing equivalence", async () => {
     const { actor, lower, upper } = await rankFixture();
+    await command("rank.track.save", {
+      name: "מסלול אחר",
+      source: "בדיקה",
+    }).catch(() => undefined);
     const foreign = await command("rank.catalog.save", {
       name: "דרגה במסלול אחר",
       track: "מסלול אחר",
@@ -1718,6 +1730,10 @@ describe("first duty vertical slice", () => {
   });
   it("keeps responsibility a versioned screen default set by the technical account or the manager, never a permission", async () => {
     const { actor, lower } = await rankFixture();
+    await command("rank.track.save", {
+      name: "מסלול אחר",
+      source: "בדיקה",
+    }).catch(() => undefined);
     await command("rank.catalog.save", {
       name: "דרגה א לבדיקה",
       track: "מסלול אחר",
@@ -1927,6 +1943,9 @@ describe("first duty vertical slice", () => {
           .where(eq(assignments.dutyId, duty.id))
       )[0].slotId
     ).toBe(duty.data.slots[1].id);
+    await command("rank.track.save", { name: "אחר", source: "בדיקה" }).catch(
+      () => undefined
+    );
     const foreign = await command("rank.catalog.save", {
       name: "דרגה זרה",
       track: "אחר",
@@ -3975,6 +3994,10 @@ describe("first duty vertical slice", () => {
       .update(soldierContacts)
       .set({ phone: "0500000000", address: "כתובת סינתטית" })
       .where(eq(soldierContacts.soldierId, actor.soldierId!));
+    await command("rank.track.save", {
+      name: "מסלול בדיקה",
+      source: "בדיקה",
+    }).catch(() => undefined);
     const rank = await command("rank.catalog.save", {
       name: "דרגת בדיקה",
       track: "מסלול בדיקה",
@@ -4542,18 +4565,27 @@ describe("first duty vertical slice", () => {
   });
   it("restores the imported rank change without removing a later rank-history entry", async () => {
     const { actor } = await fixtureDuty();
+    await command("rank.track.save", { name: "מסלול", source: "בדיקה" }).catch(
+      () => undefined
+    );
     const first = await command("rank.catalog.save", {
       name: "ראשונה",
       track: "מסלול",
       order: 1,
       source: "סינתטי",
     });
+    await command("rank.track.save", { name: "מסלול", source: "בדיקה" }).catch(
+      () => undefined
+    );
     const second = await command("rank.catalog.save", {
       name: "שנייה",
       track: "מסלול",
       order: 2,
       source: "סינתטי",
     });
+    await command("rank.track.save", { name: "מסלול", source: "בדיקה" }).catch(
+      () => undefined
+    );
     const third = await command("rank.catalog.save", {
       name: "שלישית",
       track: "מסלול",
@@ -5106,12 +5138,18 @@ describe("first duty vertical slice", () => {
       expect(batchRow.data.status).toBe("partially_restored");
     });
     it("cancels a new soldier whose rank came from the same import, and counts a later rank change", async () => {
+      await command("rank.track.save", { name: "חובה", source: "בדיקה" }).catch(
+        () => undefined
+      );
       const rank = await command("rank.catalog.save", {
         name: "טוראי סינתטי",
         track: "חובה",
         order: 1,
         source: "סינתטי",
       });
+      await command("rank.track.save", { name: "חובה", source: "בדיקה" }).catch(
+        () => undefined
+      );
       const higher = await command("rank.catalog.save", {
         name: "רב־טוראי סינתטי",
         track: "חובה",

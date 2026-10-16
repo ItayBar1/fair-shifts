@@ -51,6 +51,8 @@ const MANAGER = [
   "soldier.conditions.preview",
   "soldier.conditions",
   "eligibility.catalog.save",
+  "rank.track.save",
+  "rank.track.delete",
   "rank.catalog.save",
   "rank.rule.save",
   "rank.deadline",

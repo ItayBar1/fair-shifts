@@ -78,6 +78,10 @@ test.beforeAll(async () => {
   };
   const preview = await command(second, "score.preview", input);
   await command(second, "score.apply", { ...input, token: preview.token });
+  await command(manager, "rank.track.save", {
+    name: "מסלול סינתטי",
+    source: "בדיקה",
+  }).catch(() => undefined);
   const rank = await command(manager, "rank.catalog.save", {
     name: "דרגה סינתטית ליומן",
     track: "מסלול סינתטי",

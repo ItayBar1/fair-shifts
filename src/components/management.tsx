@@ -38,6 +38,7 @@ import {
   defaultPopulations,
   filterSoldiers,
   noHeldFilter,
+  rankChoices,
   rankTracks,
 } from "@/client/soldier-filters";
 import { RankRequirements } from "./rank-requirements";
@@ -191,11 +192,7 @@ const soldierFields = (state: AppState, s?: Row): Field[] => [
   },
   ...(s ? [] : [duplicateNameField]),
 ];
-const rankOptions = (state: AppState) =>
-  rows(state.rankCatalog).map((rank) => ({
-    value: rank.id,
-    label: `${str(rank.name)} · ${str(rank.track)}`,
-  }));
+const rankOptions = (state: AppState) => rankChoices(rows(state.rankCatalog));
 const initialRankFields = (state: AppState): Field[] => [
   {
     name: "rankId",
@@ -240,7 +237,9 @@ function SoldierRankEdit({
               type: "select",
               required: true,
               options: rankOptions(state),
-              value: str(person.rankId),
+              value: person.rankId
+                ? `${str(person.rankId)}|${str(person.rankTrack)}`
+                : "",
             },
             {
               name: "effectiveDate",
@@ -388,7 +387,7 @@ export function SoldiersView({
                   כל הדרגות במסלול {t.track}
                 </option>
                 {t.ranks.map((r) => (
-                  <option key={r.id} value={`rank:${r.id}`}>
+                  <option key={r.id} value={`rank:${r.id}|${t.track}`}>
                     {r.name}
                   </option>
                 ))}

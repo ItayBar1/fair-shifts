@@ -1,5 +1,5 @@
 {
-  "id": "0d94451e-ac3b-4da2-a3ad-e60c18c34aa7",
+  "id": "f3b5f7f1-753d-4d12-94f1-f1b54adc491b",
   "prevId": "298d812d-f4d3-4ac6-97e0-ef2434b2a370",
   "version": "7",
   "dialect": "postgresql",
@@ -70,37 +70,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "assignment_feed_soldier_id_soldiers_id_fk": {
           "name": "assignment_feed_soldier_id_soldiers_id_fk",
           "tableFrom": "assignment_feed",
+          "tableTo": "soldiers",
           "columnsFrom": [
             "soldier_id"
           ],
-          "tableTo": "soldiers",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "assignment_feed_duty_id_duties_id_fk": {
           "name": "assignment_feed_duty_id_duties_id_fk",
           "tableFrom": "assignment_feed",
+          "tableTo": "duties",
           "columnsFrom": [
             "duty_id"
           ],
-          "tableTo": "duties",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -185,47 +185,47 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "assignment_mail_event_window_id_assignment_mail_window_id_fk": {
           "name": "assignment_mail_event_window_id_assignment_mail_window_id_fk",
           "tableFrom": "assignment_mail_event",
+          "tableTo": "assignment_mail_window",
           "columnsFrom": [
             "window_id"
           ],
-          "tableTo": "assignment_mail_window",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "assignment_mail_event_duty_id_duties_id_fk": {
           "name": "assignment_mail_event_duty_id_duties_id_fk",
           "tableFrom": "assignment_mail_event",
+          "tableTo": "duties",
           "columnsFrom": [
             "duty_id"
           ],
-          "tableTo": "duties",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "assignment_mail_event_event_key_unique": {
           "name": "assignment_mail_event_event_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "event_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -305,25 +305,25 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"assignment_mail_window\".\"status\" = 'open'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "assignment_mail_window_recipient_account_id_auth_user_id_fk": {
           "name": "assignment_mail_window_recipient_account_id_auth_user_id_fk",
           "tableFrom": "assignment_mail_window",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "recipient_account_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -417,10 +417,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"assignments\".\"status\" in ('reserved', 'held') and \"assignments\".\"data\"->>'performedStart' is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "assignment_soldier_once": {
           "name": "assignment_soldier_once",
@@ -439,10 +439,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"assignments\".\"status\" in ('reserved', 'held')",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "assignment_soldier": {
           "name": "assignment_soldier",
@@ -455,50 +455,50 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "assignments_duty_id_duties_id_fk": {
           "name": "assignments_duty_id_duties_id_fk",
           "tableFrom": "assignments",
+          "tableTo": "duties",
           "columnsFrom": [
             "duty_id"
           ],
-          "tableTo": "duties",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "assignments_slot_id_duty_slots_id_fk": {
           "name": "assignments_slot_id_duty_slots_id_fk",
           "tableFrom": "assignments",
+          "tableTo": "duty_slots",
           "columnsFrom": [
             "slot_id"
           ],
-          "tableTo": "duty_slots",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "assignments_soldier_id_soldiers_id_fk": {
           "name": "assignments_soldier_id_soldiers_id_fk",
           "tableFrom": "assignments",
+          "tableTo": "soldiers",
           "columnsFrom": [
             "soldier_id"
           ],
-          "tableTo": "soldiers",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -542,15 +542,15 @@
         "balances_soldier_id_soldiers_id_fk": {
           "name": "balances_soldier_id_soldiers_id_fk",
           "tableFrom": "balances",
+          "tableTo": "soldiers",
           "columnsFrom": [
             "soldier_id"
           ],
-          "tableTo": "soldiers",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -657,24 +657,24 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "calendar_event_account_id_auth_user_id_fk": {
           "name": "calendar_event_account_id_auth_user_id_fk",
           "tableFrom": "calendar_event",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "account_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -808,24 +808,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "calendar_link_account_id_auth_user_id_fk": {
           "name": "calendar_link_account_id_auth_user_id_fk",
           "tableFrom": "calendar_link",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "account_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -880,9 +880,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "command_subject_soldier": {
           "name": "command_subject_soldier",
@@ -895,37 +895,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "command_result_subjects_command_id_command_results_id_fk": {
           "name": "command_result_subjects_command_id_command_results_id_fk",
           "tableFrom": "command_result_subjects",
+          "tableTo": "command_results",
           "columnsFrom": [
             "command_id"
           ],
-          "tableTo": "command_results",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "command_result_subjects_soldier_id_soldiers_id_fk": {
           "name": "command_result_subjects_soldier_id_soldiers_id_fk",
           "tableFrom": "command_result_subjects",
+          "tableTo": "soldiers",
           "columnsFrom": [
             "soldier_id"
           ],
-          "tableTo": "soldiers",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1013,9 +1013,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "command_content_retention": {
           "name": "command_content_retention",
@@ -1028,10 +1028,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"command_results\".\"content_expired_at\" is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "command_import_batch": {
           "name": "command_import_batch",
@@ -1044,9 +1044,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -1111,15 +1111,15 @@
         "duties_type_id_duty_types_id_fk": {
           "name": "duties_type_id_duty_types_id_fk",
           "tableFrom": "duties",
+          "tableTo": "duty_types",
           "columnsFrom": [
             "type_id"
           ],
-          "tableTo": "duty_types",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1163,24 +1163,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "duty_slots_duty_id_duties_id_fk": {
           "name": "duty_slots_duty_id_duties_id_fk",
           "tableFrom": "duty_slots",
+          "tableTo": "duties",
           "columnsFrom": [
             "duty_id"
           ],
-          "tableTo": "duties",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1338,34 +1338,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "score_ledger_soldier_id_soldiers_id_fk": {
           "name": "score_ledger_soldier_id_soldiers_id_fk",
           "tableFrom": "score_ledger",
+          "tableTo": "soldiers",
           "columnsFrom": [
             "soldier_id"
           ],
-          "tableTo": "soldiers",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "score_ledger_source_key_unique": {
           "name": "score_ledger_source_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "source_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1434,9 +1434,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "records_subject": {
           "name": "records_subject",
@@ -1449,24 +1449,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "records_subject_id_soldiers_id_fk": {
           "name": "records_subject_id_soldiers_id_fk",
           "tableFrom": "records",
+          "tableTo": "soldiers",
           "columnsFrom": [
             "subject_id"
           ],
-          "tableTo": "soldiers",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1516,15 +1516,15 @@
         "soldier_contacts_soldier_id_soldiers_id_fk": {
           "name": "soldier_contacts_soldier_id_soldiers_id_fk",
           "tableFrom": "soldier_contacts",
+          "tableTo": "soldiers",
           "columnsFrom": [
             "soldier_id"
           ],
-          "tableTo": "soldiers",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1555,15 +1555,15 @@
           "primaryKey": false,
           "notNull": true,
           "identity": {
+            "type": "byDefault",
             "name": "soldiers_id_number_seq",
+            "schema": "public",
             "increment": "1",
+            "startWith": "1",
             "minValue": "1",
             "maxValue": "2147483647",
-            "startWith": "1",
             "cache": "1",
-            "cycle": false,
-            "schema": "public",
-            "type": "byDefault"
+            "cycle": false
           }
         },
         "data": {
@@ -1613,10 +1613,10 @@
       "uniqueConstraints": {
         "soldiers_id_number_unique": {
           "name": "soldiers_id_number_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "id_number"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1772,9 +1772,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "auth_account_user_provider": {
           "name": "auth_account_user_provider",
@@ -1793,9 +1793,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "auth_account_user": {
           "name": "auth_account_user",
@@ -1808,24 +1808,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "auth_account_user_id_auth_user_id_fk": {
           "name": "auth_account_user_id_auth_user_id_fk",
           "tableFrom": "auth_account",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1921,9 +1921,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -2086,16 +2086,16 @@
           "columns": [
             {
               "expression": "(true)",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"backup_run\".\"status\" in ('pending','running')",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "backup_status_finished": {
           "name": "backup_status_finished",
@@ -2114,34 +2114,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "backup_run_requested_by_auth_user_id_fk": {
           "name": "backup_run_requested_by_auth_user_id_fk",
           "tableFrom": "backup_run",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "requested_by"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "backup_run_key_unique": {
           "name": "backup_run_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2341,9 +2341,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "email_recipient": {
           "name": "email_recipient",
@@ -2356,9 +2356,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "email_request": {
           "name": "email_request",
@@ -2371,34 +2371,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "email_outbox_recipient_account_id_auth_user_id_fk": {
           "name": "email_outbox_recipient_account_id_auth_user_id_fk",
           "tableFrom": "email_outbox",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "recipient_account_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "email_outbox_event_key_unique": {
           "name": "email_outbox_event_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "event_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2482,15 +2482,15 @@
         "login_code_user_id_auth_user_id_fk": {
           "name": "login_code_user_id_auth_user_id_fk",
           "tableFrom": "login_code",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2579,34 +2579,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "recovery_code_user_id_auth_user_id_fk": {
           "name": "recovery_code_user_id_auth_user_id_fk",
           "tableFrom": "recovery_code",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "recovery_code_digest_unique": {
           "name": "recovery_code_digest_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "digest"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2698,34 +2698,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "auth_session_user_id_auth_user_id_fk": {
           "name": "auth_session_user_id_auth_user_id_fk",
           "tableFrom": "auth_session",
+          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "auth_session_token_unique": {
           "name": "auth_session_token_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2873,17 +2873,17 @@
       "uniqueConstraints": {
         "auth_user_email_unique": {
           "name": "auth_user_email_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "auth_user_soldier_id_unique": {
           "name": "auth_user_soldier_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "soldier_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2958,9 +2958,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -2973,10 +2973,10 @@
   },
   "enums": {},
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

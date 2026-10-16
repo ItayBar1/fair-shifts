@@ -197,6 +197,7 @@ test.beforeAll(async () => {
   ids.capability = (
     await run("eligibility.catalog.save", { kind: "capability", name: "נהיגה" })
   ).id;
+  await run("rank.track.save", { name: "חובה", source: "נתוני בדיקה בלבד" });
   for (const [key, name, order] of [
     ["private", "טוראי", 1],
     ["sergeant", "סמל", 2],

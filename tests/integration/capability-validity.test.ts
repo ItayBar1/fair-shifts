@@ -23,7 +23,7 @@ if (
 
 // Decision 224: qualifications became capabilities with optional dates. The
 // migration moves data saved before it; synthetic records only.
-const statements = readFileSync("drizzle/0019_capability_validity.sql", "utf8")
+const statements = readFileSync("drizzle/0020_capability_validity.sql", "utf8")
   .split("--> statement-breakpoint")
   .map((part) => part.trim())
   .filter(Boolean);

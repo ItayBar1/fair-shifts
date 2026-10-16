@@ -67,6 +67,8 @@ import {
 } from "./constraints";
 import {
   saveRankCatalog,
+  saveRankTrack,
+  deleteRankTrack,
   saveRankRule,
   setRankDeadline,
   setSoldierRank,
@@ -277,6 +279,12 @@ export async function executeAction(actor: Actor, value: unknown) {
           payload,
           expectedVersion
         );
+        break;
+      case "rank.track.save":
+        result = await saveRankTrack(tx, actor, payload, expectedVersion);
+        break;
+      case "rank.track.delete":
+        result = await deleteRankTrack(tx, actor, payload, expectedVersion);
         break;
       case "rank.catalog.save":
         result = await saveRankCatalog(tx, actor, payload, expectedVersion);

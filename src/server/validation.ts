@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { splitRankChoice } from "../domain/rank-tracks";
 export const id = z.string().uuid();
 export const text = z.string().trim().min(1).max(500);
 export const date = z.iso.date();
@@ -63,10 +64,14 @@ export const profileInput = z.object({
 });
 /** Initial rank is optional, but a chosen rank always has an explicit date. */
 export const initialRankInput = z
-  .object({
-    rankId: z.preprocess(blank, id.optional()),
-    rankEffectiveDate: optionalDate,
-  })
+  .preprocess(
+    splitRankChoice,
+    z.object({
+      rankId: z.preprocess(blank, id.optional()),
+      trackId: z.preprocess(blank, z.string().trim().min(1).optional()),
+      rankEffectiveDate: optionalDate,
+    })
+  )
   .refine(
     (input) => Boolean(input.rankId) === Boolean(input.rankEffectiveDate),
     {

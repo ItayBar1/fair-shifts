@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { UNIT_ZONE } from "@/domain/time";
-import { type Row, str, num, rows } from "./types";
+import { rankMemberships } from "@/domain/rank-tracks";
+import { type Row, str, rows } from "./types";
 
 export const filterPopulations = ["mandatory", "career", "academic"] as const;
 export type FilterPopulation = (typeof filterPopulations)[number];
@@ -18,21 +19,29 @@ export type RankTrack = {
   track: string;
   ranks: { id: string; name: string }[];
 };
+/** Each track with its ranks in order; a rank in several tracks is listed in each. */
 export function rankTracks(catalog: Row[]): RankTrack[] {
-  const tracks = new Map<string, Row[]>();
-  for (const row of catalog) {
-    const track = str(row.track);
-    if (!track) continue;
-    tracks.set(track, [...(tracks.get(track) ?? []), row]);
-  }
+  const tracks = new Map<string, { row: Row; order: number }[]>();
+  for (const row of catalog)
+    for (const { track, order } of rankMemberships(row))
+      tracks.set(track, [...(tracks.get(track) ?? []), { row, order }]);
   return [...tracks.entries()]
     .sort(([a], [b]) => a.localeCompare(b, "he"))
     .map(([track, items]) => ({
       track,
       ranks: items
-        .sort((a, b) => num(a.order) - num(b.order))
-        .map((row) => ({ id: row.id, name: str(row.name) })),
+        .sort((a, b) => a.order - b.order)
+        .map(({ row }) => ({ id: row.id, name: str(row.name) })),
     }));
+}
+/** One choice per rank and track, for picking a soldier's rank. */
+export function rankChoices(catalog: Row[]) {
+  return rankTracks(catalog).flatMap(({ track, ranks }) =>
+    ranks.map((rank) => ({
+      value: `${rank.id}|${track}`,
+      label: `${rank.name} · ${track}`,
+    }))
+  );
 }
 
 /** Today's date in Israel, the default of a validity filter or a new start date. */
@@ -78,7 +87,7 @@ export function holds(soldier: Row, filter: HeldFilter) {
   );
 }
 
-// "" = all, "missing" = no current rank, "track:<name>" or "rank:<id>".
+// "" = all, "missing" = no current rank, "track:<name>" or "rank:<id>|<track>".
 export type SoldierFilters = {
   search: string;
   populations: readonly string[];
@@ -90,8 +99,13 @@ export function matchesRank(soldier: Row, rank: string) {
   if (rank === "missing") return !str(soldier.rankId);
   if (rank.startsWith("track:"))
     return str(soldier.rankTrack) === rank.slice("track:".length);
-  if (rank.startsWith("rank:"))
-    return str(soldier.rankId) === rank.slice("rank:".length);
+  if (rank.startsWith("rank:")) {
+    const [rankId, track] = rank.slice("rank:".length).split(/\|(.*)/s);
+    return (
+      str(soldier.rankId) === rankId &&
+      (track === undefined || str(soldier.rankTrack) === track)
+    );
+  }
   return false;
 }
 export function filterSoldiers(soldiers: Row[], filters: SoldierFilters) {

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Soldier } from "../domain/types";
 import { populationAt, populationMoves } from "../domain/eligibility";
+import { membershipIn } from "../domain/rank-tracks";
 import type { DbTransaction } from "./db";
 import { user } from "./auth-schema";
 import { balances, records, soldierContacts, soldiers } from "./schema";
@@ -47,7 +48,8 @@ export type ImportChange = {
 };
 type PersonRow = typeof soldiers.$inferSelect;
 type ContactRow = typeof soldierContacts.$inferSelect;
-type RankRow = typeof records.$inferSelect;
+/** A catalog rank in the track the row names; a rank may sit in several. */
+type RankRow = { id: string; version: number; track: string; order: number };
 type PlannedRow = {
   rowNumber: number;
   values: ImportValues;
@@ -59,7 +61,7 @@ type PlannedRow = {
   mode: "create" | "update";
   profile: z.infer<typeof profileInput>;
   changes: ImportChange[];
-  rank?: { id: string; version: number; effectiveDate: string };
+  rank?: { id: string; version: number; track?: string; effectiveDate: string };
   populationImpact?: PopulationImpact;
   /** Same first and last name as another soldier or row: shown, not blocking (decision 222). */
   sameName?: string[];
@@ -196,8 +198,8 @@ function proposedPerson(
       {
         effectiveFrom: rankDate,
         rankId: rank.id,
-        trackId: String(rank.data.track),
-        order: Number(rank.data.order),
+        trackId: rank.track,
+        order: rank.order,
       },
     ];
   return data;
@@ -318,11 +320,17 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
           "יש למלא את שלושת השדות או להשאיר את כולם ריקים"
         );
       else {
-        rank = ranks.find(
+        const match = ranks.find(
           (item) =>
             item.data.name === values.rankName &&
-            item.data.track === values.rankTrack
+            membershipIn(item.data, String(values.rankTrack))
         );
+        if (match)
+          rank = {
+            id: match.id,
+            version: match.version,
+            ...membershipIn(match.data, String(values.rankTrack))!,
+          };
         if (!rank)
           problem(
             row,
@@ -445,6 +453,7 @@ async function planRows(tx: DbTransaction, inputs: ImportRow[]) {
           ? {
               id: rank.id,
               version: rank.version,
+              track: rank.track,
               effectiveDate: values.rankEffectiveDate,
             }
           : undefined,
@@ -663,6 +672,7 @@ export async function applyImport(
         {
           soldierId: personId,
           rankId: row.rank.id,
+          trackId: row.rank.track,
           effectiveDate: row.rank.effectiveDate,
           reason: input.reason,
         },

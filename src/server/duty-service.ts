@@ -18,6 +18,7 @@ import {
   genderCondition,
 } from "../domain/eligibility";
 import { calculatePrice } from "../domain/pricing";
+import { membershipIn } from "../domain/rank-tracks";
 import { publishBlock } from "../domain/publication";
 import { instant, resolveLocalTime, interval } from "../domain/time";
 import type {
@@ -119,7 +120,7 @@ export async function assertRequirementReferences(
     for (const clause of condition.ranks ?? []) {
       const track = catalog.filter(
         (row) =>
-          row.kind === "rank_catalog" && row.data.track === clause.trackId
+          row.kind === "rank_catalog" && membershipIn(row.data, clause.trackId)
       );
       invariant(
         track.length &&
@@ -142,7 +143,7 @@ export async function assertRequirementReferences(
               row.data.kind === kind
           ),
           "invalid_requirement",
-          "תנאי הכשירות, הפטור או היכולת אינו קיים בקטלוג"
+          "תנאי הפטור או היכולת אינו קיים בקטלוג"
         );
   }
 }
