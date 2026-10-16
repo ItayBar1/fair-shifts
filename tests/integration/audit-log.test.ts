@@ -130,12 +130,20 @@ afterAll(async () => pool.end());
 
 describe("audit log", () => {
   it("shows when, who, why and what changed, with the effective date only when it differs", async () => {
+    await command(manager, "rank.track.save", {
+      name: "מסלול סינתטי",
+      source: "בדיקה",
+    }).catch(() => undefined);
     const lower = await command(manager, "rank.catalog.save", {
       name: "דרגה א סינתטית",
       track: "מסלול סינתטי",
       order: 1,
       source: "נתוני בדיקה",
     });
+    await command(manager, "rank.track.save", {
+      name: "מסלול סינתטי",
+      source: "בדיקה",
+    }).catch(() => undefined);
     const upper = await command(manager, "rank.catalog.save", {
       name: "דרגה ב סינתטית",
       track: "מסלול סינתטי",
