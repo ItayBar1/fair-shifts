@@ -2736,6 +2736,32 @@ tbody tr:last-child td {
   font-size: var(--text-caption);
   color: var(--text-3);
 }
+/* Public pages outside the workspace, such as the privacy policy. */
+.public-page {
+  min-height: 100vh;
+  background: var(--surface);
+  padding: var(--space-8) var(--space-5) var(--space-16);
+}
+.public-article {
+  max-width: 44rem;
+  margin: var(--space-8) auto 0;
+  line-height: 1.7;
+}
+.public-article h1 {
+  font-size: var(--text-title-1);
+  margin-bottom: var(--space-2);
+}
+.public-article h2 {
+  font-size: var(--text-title-3);
+  margin: var(--space-8) 0 var(--space-3);
+}
+.public-article p,
+.public-article li {
+  margin-bottom: var(--space-3);
+}
+.public-article ul {
+  padding-inline-start: var(--space-6);
+}
 .loading-screen {
   min-height: 100vh;
   display: flex;

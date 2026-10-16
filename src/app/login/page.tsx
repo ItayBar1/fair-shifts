@@ -319,7 +319,10 @@ export default function LoginPage() {
           </button>
         </div>
         <p className="login-privacy">
-          משתמשים בעוגיות נחוצות להתחברות ולאבטחה בלבד.
+          משתמשים בעוגיות נחוצות להתחברות ולאבטחה בלבד.{" "}
+          <Link className="text-link" href="/privacy">
+            מדיניות פרטיות
+          </Link>
         </p>
       </section>
     </main>
