@@ -75,6 +75,22 @@ export function graceEnd(arrivalDate: string): string {
   return localDate(arrivalDate).plus({ months: 1 }).toISODate()!;
 }
 
+/** The unit's calendar date now. */
+export function unitToday(now = new Date()): string {
+  return DateTime.fromJSDate(now, { zone: UNIT_ZONE }).toISODate()!;
+}
+
+/**
+ * Grace eligibility is set until the month from arrival ends; with no arrival
+ * date the soldier has not arrived yet (decision 225).
+ */
+export function graceWindowOpen(
+  arrivalDate: string | undefined,
+  today: string
+): boolean {
+  return !arrivalDate || today < graceEnd(arrivalDate);
+}
+
 export function releaseBoundary(releaseDate: string): string {
   return localDate(releaseDate).plus({ days: 1 }).toISO()!;
 }

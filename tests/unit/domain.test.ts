@@ -17,7 +17,12 @@ import {
   rankFairness,
   schedulingScore,
 } from "../../src/domain/scoring";
-import { graceEnd, resolveLocalTime } from "../../src/domain/time";
+import {
+  graceEnd,
+  graceWindowOpen,
+  resolveLocalTime,
+  unitToday,
+} from "../../src/domain/time";
 import { duty, soldier, assignment } from "../fixtures";
 import type { EligibilityContext, Pricing } from "../../src/domain/types";
 const context: EligibilityContext = {
@@ -460,6 +465,14 @@ describe("past performance corrections", () => {
 describe("Israel time boundaries", () => {
   it("uses a calendar month for grace at month end", () =>
     expect(graceEnd("2026-01-31")).toBe("2026-02-28"));
+  it("keeps grace eligibility open before arrival and until the return day (decision 225)", () => {
+    expect(graceWindowOpen(undefined, "2026-10-16")).toBe(true);
+    expect(graceWindowOpen("2026-11-01", "2026-10-16")).toBe(true);
+    expect(graceWindowOpen("2026-01-31", "2026-02-27")).toBe(true);
+    expect(graceWindowOpen("2026-01-31", "2026-02-28")).toBe(false);
+  });
+  it("reads the unit's date in Israel, not UTC", () =>
+    expect(unitToday(new Date("2026-10-15T21:30:00Z"))).toBe("2026-10-16"));
   it("rejects a nonexistent daylight-saving time and requires disambiguation for a repeated time", () => {
     expect(() => resolveLocalTime("2026-03-27", "02:30")).toThrow();
     expect(() => resolveLocalTime("2026-10-25", "01:30")).toThrow();

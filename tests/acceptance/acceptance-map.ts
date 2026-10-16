@@ -318,7 +318,16 @@ export const stories: Record<number, Entry> = {
   8: covered([
     ...t(
       I.service,
-      "grants grace only when marked eligible and leaves the balance when it ends"
+      "grants grace only when marked eligible and leaves the balance when it ends",
+      "changes grace eligibility only until the month from arrival ends (decision 225)"
+    ),
+    ...t(
+      U.domain,
+      "keeps grace eligibility open before arrival and until the return day (decision 225)"
+    ),
+    ...t(
+      E.soldierRank,
+      "manager adds a soldier with a rank and updates it in the profile"
     ),
     ...t(
       U.service,
@@ -1182,6 +1191,8 @@ export const scenarios: Record<number, Entry> = {
     ...t(
       U.domain,
       "uses a calendar month for grace at month end",
+      "keeps grace eligibility open before arrival and until the return day (decision 225)",
+      "reads the unit's date in Israel, not UTC",
       "rejects a nonexistent daylight-saving time and requires disambiguation for a repeated time"
     ),
     ...t(

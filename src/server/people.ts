@@ -31,6 +31,7 @@ import {
   reassessAssignments,
 } from "./personnel";
 import { populationAt, populationMoves } from "../domain/eligibility";
+import { graceWindowOpen, unitToday } from "../domain/time";
 import { refreshRankReminders, resolveRankChoice } from "./ranks";
 
 export async function saveSoldier(
@@ -99,6 +100,13 @@ async function persistSoldier(
         input.currentScore === balance.current,
       "score_preview_required",
       "שינוי יתרה נעשה דרך מסך הניקוד עם תצוגה מקדימה"
+    );
+    invariant(
+      input.graceEligible === undefined ||
+        input.graceEligible === existing.data.service.graceEligible ||
+        graceWindowOpen(input.arrivalDate, unitToday()),
+      "grace_window_closed",
+      "זכאות לחודש חסד נקבעת רק עד תום החודש מתאריך ההגעה"
     );
   } else {
     invariant(input.email, "email_required", "נדרשת כתובת מייל להזמנה");
@@ -366,7 +374,8 @@ function profileData(
       basePopulation: existing?.service.basePopulation ?? input.population,
       arrivalDate: input.arrivalDate,
       enlistmentDate: input.enlistmentDate,
-      graceEligible: input.graceEligible,
+      graceEligible:
+        input.graceEligible ?? existing?.service.graceEligible ?? false,
       permanentFrom: input.permanentDate,
       officerFrom: input.officerDate,
       releaseDate: input.releaseDate,

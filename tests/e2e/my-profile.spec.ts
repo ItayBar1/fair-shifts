@@ -131,6 +131,7 @@ test("a soldier sees their own number and changes phone and address, and the man
     .getByRole("button", { name: "פרופיל ועריכה" })
     .click();
   const profile = managerPage.getByRole("dialog");
+  await profile.getByText("ניהול כתובת מייל וחשבון").click();
   await expect(profile.getByText(people.member.email)).toBeVisible();
   await expect(profile.getByLabel("טלפון נייד")).toHaveValue("0527654321");
   // A manager keeps their own details in the soldiers list, not on this screen.
