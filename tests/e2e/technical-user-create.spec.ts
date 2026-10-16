@@ -147,10 +147,7 @@ for (const width of [1280, 390]) {
       .fill("managed-114@example.invalid");
     await intake.getByLabel("טלפון נייד", { exact: true }).fill("0500000115");
     await intake
-      .getByLabel("אוכלוסיית שיבוץ", { exact: true })
-      .selectOption("mandatory");
-    await intake
-      .getByLabel("סוג שירות", { exact: true })
+      .getByLabel("סוג גיוס", { exact: true })
       .selectOption("mandatory");
     await intake.getByRole("button", { name: "שמירה", exact: true }).click();
     await expect(intake).toHaveCount(0);

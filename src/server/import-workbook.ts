@@ -25,7 +25,6 @@ export const importValues = z
     address: z.string().max(500).optional(),
     currentScore: z.number().int().nonnegative().max(2147483647).optional(),
     population: population.optional(),
-    serviceType: z.enum(["mandatory", "career"]).optional(),
     arrivalDate: date.optional(),
     enlistmentDate: date.optional(),
     releaseDate: date.optional(),
@@ -193,8 +192,6 @@ function readValue(cell: ExcelJS.Cell, column: Column): unknown {
     throw new Error("יש להזין כן או לא");
   }
   if (column.kind === "population") return populationNames[text] ?? text;
-  if (column.kind === "service")
-    return text === "חובה" ? "mandatory" : text === "קבע" ? "career" : text;
   return text;
 }
 

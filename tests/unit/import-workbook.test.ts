@@ -35,7 +35,6 @@ describe("XLSX import contract", () => {
       null,
       0,
       "קמ״א",
-      "חובה",
       new Date("2026-09-01T00:00:00Z"),
       null,
       null,
@@ -79,7 +78,7 @@ describe("XLSX import contract", () => {
     );
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(new Uint8Array(template).buffer);
-    book.getWorksheet("חיילים")!.getCell("M2").value = "2027-01-31";
+    book.getWorksheet("חיילים")!.getCell("L2").value = "2027-01-31";
     const rows = await parseImportWorkbook(await serialize(book));
     expect(rows).toEqual([
       {

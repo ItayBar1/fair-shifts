@@ -141,7 +141,14 @@ async function persistSoldier(
       409
     );
   const id = existing?.id ?? randomUUID();
-  const data = profileData(id, input, existing?.data, existing?.version);
+  const data = profileData(
+    id,
+    input,
+    existing?.data,
+    existing?.version,
+    sentFields(payload)
+  );
+  checkServicePath(data);
   if (!existing) {
     const initialRank = initialRankInput.parse(payload);
     if (initialRank.rankId) {
@@ -265,7 +272,7 @@ async function persistSoldier(
       id,
       { fields: changes.map((change) => change.field) },
       id,
-      { changes }
+      { changes, ...(input.reason ? { reason: input.reason } : {}) }
     );
   } else if (actor.role !== "technical")
     await audit(tx, actor, "soldier.create", id, {}, id);
@@ -348,8 +355,21 @@ function profileData(
   id: string,
   input: Profile,
   existing?: Soldier,
-  version?: number
+  version?: number,
+  /**
+   * Whether the edit sent a field. The profile form and the service path form
+   * each send their own fields; a field left out keeps its stored value.
+   */
+  sent: (field: string) => boolean = () => true
 ): Soldier {
+  const kept = <T>(field: string, value: T, stored: T) =>
+    !existing || sent(field) ? value : stored;
+  const service = existing?.service;
+  const permanentFrom = kept(
+    "permanentDate",
+    input.permanentDate,
+    service?.permanentFrom
+  );
   const data: Soldier = {
     ...existing,
     id,
@@ -370,19 +390,29 @@ function profileData(
     inactivePeriods: existing?.inactivePeriods ?? [],
     constraints: [],
     service: {
-      type: input.serviceType,
-      basePopulation: existing?.service.basePopulation ?? input.population,
-      arrivalDate: input.arrivalDate,
-      enlistmentDate: input.enlistmentDate,
+      // Career service is a career date (decision 227); the type only labels it.
+      type: permanentFrom ? "career" : "mandatory",
+      basePopulation:
+        input.startPopulation ??
+        service?.basePopulation ??
+        input.population ??
+        "mandatory",
+      arrivalDate: kept("arrivalDate", input.arrivalDate, service?.arrivalDate),
+      enlistmentDate: kept(
+        "enlistmentDate",
+        input.enlistmentDate,
+        service?.enlistmentDate
+      ),
       graceEligible:
         input.graceEligible ?? existing?.service.graceEligible ?? false,
-      permanentFrom: input.permanentDate,
-      officerFrom: input.officerDate,
-      releaseDate: input.releaseDate,
+      permanentFrom,
+      officerFrom: kept("officerDate", input.officerDate, service?.officerFrom),
+      releaseDate: kept("releaseDate", input.releaseDate, service?.releaseDate),
     },
   };
   if (
     existing &&
+    input.population &&
     populationAt(existing, new Date().toISOString()) !== input.population
   ) {
     data.populationHistory = [
@@ -393,6 +423,31 @@ function profileData(
     ];
   }
   return data;
+}
+/** The fields a payload carries, so an edit changes only what it sent. */
+const sentFields = (payload: unknown) => (field: string) =>
+  typeof payload === "object" && payload !== null && field in payload;
+/**
+ * The service path moves only forward (decision 227): career and officer
+ * dates follow enlistment, and the last day of service follows them all.
+ */
+function checkServicePath(data: Soldier) {
+  const { enlistmentDate, permanentFrom, officerFrom, releaseDate } =
+    data.service;
+  for (const moved of [permanentFrom, officerFrom])
+    invariant(
+      !moved || !enlistmentDate || moved >= enlistmentDate,
+      "service_order",
+      "כניסה לקבע או לקצונה מתחילה ביום הגיוס או אחריו",
+      422
+    );
+  for (const earlier of [enlistmentDate, permanentFrom, officerFrom])
+    invariant(
+      !releaseDate || !earlier || releaseDate >= earlier,
+      "service_order",
+      "יום השחרור חל אחרי הגיוס, הקבע והקצונה",
+      422
+    );
 }
 type SoldierRow = typeof soldiers.$inferSelect;
 async function assessProfileImpact(
@@ -429,7 +484,14 @@ export async function previewSoldierUpdate(
     .where(eq(soldiers.id, z.string().uuid().parse(input.id)));
   invariant(existing && !existing.deletedAt, "not_found", "חייל לא נמצא", 404);
   currentVersion(existing.version, expectedVersion);
-  const data = profileData(existing.id, input, existing.data, existing.version);
+  const data = profileData(
+    existing.id,
+    input,
+    existing.data,
+    existing.version,
+    sentFields(payload)
+  );
+  checkServicePath(data);
   if (!populationMoves(existing.data, data)) return { populationMoves: false };
   const { previewToken, impact, change } = await assessProfileImpact(
     tx,

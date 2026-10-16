@@ -5301,9 +5301,18 @@ describe("first duty vertical slice", () => {
     await expect(restorationWith(batch.id, [], actor)).rejects.toThrow("אחראי");
     const preview = await restoration(batch.id);
     expect(preview.populationMoves).toBe(1);
-    expect(preview.rows[0].fields).toMatchObject([
-      { key: "service.permanentFrom", status: "automatic" },
-    ]);
+    // The service type follows the career date (decision 227), so it returns with it.
+    expect(
+      preview.rows[0].fields.map((field: { key: string }) => field.key).sort()
+    ).toEqual(["service.permanentFrom", "service.type"]);
+    expect(preview.rows[0].fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "service.permanentFrom",
+          status: "automatic",
+        }),
+      ])
+    );
     const moved = preview.rows[0].populationImpact!;
     expect(moved.before).toEqual([
       { from: null, population: "mandatory" },

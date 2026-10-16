@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, unitTransaction } from "../../src/server/db";
@@ -117,7 +117,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
   await dialog.getByLabel("מגדר", { exact: true }).selectOption("male");
   await dialog.getByLabel("מייל מאושר להזמנה").fill("soldier@example.invalid");
   await dialog.getByLabel("טלפון נייד").fill("050-0000001");
-  await dialog.getByLabel("אוכלוסיית שיבוץ").selectOption("mandatory");
+  await dialog.getByLabel("סוג גיוס").selectOption("mandatory");
   await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText("חייל סינתטי", { exact: true })).toBeVisible();
@@ -327,7 +327,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     .getByRole("button", { name: "פרופיל ועריכה" })
     .click();
   const profile = page.getByRole("dialog");
-  await profile.getByText("מועדי שירות, אי־פעילות והיסטוריה").click();
+  await profile.getByText("אי־פעילות והיסטוריית דרגות").click();
   await profile.getByLabel("אי־פעילות מתאריך", { exact: true }).fill(date);
   await profile
     .getByLabel("אי־פעילות עד תאריך (כולל)", { exact: true })
@@ -1801,35 +1801,58 @@ test("population moves preview their impact before saving in the transition, the
     return page.getByRole("dialog");
   }
 
-  // 1. The explicit population transition.
+  // 1. A future career date in the service path (decision 227).
+  const servicePath = (dialog: Locator) =>
+    dialog.locator("details", { hasText: "מסלול שירות ואוכלוסיית שיבוץ" });
   let profile = await openProfile("חייל מעבר מפורש");
-  await profile.getByText("מועדי שירות, אי־פעילות והיסטוריה").click();
-  await profile.getByLabel("אוכלוסייה חדשה").selectOption("career");
-  await profile
-    .getByLabel("בתוקף מתאריך", { exact: true })
-    .fill(transitionDay.toISODate()!);
-  await profile.getByLabel("סיבת המעבר").fill("תחילת קבע סינתטית");
-  await profile.getByRole("button", { name: "בדיקת השפעת המעבר" }).click();
+  await profile.getByText("מסלול שירות ואוכלוסיית שיבוץ").click();
+  let path = servicePath(profile);
+  await expect(path).toContainText("אוכלוסיית שיבוץ היום: חובה");
+  await path.getByLabel("כניסה לקבע").fill(transitionDay.toISODate()!);
+  await path.getByLabel("סיבת השינוי").fill("תחילת קבע סינתטית");
+  await path.getByRole("button", { name: "שמירה", exact: true }).click();
   const transition = profile.getByRole("region", {
-    name: "השפעת מעבר האוכלוסייה",
+    name: "השפעת עריכת הפרופיל",
   });
   await expect(transition).toContainText("לילה שחוצה את המעבר");
   await expect(transition).toContainText("דורש טיפול");
   await expect(transition).toContainText("קבע / קצינים");
-  expect((await stored(people.transition)).data.populationHistory).toEqual([]);
+  expect(
+    (await stored(people.transition)).data.service.permanentFrom
+  ).toBeUndefined();
   await transition.screenshot({
     path: "test-results/population-transition.png",
   });
+  await transition.getByLabel("בדקתי את ההשפעה ומאשר את שמירת הפרופיל").check();
   await transition
-    .getByLabel("בדקתי את ההשפעה ומאשר את מעבר האוכלוסייה")
-    .check();
-  await transition
-    .getByRole("button", { name: "אישור מעבר האוכלוסייה", exact: true })
+    .getByRole("button", { name: "אישור ושמירת הפרופיל", exact: true })
     .click();
-  await expect(transition).toHaveCount(0);
-  expect((await stored(people.transition)).data.populationHistory).toEqual([
-    { effectiveFrom: transitionDay.toISODate(), population: "career" },
-  ]);
+  await expect(profile).not.toBeVisible();
+  const moved = (await stored(people.transition)).data;
+  expect(moved.service).toMatchObject({
+    permanentFrom: transitionDay.toISODate(),
+    type: "career",
+  });
+  expect(moved.populationHistory).toEqual([]);
+  // The path shows the move as future, and the population it brings.
+  profile = await openProfile("חייל מעבר מפורש");
+  await profile.getByText("מסלול שירות ואוכלוסיית שיבוץ").click();
+  path = servicePath(profile);
+  await expect(path).toContainText("כניסה לקבע");
+  await expect(path).toContainText("עתידי");
+  await expect(path).toContainText(
+    `מ־${transitionDay.toFormat("dd.MM.yyyy")}: קבע / קצינים`
+  );
+  // The path moves only forward: career cannot start before enlistment.
+  await path
+    .getByLabel("תאריך גיוס")
+    .fill(transitionDay.plus({ days: 1 }).toISODate()!);
+  await path.getByLabel("סיבת השינוי").fill("תאריך שגוי");
+  await path.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(profile.getByRole("alert")).toContainText(
+    "כניסה לקבע או לקצונה מתחילה ביום הגיוס או אחריו"
+  );
+  await profile.getByRole("button", { name: "סגירה" }).click();
   await page.goto(`/duties/${night.id}`);
   await expect(attention).toBeVisible();
 
@@ -1840,8 +1863,11 @@ test("population moves preview their impact before saving in the transition, the
   await profile.getByRole("button", { name: "שמירה", exact: true }).click();
   await expect(profile).not.toBeVisible();
   profile = await openProfile("חייל עריכת קצונה");
-  await profile.getByLabel("תחילת קצונה רגילה").fill(officerDay.toISODate()!);
-  await profile.getByRole("button", { name: "שמירה", exact: true }).click();
+  await profile.getByText("מסלול שירות ואוכלוסיית שיבוץ").click();
+  path = servicePath(profile);
+  await path.getByLabel("כניסה לקצונה").fill(officerDay.toISODate()!);
+  await path.getByLabel("סיבת השינוי").fill("סיום קורס קצינים");
+  await path.getByRole("button", { name: "שמירה", exact: true }).click();
   const edit = profile.getByRole("region", { name: "השפעת עריכת הפרופיל" });
   await expect(edit).toContainText("תורנות ביום הקצונה");
   await expect(edit).toContainText("דורש טיפול");
@@ -1867,7 +1893,7 @@ test("population moves preview their impact before saving in the transition, the
   const sheet = workbook.getWorksheet("חיילים")!;
   const row = sheet.addRow([]);
   row.getCell(1).value = testIdNumber("460004");
-  row.getCell(15).value = careerDay.toISODate();
+  row.getCell(14).value = careerDay.toISODate();
   await page.getByLabel("קובץ XLSX").setInputFiles({
     name: "population.xlsx",
     mimeType:
