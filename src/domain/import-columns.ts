@@ -13,7 +13,6 @@ export type ImportColumnKey =
   | "address"
   | "currentScore"
   | "population"
-  | "serviceType"
   | "arrivalDate"
   | "enlistmentDate"
   | "releaseDate"
@@ -32,7 +31,6 @@ export type ImportColumn = {
     | "date"
     | "score"
     | "population"
-    | "service"
     | "boolean"
     | "gender";
   width?: number;
@@ -115,16 +113,9 @@ export const importColumns: ImportColumn[] = [
     key: "population",
     label: "אוכלוסיית שיבוץ",
     kind: "population",
-    need: "רשות (ברירת מחדל חובה)",
-    values: "חובה / קבע / קצינים / קמ״א",
-    example: "חובה",
-  },
-  {
-    key: "serviceType",
-    label: "סוג שירות",
-    kind: "service",
-    need: "רשות (ברירת מחדל חובה)",
-    values: "חובה / קבע",
+    need: "רשות (ברירת מחדל חובה). בחייל קיים, שינוי נרשם כמעבר מהיום",
+    values:
+      "חובה / קמ״א. קבע או קצינים רק כשתאריך המעבר לא ידוע; אחרת ממלאים תחילת קבע או קצונה",
     example: "חובה",
   },
   {
@@ -156,7 +147,7 @@ export const importColumns: ImportColumn[] = [
     label: "תחילת קצונה",
     kind: "date",
     need: "רשות",
-    values: "YYYY-MM-DD",
+    values: "YYYY-MM-DD; מהתאריך החייל באוכלוסיית קבע/קצינים",
     example: "",
   },
   {
@@ -164,7 +155,7 @@ export const importColumns: ImportColumn[] = [
     label: "תחילת קבע",
     kind: "date",
     need: "רשות",
-    values: "YYYY-MM-DD",
+    values: "YYYY-MM-DD; מהתאריך החייל באוכלוסיית קבע/קצינים",
     example: "",
   },
   {

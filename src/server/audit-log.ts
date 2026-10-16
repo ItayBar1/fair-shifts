@@ -465,6 +465,7 @@ export function projectAudit(
                 .map((field) => profileLabels[String(field)] ?? field)
                 .join(", ")
             );
+          reason = text(detail.reason);
           break;
         }
         case "soldier.timeline": {

@@ -239,21 +239,33 @@ describe("adding a soldier with the form", () => {
     ).toMatchObject([{ kind: "opening", amount: 40, before: 0, after: 40 }]);
     expect(await db.select().from(assignments)).toEqual([]);
   });
-  it("keeps the population the form chose", async () => {
+  it("starts in the population the form chose, and the career date sets the service type (decision 227)", async () => {
     const created = await create({
       ...form,
       email: "career@example.invalid",
-      population: "career",
+      startPopulation: "academic",
       serviceType: "career",
     });
-    const [person] = await db
-      .select()
-      .from(soldiers)
-      .where(eq(soldiers.id, created.id));
-    expect(person.data.service).toMatchObject({
-      type: "career",
-      basePopulation: "career",
+    const stored = async (id: string) =>
+      (await db.select().from(soldiers).where(eq(soldiers.id, id)))[0].data
+        .service;
+    expect(await stored(created.id)).toMatchObject({
+      type: "mandatory",
+      basePopulation: "academic",
       graceEligible: false,
+    });
+    const career = await create({
+      ...form,
+      firstName: "חייל",
+      lastName: "בקבע",
+      email: "career-dated@example.invalid",
+      phone: "0500000999",
+      permanentDate: "2026-01-01",
+    });
+    expect(await stored(career.id)).toMatchObject({
+      type: "career",
+      basePopulation: "mandatory",
+      permanentFrom: "2026-01-01",
     });
   });
 });

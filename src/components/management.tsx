@@ -85,6 +85,152 @@ const nameParts = (s?: Row) => {
   };
 };
 /**
+ * The service path (decision 227): a soldier starts in mandatory service or
+ * as KAMA, and moves forward only, to career or to officer, on a date that
+ * may be past or future. Career service is a career date, not a separate field.
+ */
+const serviceFields = (s?: Row): Field[] => {
+  const base = str(obj(s?.service).basePopulation, s ? "" : "mandatory");
+  return [
+    {
+      name: "startPopulation",
+      label: "סוג גיוס",
+      type: "select",
+      required: base !== "career",
+      options: [
+        { value: "mandatory", label: "חובה" },
+        { value: "academic", label: "קמ״א" },
+      ],
+      value: base === "career" ? "" : base,
+      hint:
+        base === "career"
+          ? "נקלט כקבע או כקצין בלי תאריך מעבר. בחירה כאן תקבע מאיזו אוכלוסייה התחיל"
+          : undefined,
+    },
+    {
+      name: "enlistmentDate",
+      label: "תאריך גיוס",
+      type: "date",
+      value: str(s?.enlistmentDate),
+    },
+    {
+      name: "permanentDate",
+      label: "כניסה לקבע",
+      type: "date",
+      value: str(s?.permanentDate),
+      hint: "מהתאריך החייל באוכלוסיית קבע/קצינים; ריק = לא בקבע",
+    },
+    {
+      name: "officerDate",
+      label: "כניסה לקצונה",
+      type: "date",
+      value: str(s?.officerDate),
+      hint: "מהתאריך החייל באוכלוסיית קבע/קצינים; ריק = לא קצין",
+    },
+    {
+      name: "releaseDate",
+      label: "יום אחרון בשירות",
+      type: "date",
+      value: str(s?.releaseDate),
+    },
+  ];
+};
+/** The soldier's service path at a glance, with the population it gives. */
+function ServicePath({
+  person,
+  action,
+  onDone,
+}: {
+  person: Row;
+  action: Action;
+  onDone: () => void;
+}) {
+  const base = str(obj(person.service).basePopulation, "mandatory");
+  const today = unitToday();
+  const dated = (value: unknown) => (value ? displayDate(value) : "—");
+  const moves = [
+    ...rows(person.populationHistory).map((entry) => ({
+      date: str(entry.effectiveFrom),
+      label: `מעבר ל${population(entry.population)}`,
+      population: str(entry.population),
+    })),
+    ...(person.permanentDate
+      ? [
+          {
+            date: str(person.permanentDate),
+            label: "כניסה לקבע",
+            population: "career",
+          },
+        ]
+      : []),
+    ...(person.officerDate
+      ? [
+          {
+            date: str(person.officerDate),
+            label: "כניסה לקצונה",
+            population: "career",
+          },
+        ]
+      : []),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const next = moves.find(
+    (move) => move.date > today && move.population !== str(person.population)
+  );
+  return (
+    <div className="stack">
+      <ol className="service-path">
+        <li>
+          <strong>גיוס · {population(base)}</strong>
+          <span>{dated(person.enlistmentDate)}</span>
+        </li>
+        {moves.map((move) => (
+          <li key={`${move.label}-${move.date}`}>
+            <strong>{move.label}</strong>
+            <span>
+              {displayDate(move.date)}
+              {move.date > today ? " · עתידי" : ""}
+            </span>
+          </li>
+        ))}
+        <li>
+          <strong>יום אחרון בשירות</strong>
+          <span>{dated(person.releaseDate)}</span>
+        </li>
+      </ol>
+      <p>
+        אוכלוסיית שיבוץ היום: <strong>{population(person.population)}</strong>
+        {next && (
+          <>
+            {" "}
+            · מ־{displayDate(next.date)}: {population(next.population)}
+          </>
+        )}
+      </p>
+      <h3>עריכת מסלול השירות</h3>
+      <p className="muted">
+        מעבר הוא רק קדימה: מחובה או מקמ״א לקבע או לקצונה. תאריך יכול להיות בעבר,
+        היום או בעתיד. שינוי שמזיז את אוכלוסיית השיבוץ מציג קודם את השיבוצים
+        שהוא משפיע עליהם.
+      </p>
+      <ProfileEdit
+        person={person}
+        fields={[
+          ...serviceFields(person),
+          {
+            name: "reason",
+            label: "סיבת השינוי",
+            type: "textarea",
+            required: true,
+            full: true,
+          },
+        ]}
+        action={action}
+        onDone={onDone}
+      />
+    </div>
+  );
+}
+/**
  * The grace checkbox is shown while it can still matter: from an entered
  * arrival date until the month after it ends. Grace needs that date (without
  * it the soldier cannot be assigned), so a new soldier starts as eligible only
@@ -151,56 +297,15 @@ const soldierFields = (
     value: str(s?.phone),
     hint: phoneHint,
   },
-  {
-    name: "population",
-    label: "אוכלוסיית שיבוץ",
-    type: "select",
-    required: true,
-    options: populations,
-    value: str(s?.population),
-  },
-  {
-    name: "serviceType",
-    label: "סוג שירות",
-    type: "select",
-    required: true,
-    options: [
-      { value: "mandatory", label: "חובה" },
-      { value: "career", label: "קבע" },
-    ],
-    value: str(s?.serviceType, "mandatory"),
-  },
+  // The service path is edited in its own section of the profile (decision 227).
+  ...(s ? [] : serviceFields()),
   ...(s ? [] : initialRankFields(state)),
-  {
-    name: "enlistmentDate",
-    label: "תאריך גיוס",
-    type: "date",
-    value: str(s?.enlistmentDate),
-  },
   {
     name: "arrivalDate",
     label: "תאריך הגעה ליחידה",
     type: "date",
     value: str(s?.arrivalDate),
     onChange: onArrival,
-  },
-  {
-    name: "releaseDate",
-    label: "יום אחרון בשירות",
-    type: "date",
-    value: str(s?.releaseDate),
-  },
-  {
-    name: "officerDate",
-    label: "תחילת קצונה רגילה",
-    type: "date",
-    value: str(s?.officerDate),
-  },
-  {
-    name: "permanentDate",
-    label: "תחילת שירות קבע",
-    type: "date",
-    value: str(s?.permanentDate),
   },
   ...graceFields(s, arrival),
   {
@@ -592,6 +697,15 @@ export function SoldiersView({
             onDone={() => setSelected(null)}
           />
           <details className="disclosure">
+            <summary>מסלול שירות ואוכלוסיית שיבוץ</summary>
+            <ServicePath
+              key={String(selected.version)}
+              person={selected}
+              action={action}
+              onDone={() => setSelected(null)}
+            />
+          </details>
+          <details className="disclosure">
             <summary>כשירויות ופטורים</summary>
             <div className="stack">
               <PersonnelHistory
@@ -611,7 +725,7 @@ export function SoldiersView({
             </div>
           </details>
           <details className="disclosure">
-            <summary>מועדי שירות, אי־פעילות והיסטוריה</summary>
+            <summary>אי־פעילות והיסטוריית דרגות</summary>
             <div className="stack">
               <PersonnelHistory
                 state={state}
@@ -620,7 +734,7 @@ export function SoldiersView({
                 kinds={["inactive"]}
                 empty="אין תקופות אי־פעילות."
               />
-              {["populationHistory", "rankHistory"].map((key) =>
+              {["rankHistory"].map((key) =>
                 rows(selected[key]).map((entry, i) => (
                   <div className="history-row" key={`${key}-${i}`}>
                     <strong>
@@ -638,35 +752,6 @@ export function SoldiersView({
                   </div>
                 ))
               )}
-              <h3>מעבר אוכלוסיית שיבוץ</h3>
-              <AddPeriod
-                state={state}
-                action={action}
-                fixed={{ soldierId: selected.id, kind: "population" }}
-                fields={[
-                  {
-                    name: "value",
-                    label: "אוכלוסייה חדשה",
-                    type: "select",
-                    required: true,
-                    options: populations,
-                  },
-                  {
-                    name: "startDate",
-                    label: "בתוקף מתאריך",
-                    type: "date",
-                    required: true,
-                  },
-                  {
-                    name: "reason",
-                    label: "סיבת המעבר",
-                    type: "textarea",
-                    required: true,
-                    full: true,
-                  },
-                ]}
-                submitLabel="בדיקת השפעת המעבר"
-              />
               <h3>הוספת תקופת אי־פעילות</h3>
               <AddPeriod
                 state={state}

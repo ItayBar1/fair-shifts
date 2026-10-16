@@ -526,4 +526,93 @@ describe("service dates", () => {
       kept.version
     );
   });
+
+  it("edits the service path apart from the profile and moves only forward (decision 227)", async () => {
+    const created = await command(manager, "soldier.create", {
+      ...testProfile("חייל מסלול"),
+      email: "00107@example.invalid",
+      startPopulation: "academic",
+      enlistmentDate: israelDate(-300),
+      arrivalDate: israelDate(-200),
+    });
+    const stored = async () =>
+      (await db.select().from(soldiers).where(eq(soldiers.id, created.id)))[0];
+    expect((await stored()).data.service).toMatchObject({
+      basePopulation: "academic",
+      type: "mandatory",
+    });
+    // Career before enlistment, or release before career, is refused.
+    await expect(
+      command(
+        manager,
+        "soldier.update",
+        { id: created.id, permanentDate: israelDate(-301), reason: "שגוי" },
+        created.version
+      )
+    ).rejects.toMatchObject({ code: "service_order" });
+    await expect(
+      command(
+        manager,
+        "soldier.update",
+        {
+          id: created.id,
+          permanentDate: israelDate(10),
+          releaseDate: israelDate(5),
+          reason: "שגוי",
+        },
+        created.version
+      )
+    ).rejects.toMatchObject({ code: "service_order" });
+    // A future career date sent alone keeps every other stored field. It moves
+    // the population, so it is saved against the reviewed preview.
+    const path = {
+      id: created.id,
+      startPopulation: "academic",
+      enlistmentDate: israelDate(-300),
+      permanentDate: israelDate(10),
+      reason: "חתם קבע",
+    };
+    const preview = (await command(
+      manager,
+      "soldier.update.preview",
+      path,
+      created.version
+    )) as unknown as { populationMoves: boolean; previewToken: string };
+    expect(preview.populationMoves).toBe(true);
+    const moved = await command(
+      manager,
+      "soldier.update",
+      { ...path, confirmed: true, previewToken: preview.previewToken },
+      created.version
+    );
+    const row = await stored();
+    expect(row.data.service).toMatchObject({
+      basePopulation: "academic",
+      arrivalDate: israelDate(-200),
+      permanentFrom: israelDate(10),
+      type: "career",
+    });
+    expect(row.data.populationHistory).toEqual([]);
+    expect(row.data.firstName).toBe("חייל");
+    // The profile form leaves the path alone, and a stray service type is ignored.
+    await command(
+      manager,
+      "soldier.update",
+      { id: created.id, phone: "0500000108", serviceType: "mandatory" },
+      moved.version
+    );
+    expect((await stored()).data.service).toMatchObject({
+      permanentFrom: israelDate(10),
+      enlistmentDate: israelDate(-300),
+      type: "career",
+    });
+    // The reason stays with the change in the audit log.
+    const changes = await db
+      .select()
+      .from(records)
+      .where(eq(records.subjectId, created.id));
+    expect(JSON.stringify(changes.map((item) => item.data))).toContain(
+      "חתם קבע"
+    );
+  });
 });

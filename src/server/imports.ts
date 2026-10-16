@@ -152,7 +152,6 @@ function profileFor(
       (person
         ? populationAt(person.data, new Date().toISOString())
         : "mandatory"),
-    serviceType: values.serviceType ?? service?.type ?? "mandatory",
     arrivalDate: values.arrivalDate ?? service?.arrivalDate,
     enlistmentDate: values.enlistmentDate ?? service?.enlistmentDate,
     releaseDate: values.releaseDate ?? service?.releaseDate,
@@ -175,7 +174,8 @@ function proposedPerson(
   }
   if (profile.gender) data.gender = profile.gender;
   data.service = {
-    type: profile.serviceType,
+    // Career service is a career date (decision 227).
+    type: profile.permanentDate ? "career" : "mandatory",
     basePopulation: data.service.basePopulation,
     arrivalDate: profile.arrivalDate,
     enlistmentDate: profile.enlistmentDate,
@@ -185,6 +185,7 @@ function proposedPerson(
     graceEligible: profile.graceEligible ?? data.service.graceEligible,
   };
   if (
+    profile.population &&
     populationAt(person.data, new Date().toISOString()) !== profile.population
   )
     data.populationHistory = [

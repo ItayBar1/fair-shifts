@@ -133,7 +133,7 @@ for (const width of [1280, 390]) {
     await intake.getByLabel("תאריך הגעה ליחידה").fill(israelDate(-3));
     await expect(grace).toBeChecked();
     await grace.uncheck();
-    await intake.getByLabel("אוכלוסיית שיבוץ").selectOption("mandatory");
+    await intake.getByLabel("סוג גיוס").selectOption("mandatory");
     await intake
       .getByLabel("דרגה מאושרת (רשות)")
       .selectOption(`${initialRankId}|חוגרים`);
@@ -171,7 +171,7 @@ for (const width of [1280, 390]) {
       rankForm.getByLabel("דרגה מאושרת", { exact: true })
     ).toHaveValue(`${nextRankId}|נגדים`);
     await profile
-      .getByText("מועדי שירות, אי־פעילות והיסטוריה", { exact: true })
+      .getByText("אי־פעילות והיסטוריית דרגות", { exact: true })
       .click();
     const history = profile.locator(".history-row");
     await expect(history.filter({ hasText: "סמל" })).toContainText(

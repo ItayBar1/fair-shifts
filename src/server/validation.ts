@@ -50,8 +50,15 @@ export const profileInput = z.object({
   currentScore: z.number().int().nonnegative().max(2147483647).optional(),
   phone: z.preprocess(blank, phone.optional()),
   address: z.string().max(500).optional(),
-  population: population.default("mandatory"),
-  serviceType: z.enum(["mandatory", "career"]).default("mandatory"),
+  /**
+   * How the soldier started service (decision 227): mandatory or KAMA. It sets
+   * the base population; career comes only from a career or officer date.
+   */
+  startPopulation: z.enum(["mandatory", "academic"]).optional(),
+  /** The population from today, as the import gives it; it records a move today. */
+  population: population.optional(),
+  /** Derived from the career date since decision 227; a sent value is ignored. */
+  serviceType: z.enum(["mandatory", "career"]).optional(),
   arrivalDate: optionalDate,
   enlistmentDate: optionalDate,
   releaseDate: optionalDate,
@@ -62,6 +69,8 @@ export const profileInput = z.object({
   rankTrack: z.string().max(100).optional(),
   /** The manager saw the same-name warning and saves anyway. */
   duplicateNameConfirmed: z.boolean().optional(),
+  /** Why the service path changed, kept with the change in the audit log. */
+  reason: z.string().trim().max(2000).optional(),
 });
 /** Initial rank is optional, but a chosen rank always has an explicit date. */
 export const initialRankInput = z
