@@ -292,19 +292,11 @@ export function CompositionEditor({
                 }
               />
               <ConditionToggles
-                legend={`יכולות נדרשות לתפקיד ${role.name || index + 1}`}
+                legend={`כשירויות נדרשות לתפקיד ${role.name || index + 1}`}
                 options={capabilityOptions(state)}
                 value={role.requirements.capabilityIds ?? []}
                 onChange={(value) =>
                   updateRequirements(index, { capabilityIds: value })
-                }
-              />
-              <ConditionToggles
-                legend={`כשירויות נדרשות לתפקיד ${role.name || index + 1}`}
-                options={catalogOptions("qualification")}
-                value={role.requirements.qualificationIds ?? []}
-                onChange={(value) =>
-                  updateRequirements(index, { qualificationIds: value })
                 }
               />
               <ConditionToggles

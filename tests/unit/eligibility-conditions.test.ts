@@ -133,13 +133,19 @@ describe("capability conditions", () => {
       approvals: [],
     });
   });
-  it("needs every required capability and has no validity dates", () => {
+  it("needs every required capability; one without dates is permanent", () => {
     const both = duty({ requirements: { capabilityIds: ["lift", "drive"] } });
-    expect(codes(soldier({ capabilities: ["lift"] }), both).blockers).toEqual([
-      "capability",
-    ]);
     expect(
-      codes(soldier({ capabilities: ["drive", "lift"] }), both).status
+      codes(soldier({ capabilities: [{ capabilityId: "lift" }] }), both)
+        .blockers
+    ).toEqual(["capability"]);
+    expect(
+      codes(
+        soldier({
+          capabilities: [{ capabilityId: "drive" }, { capabilityId: "lift" }],
+        }),
+        both
+      ).status
     ).toBe("eligible");
   });
 });

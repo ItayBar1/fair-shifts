@@ -1,5 +1,7 @@
+import { DateTime } from "luxon";
+import { UNIT_ZONE } from "@/domain/time";
 import { rankMemberships } from "@/domain/rank-tracks";
-import { type Row, str } from "./types";
+import { type Row, str, rows } from "./types";
 
 export const filterPopulations = ["mandatory", "career", "academic"] as const;
 export type FilterPopulation = (typeof filterPopulations)[number];
@@ -42,11 +44,55 @@ export function rankChoices(catalog: Row[]) {
   );
 }
 
+/** Today's date in Israel, the default of a validity filter or a new start date. */
+export function unitToday() {
+  return DateTime.now().setZone(UNIT_ZONE).toISODate()!;
+}
+
+/**
+ * Whether a dated catalog entry applies on the day. A missing start applies from
+ * always, a missing end is permanent (decision 224); both ends are inclusive.
+ */
+export function validOn(entry: Row, date: string) {
+  const start = str(entry.start);
+  const end = str(entry.end);
+  return (!start || start <= date) && (!end || date <= end);
+}
+
+/**
+ * Show only soldiers who hold a capability or an exemption, valid on `date`.
+ * An empty date counts every entry whatever its dates. Managers only: the
+ * soldier's own state carries no exemptions.
+ */
+export type HeldFilter = {
+  capability: string;
+  exemption: string;
+  date: string;
+};
+export const noHeldFilter = (): HeldFilter => ({
+  capability: "",
+  exemption: "",
+  date: unitToday(),
+});
+export function holds(soldier: Row, filter: HeldFilter) {
+  const held = (field: string, key: string, id: string) =>
+    !id ||
+    rows(soldier[field]).some(
+      (entry) =>
+        entry[key] === id && (!filter.date || validOn(entry, filter.date))
+    );
+  return (
+    held("capabilities", "capabilityId", filter.capability) &&
+    held("exemptions", "exemptionId", filter.exemption)
+  );
+}
+
 // "" = all, "missing" = no current rank, "track:<name>" or "rank:<id>|<track>".
 export type SoldierFilters = {
   search: string;
   populations: readonly string[];
   rank: string;
+  held?: HeldFilter;
 };
 export function matchesRank(soldier: Row, rank: string) {
   if (!rank) return true;
@@ -69,6 +115,7 @@ export function filterSoldiers(soldiers: Row[], filters: SoldierFilters) {
       !s.deletedAt &&
       (!search || str(s.name).includes(search) || str(s.idNumber) === search) &&
       filters.populations.includes(str(s.population)) &&
-      matchesRank(s, filters.rank)
+      matchesRank(s, filters.rank) &&
+      (!filters.held || holds(s, filters.held))
   );
 }

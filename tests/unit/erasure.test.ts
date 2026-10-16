@@ -62,12 +62,12 @@ describe("registry of record kinds (decision 192)", () => {
 describe("profile conditions", () => {
   const rich = soldier({
     exemptions: [{ exemptionId: "e", start: "2026-01-01", end: "2026-12-31" }],
-    qualifications: [
-      { qualificationId: "q", start: "2026-01-01", end: "2026-12-31" },
-    ],
     inactivePeriods: [{ start: "2026-02-01", end: "2026-02-03" }],
     gender: "female",
-    capabilities: ["driver"],
+    capabilities: [
+      { capabilityId: "q", start: "2026-01-01", end: "2026-12-31" },
+      { capabilityId: "driver" },
+    ],
     allowedHours: [
       {
         id: "h",

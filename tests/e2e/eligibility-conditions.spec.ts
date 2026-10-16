@@ -76,7 +76,7 @@ async function login(page: Page, email: string) {
   await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
-test("manager defines gender and capability conditions and reviews personal hours impact before saving", async ({
+test("manager gives dated or permanent capabilities and exemptions, filters by them, and reviews gender and hours impact before saving", async ({
   page,
 }) => {
   const day = (offset: number) =>
@@ -86,26 +86,22 @@ test("manager defines gender and capability conditions and reviews personal hour
       .toISODate()!;
   await login(page, managerEmail);
   const dialog = page.getByRole("dialog");
-  const openProfile = async () => {
+  const conditions = "תנאי התאמה אישיים: מגדר ושעות";
+  const entries = "כשירויות ופטורים";
+  const openProfile = async (section: string) => {
     await page
       .getByRole("row")
       .filter({ hasText: "חיילת תנאים" })
       .getByRole("button", { name: "פרופיל ועריכה" })
       .click();
-    await dialog.getByText("תנאי התאמה אישיים: מגדר, יכולות ושעות").click();
+    await dialog.getByText(section, { exact: true }).click();
   };
 
   // With an empty catalog the profile points to where capabilities are defined.
   await page.goto("/manage/soldiers");
-  await openProfile();
-  const emptyCapabilities = dialog.getByRole("group", {
-    name: "יכולות",
-    exact: true,
-  });
-  await expect(emptyCapabilities).toContainText("עדיין לא הוגדרו יכולות.");
-  await emptyCapabilities
-    .getByRole("link", { name: "פטורים וכשירויות" })
-    .click();
+  await openProfile(entries);
+  await expect(dialog).toContainText("עדיין לא הוגדרו כשירויות או פטורים.");
+  await dialog.getByRole("link", { name: "פטורים וכשירויות" }).click();
   await expect(page).toHaveURL(/\/manage\/eligibility$/);
 
   await page.goto("/manage/eligibility");
@@ -116,13 +112,18 @@ test("manager defines gender and capability conditions and reviews personal hour
   await expect(dialog).not.toBeVisible();
   await expect(
     page.locator(".task-item").filter({ hasText: "נשיאת משקל" })
-  ).toContainText("יכולת");
-  // Capabilities belong to the profile, not to dated period assignment.
+  ).toContainText("כשירות");
+  await page.getByRole("button", { name: "הגדרה חדשה", exact: true }).click();
+  await dialog.getByLabel("סוג ההגדרה").selectOption("exemption");
+  await dialog.getByLabel("שם", { exact: true }).fill("פטור שמירות");
+  await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  // Capabilities and exemptions are assigned here as well as in the profile.
   await expect(
     page.getByLabel("סוג מהקטלוג", { exact: true }).locator("option", {
-      hasText: "נשיאת משקל",
+      hasText: "נשיאת משקל · כשירות",
     })
-  ).toHaveCount(0);
+  ).toHaveCount(1);
 
   await page.goto("/manage/catalog");
   await page
@@ -132,36 +133,69 @@ test("manager defines gender and capability conditions and reviews personal hour
   await page.getByLabel("ניקוד בסיס").fill("4");
   await page.getByLabel("מגדר מותר", { exact: true }).selectOption(["female"]);
   await dialog
-    .getByRole("group", { name: "יכולות נדרשות לתפקיד 1" })
+    .getByRole("group", { name: "כשירויות נדרשות לתפקיד 1" })
     .getByLabel("נשיאת משקל")
     .check();
   await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   const [type] = await db.select().from(dutyTypes);
-  const [capability] = await db
-    .select()
-    .from(records)
-    .where(eq(records.kind, "eligibility_catalog"));
+  const [capability] = (
+    await db
+      .select()
+      .from(records)
+      .where(eq(records.kind, "eligibility_catalog"))
+  ).filter((row) => row.data.kind === "capability");
   expect(type.data.requirements).toMatchObject({ genders: ["female"] });
   expect(type.data.roles).toMatchObject([
     { requirements: { capabilityIds: [capability.id] } },
   ]);
 
   await page.goto("/manage/soldiers");
-  await openProfile();
-  // Gender and capabilities appear once each, as the editable control.
+  await openProfile(entries);
+  await expect(dialog).toContainText("אין כשירויות או פטורים.");
+  // A capability from today with no end date is permanent (decision 224).
+  const addEntry = async (label: string, end = "") => {
+    await dialog
+      .getByLabel("סוג מהקטלוג", { exact: true })
+      .selectOption({ label });
+    await expect(dialog.getByLabel("תחילת תוקף", { exact: true })).toHaveValue(
+      day(0)
+    );
+    await expect(
+      dialog.getByLabel("סיום תוקף (כולל)", { exact: true })
+    ).toHaveValue("");
+    if (end) await dialog.getByLabel("סיום תוקף (כולל)").fill(end);
+    await dialog.getByRole("button", { name: "בדיקת השפעת השיוך" }).click();
+    const added = dialog.getByRole("region", { name: "השפעת התקופה החדשה" });
+    await expect(added).toContainText(
+      end ? "התקופה אינה משנה" : "קבוע, בלי תאריך סיום"
+    );
+    await added.getByLabel("בדקתי את ההשפעה ומאשר את הוספת התקופה").check();
+    await added.getByRole("button", { name: "אישור הוספת התקופה" }).click();
+    await expect(added).toHaveCount(0);
+  };
+  await addEntry("נשיאת משקל · כשירות");
+  await expect(
+    dialog.locator(".history-row").filter({ hasText: "נשיאת משקל" })
+  ).toContainText("קבוע, בלי תאריך סיום");
+  await addEntry("פטור שמירות · פטור", day(7));
+  const [withEntries] = await db
+    .select()
+    .from(soldiers)
+    .where(eq(soldiers.name, "חיילת תנאים"));
+  expect(withEntries.data.capabilities).toEqual([
+    { capabilityId: capability.id, start: day(0) },
+  ]);
+  expect(withEntries.data.exemptions).toMatchObject([
+    { start: day(0), end: day(7) },
+  ]);
+
+  await dialog.getByText(conditions, { exact: true }).click();
+  // Gender appears once, as the editable control.
   const genderControl = dialog.getByLabel("מגדר", { exact: true });
-  const capabilitiesControl = dialog.getByRole("group", {
-    name: "יכולות",
-    exact: true,
-  });
   await expect(genderControl).toHaveCount(1);
   await expect(genderControl).toHaveValue("");
-  await expect(capabilitiesControl).toHaveCount(1);
-  await expect(capabilitiesControl).toContainText("כמו רישיון נהיגה");
-  await expect(capabilitiesControl.getByLabel("נשיאת משקל")).not.toBeChecked();
-  await dialog.getByLabel("מגדר", { exact: true }).selectOption("female");
-  await dialog.getByLabel("נשיאת משקל").check();
+  await genderControl.selectOption("female");
   await dialog.getByRole("button", { name: "הוספת הגבלת שעות" }).click();
   const limit = dialog.getByRole("group", { name: "הגבלת שעות 1" });
   await limit.getByLabel("בתוקף מתאריך").fill(day(1));
@@ -184,7 +218,6 @@ test("manager defines gender and capability conditions and reviews personal hour
   await first.getByRole("button", { name: "אישור שינוי התנאים" }).click();
   await expect(first).toHaveCount(0);
   await expect(genderControl).toHaveValue("female");
-  await expect(capabilitiesControl.getByLabel("נשיאת משקל")).toBeChecked();
   const savedLimit = dialog.getByRole("group", { name: "הגבלת שעות 1" });
   await expect(savedLimit.getByLabel("תחילת חלון 1")).toHaveValue("17:00");
   await expect(savedLimit.getByLabel("סיום חלון 1")).toHaveValue("23:30");
@@ -232,7 +265,7 @@ test("manager defines gender and capability conditions and reviews personal hour
     1
   );
   await page.reload();
-  await openProfile();
+  await openProfile(conditions);
   await dialog
     .getByRole("group", { name: "הגבלת שעות 1" })
     .getByLabel("סיום חלון 1")
@@ -272,4 +305,48 @@ test("manager defines gender and capability conditions and reviews personal hour
     fullPage: true,
     animations: "disabled",
   });
+
+  // The soldiers table, the fairness table and the catalog screen filter by
+  // a capability or an exemption valid on a chosen day.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/manage/soldiers");
+  const member_ = page.getByRole("row").filter({ hasText: "חיילת תנאים" });
+  const validOn = page.getByLabel("בתוקף בתאריך");
+  await page
+    .getByLabel("סינון לפי כשירות")
+    .selectOption({ label: "כשירות: נשיאת משקל" });
+  await expect(validOn).toHaveValue(day(0));
+  await expect(member_).toHaveCount(1);
+  await expect(page.getByText("1 חיילים מוצגים")).toBeVisible();
+  await validOn.fill(day(-1));
+  await expect(member_).toHaveCount(0);
+  await validOn.fill("");
+  await expect(member_).toHaveCount(1);
+  await page.getByLabel("סינון לפי כשירות").selectOption("");
+  await page
+    .getByLabel("סינון לפי פטור")
+    .selectOption({ label: "פטור: פטור שמירות" });
+  await validOn.fill(day(8));
+  await expect(member_).toHaveCount(0);
+  await validOn.fill(day(7));
+  await expect(member_).toHaveCount(1);
+
+  await page.goto("/fairness");
+  await page
+    .getByLabel("סינון לפי כשירות")
+    .selectOption({ label: "כשירות: נשיאת משקל" });
+  await expect(member_).toHaveCount(1);
+  await page.getByLabel("בתוקף בתאריך").fill(day(-1));
+  await expect(member_).toHaveCount(0);
+
+  await page.goto("/manage/eligibility");
+  const listed = page.locator(".subsection").filter({
+    has: page.getByRole("heading", { name: "חיילת תנאים", exact: true }),
+  });
+  await expect(listed.locator(".history-row")).toHaveCount(2);
+  await page
+    .getByLabel("סינון לפי סוג מהקטלוג")
+    .selectOption({ label: "פטור שמירות · פטור" });
+  await expect(listed.locator(".history-row")).toHaveCount(1);
+  await expect(listed).toContainText("פטור שמירות");
 });

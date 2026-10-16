@@ -8,8 +8,8 @@ import {
 import {
   UNIT_ZONE,
   coveredByRanges,
-  datesToInstants,
   interval,
+  openDatesToInstants,
   overlaps,
 } from "@/domain/time";
 import type {
@@ -36,7 +36,6 @@ export const filterGroups = [
   "populations",
   "genders",
   "exemptions",
-  "qualifications",
   "capabilities",
   "ranks",
 ] as const;
@@ -49,9 +48,7 @@ export type PickerFilters = {
   genders: string[];
   /** Exemption ids: hides a soldier whose exemption applies at any moment of the range. */
   exemptions: string[];
-  /** Qualification ids: each must be valid for the whole range. */
-  qualifications: string[];
-  /** Capability ids: each must be held. Capabilities have no validity dates. */
+  /** Capability ids: each must be valid for the whole range (decision 224). */
   capabilities: string[];
   /** Rank ids at the start of the range, or `NO_RANK`. */
   ranks: string[];
@@ -62,7 +59,6 @@ export const emptyFilters: PickerFilters = {
   populations: [],
   genders: [],
   exemptions: [],
-  qualifications: [],
   capabilities: [],
   ranks: [],
 };
@@ -75,7 +71,6 @@ export type PickerSoldier = Pick<
   | "service"
   | "populationHistory"
   | "rankHistory"
-  | "qualifications"
   | "exemptions"
   | "gender"
   | "capabilities"
@@ -105,13 +100,12 @@ export function pickerSoldier(row: Row): PickerSoldier {
     },
     populationHistory: list(row.populationHistory),
     rankHistory: list(row.rankHistory),
-    qualifications: list(row.qualifications),
     exemptions: list(row.exemptions),
     gender:
       gender === "male" || gender === "female" || gender === "other"
         ? gender
         : undefined,
-    capabilities: list<string>(row.capabilities).map(String),
+    capabilities: list(row.capabilities),
   };
 }
 
@@ -173,8 +167,6 @@ export function matchesFilters(
   const genders = genderCondition(filters.genders);
   if (genders && !(soldier.gender && genders.includes(soldier.gender)))
     return false;
-  if (filters.capabilities.some((id) => !soldier.capabilities?.includes(id)))
-    return false;
   const target = pickerRange(range);
   if (!target) return true;
   if (
@@ -187,14 +179,14 @@ export function matchesFilters(
     soldier.exemptions.some(
       (exemption) =>
         filters.exemptions.includes(exemption.exemptionId) &&
-        overlaps(target, datesToInstants(exemption))
+        overlaps(target, openDatesToInstants(exemption))
     )
   )
     return false;
-  for (const qualificationId of filters.qualifications) {
-    const held = soldier.qualifications
-      .filter((item) => item.qualificationId === qualificationId)
-      .map(datesToInstants);
+  for (const capabilityId of filters.capabilities) {
+    const held = (soldier.capabilities ?? [])
+      .filter((item) => item.capabilityId === capabilityId)
+      .map(openDatesToInstants);
     if (!coveredByRanges(target, held)) return false;
   }
   if (filters.ranks.length) {
@@ -241,7 +233,6 @@ export function rankIdAtStart(
 export type PickerOption = { value: string; label: string };
 export type PickerOptions = {
   exemptions: PickerOption[];
-  qualifications: PickerOption[];
   capabilities: PickerOption[];
   ranks: { track: string; ranks: PickerOption[] }[];
 };
@@ -257,7 +248,6 @@ export function pickerOptions(
       .sort((a, b) => a.label.localeCompare(b.label, "he"));
   return {
     exemptions: named("exemption"),
-    qualifications: named("qualification"),
     capabilities: named("capability"),
     ranks: rankTracks(rows(catalogs.rankCatalog)).map(({ track, ranks }) => ({
       track,
@@ -316,9 +306,6 @@ export function defaultFilters(
     genders: intersection(genders),
     exemptions: union(
       requirements.map((set) => set.blockingExemptionIds ?? [])
-    ),
-    qualifications: union(
-      requirements.map((set) => set.qualificationIds ?? [])
     ),
     capabilities: union(requirements.map((set) => set.capabilityIds ?? [])),
     ranks: intersection(ranks),

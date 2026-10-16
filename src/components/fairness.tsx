@@ -37,6 +37,8 @@ import {
 import { effectiveDiffers } from "@/domain/time";
 import { AuditLink, ledgerSource } from "./audit";
 import { Badge, Empty, Modal, Notice, Panel, populations } from "./ui";
+import { HeldFilters } from "./held-filters";
+import { holds, noHeldFilter } from "@/client/soldier-filters";
 
 /** A column head that sorts its column, telling assistive technology how. */
 function SortHead<K extends string>({
@@ -655,6 +657,8 @@ export function FairnessView({
   }, []);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
+  // Managers only: a soldier's state carries no capabilities or exemptions.
+  const [held, setHeld] = useState(noHeldFilter);
   const [future, setFuture] = useState(false);
   const [sort, setSort] = useState<Sort<FairnessColumn>>({
     key: "rank",
@@ -670,7 +674,9 @@ export function FairnessView({
     [state.soldiers, future]
   );
   const matches = (s: Row) =>
-    str(s.name).includes(search) && (!filter || s.population === filter);
+    str(s.name).includes(search) &&
+    (!filter || s.population === filter) &&
+    (!manager || holds(s, held));
   const filtered = sortFairness(ranked.filter(matches), sort);
   const outside = managers.filter(matches);
   // A selection counts only what the filters still show.
@@ -853,6 +859,9 @@ export function FairnessView({
                 </option>
               ))}
             </select>
+            {manager && (
+              <HeldFilters state={state} value={held} onChange={setHeld} />
+            )}
             <label className="toggle">
               <input
                 type="checkbox"

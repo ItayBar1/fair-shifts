@@ -210,7 +210,7 @@ describe("adding a soldier with the form", () => {
       },
       populationHistory: [],
       rankHistory: [],
-      qualifications: [],
+      capabilities: [],
       exemptions: [],
       inactivePeriods: [],
     });

@@ -84,7 +84,7 @@ export async function saveEligibilityCatalog(
   const input = z
     .object({
       id: id.optional(),
-      kind: z.enum(["qualification", "exemption", "capability"]),
+      kind: z.enum(["exemption", "capability"]),
       name: text,
       description: z.string().max(2000).default(""),
     })
@@ -109,16 +109,46 @@ export async function saveEligibilityCatalog(
   await audit(tx, actor, "eligibility.catalog.create", record.id);
   return { id: record.id };
 }
+/** An empty date field means no date: open validity for capabilities and exemptions. */
+const optionalDate = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  date.optional()
+);
 const timelineEditInput = z.object({
   soldierId: id,
-  kind: z.enum(["qualification", "exemption", "inactive"]),
+  kind: z.enum(["capability", "exemption", "inactive"]),
   index: z.number().int().nonnegative().max(10000),
   operation: z.enum(["replace", "remove"]),
-  startDate: date.optional(),
-  endDate: date.optional(),
+  startDate: optionalDate,
+  endDate: optionalDate,
   value: id.optional(),
   reason: text,
 });
+/**
+ * Capabilities and exemptions may leave out either date (decision 224); an
+ * inactivity period needs both. Given dates must not run backwards.
+ */
+function validityOf(
+  kind: "capability" | "exemption" | "inactive",
+  startDate?: string,
+  endDate?: string
+) {
+  if (kind === "inactive")
+    invariant(
+      startDate && endDate,
+      "date_range",
+      "נדרש טווח תוקף תקין עם תאריך סיום"
+    );
+  invariant(
+    !startDate || !endDate || startDate <= endDate,
+    "date_range",
+    "תאריך הסיום קודם לתאריך ההתחלה"
+  );
+  return {
+    ...(startDate ? { start: startDate } : {}),
+    ...(endDate ? { end: endDate } : {}),
+  };
+}
 function replaceEntry<T>(entries: T[], index: number, replacement?: T) {
   return entries.flatMap((entry, i) =>
     i !== index ? [entry] : replacement ? [replacement] : []
@@ -215,20 +245,18 @@ async function inspectTimelineEdit(
   currentVersion(person.version, expectedVersion);
   const field = (
     {
-      qualification: "qualifications",
+      capability: "capabilities",
       exemption: "exemptions",
       inactive: "inactivePeriods",
     } as const
   )[input.kind];
-  const original = person.data[field][input.index];
+  const original = (person.data[field] ?? [])[input.index];
   invariant(original, "not_found", "התקופה שנבחרה לא נמצאה", 404);
   const removing = input.operation === "remove";
+  const range = removing
+    ? {}
+    : validityOf(input.kind, input.startDate, input.endDate);
   if (!removing) {
-    invariant(
-      input.startDate && input.endDate && input.startDate <= input.endDate,
-      "date_range",
-      "נדרש טווח תוקף תקין עם תאריך סיום"
-    );
     if (input.kind !== "inactive") {
       const catalog = await findRecord(
         tx,
@@ -242,13 +270,12 @@ async function inspectTimelineEdit(
       );
     }
   }
-  const range = { start: input.startDate!, end: input.endDate! };
   const data: Soldier = { ...person.data, version: person.version + 1 };
-  if (input.kind === "qualification")
-    data.qualifications = replaceEntry(
-      data.qualifications,
+  if (input.kind === "capability")
+    data.capabilities = replaceEntry(
+      data.capabilities ?? [],
       input.index,
-      removing ? undefined : { ...range, qualificationId: input.value! }
+      removing ? undefined : { ...range, capabilityId: input.value! }
     );
   else if (input.kind === "exemption")
     data.exemptions = replaceEntry(
@@ -260,7 +287,7 @@ async function inspectTimelineEdit(
     data.inactivePeriods = replaceEntry(
       data.inactivePeriods,
       input.index,
-      removing ? undefined : range
+      removing ? undefined : { start: input.startDate!, end: input.endDate! }
     );
   const { previewToken, impact } = await assessPeriodImpact(
     tx,
@@ -268,7 +295,7 @@ async function inspectTimelineEdit(
     data,
     input
   );
-  const replaced = removing ? null : data[field][input.index];
+  const replaced = removing ? null : (data[field] ?? [])[input.index];
   return { input, person, data, original, replaced, previewToken, impact };
 }
 export async function previewTimelineEdit(
@@ -334,18 +361,9 @@ export async function editTimeline(
 }
 const timelineInput = z.object({
   soldierId: id,
-  kind: z.enum([
-    "population",
-    "inactive",
-    "qualification",
-    "exemption",
-    "rank",
-  ]),
-  startDate: date,
-  endDate: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    date.optional()
-  ),
+  kind: z.enum(["population", "inactive", "capability", "exemption", "rank"]),
+  startDate: optionalDate,
+  endDate: optionalDate,
   value: z.string().max(200).optional(),
   name: text.optional(),
   track: text.optional(),
@@ -355,7 +373,7 @@ const timelineInput = z.object({
 /** Additions that are saved only against the impact the manager reviewed. */
 const reviewedKinds = [
   "inactive",
-  "qualification",
+  "capability",
   "exemption",
   "population",
 ] as const;
@@ -398,29 +416,26 @@ async function inspectTimelineAdd(
   const data: Soldier = { ...person.data, version: person.version + 1 };
   if (input.kind === "population") {
     invariant(input.reason, "reason_required", "נדרשת סיבה למעבר");
+    invariant(input.startDate, "date_required", "נדרש תאריך המעבר");
+    const effectiveFrom = input.startDate;
     invariant(
       !data.populationHistory.some(
-        (row) => row.effectiveFrom === input.startDate
+        (row) => row.effectiveFrom === effectiveFrom
       ),
       "existing_effective_date",
       "כבר קיים מעבר בתאריך הזה"
     );
     data.populationHistory = [
       ...data.populationHistory,
-      {
-        effectiveFrom: input.startDate,
-        population: population.parse(input.value),
-      },
+      { effectiveFrom, population: population.parse(input.value) },
     ];
   } else {
-    invariant(
-      input.endDate && input.endDate >= input.startDate,
-      "date_range",
-      "נדרש טווח תוקף תקין עם תאריך סיום"
-    );
-    const range = { start: input.startDate, end: input.endDate };
+    const range = validityOf(input.kind, input.startDate, input.endDate);
     if (input.kind === "inactive")
-      data.inactivePeriods = [...data.inactivePeriods, range];
+      data.inactivePeriods = [
+        ...data.inactivePeriods,
+        { start: input.startDate!, end: input.endDate! },
+      ];
     else {
       const catalog = await findRecord(
         tx,
@@ -432,10 +447,10 @@ async function inspectTimelineAdd(
         "catalog_kind",
         "סוג ההגדרה אינו מתאים לשיוך"
       );
-      if (input.kind === "qualification")
-        data.qualifications = [
-          ...data.qualifications,
-          { ...range, qualificationId: catalog.id },
+      if (input.kind === "capability")
+        data.capabilities = [
+          ...(data.capabilities ?? []),
+          { ...range, capabilityId: catalog.id },
         ];
       else
         data.exemptions = [
@@ -497,16 +512,19 @@ export async function updateTimeline(
     person = await loadSoldierForTimeline(tx, input.soldierId, expectedVersion);
     data = { ...person.data, version: person.version + 1 };
     invariant(
-      input.name && input.track && input.order !== undefined && input.reason,
+      input.name &&
+        input.track &&
+        input.order !== undefined &&
+        input.reason &&
+        input.startDate,
       "rank_details",
-      "נדרשים דרגה, מסלול, סדר ומקור אישור"
+      "נדרשים דרגה, מסלול, סדר, תאריך ומקור אישור"
     );
+    const effectiveFrom = input.startDate;
     data.rankHistory = [
-      ...data.rankHistory.filter(
-        (row) => row.effectiveFrom !== input.startDate
-      ),
+      ...data.rankHistory.filter((row) => row.effectiveFrom !== effectiveFrom),
       {
-        effectiveFrom: input.startDate,
+        effectiveFrom,
         rankId: input.name,
         trackId: input.track,
         order: input.order,
@@ -552,7 +570,6 @@ const conditionsInput = z.object({
     (value) => (value === "" || value === null ? undefined : value),
     gender.optional()
   ),
-  capabilityIds: z.array(id).max(50).default([]),
   allowedHours: z
     .array(
       z.object({
@@ -578,13 +595,13 @@ const conditionsInput = z.object({
 function conditionsOf(data: Soldier) {
   return {
     gender: data.gender ?? null,
-    capabilities: data.capabilities ?? [],
     allowedHours: data.allowedHours ?? [],
   };
 }
 /**
- * Gender, capabilities and personal hours limits are replaced as one set, and
- * only against the impact the manager reviewed (decision 164).
+ * Gender and personal hours limits are replaced as one set, and only against
+ * the impact the manager reviewed (decision 164). Capabilities are dated
+ * entries since decision 224 and change through the timeline actions.
  */
 async function inspectConditions(
   tx: DbTransaction,
@@ -597,15 +614,6 @@ async function inspectConditions(
     input.soldierId,
     expectedVersion
   );
-  const capabilities = [...new Set(input.capabilityIds)].sort();
-  for (const capabilityId of capabilities) {
-    const catalog = await findRecord(tx, "eligibility_catalog", capabilityId);
-    invariant(
-      catalog.data.kind === "capability",
-      "catalog_kind",
-      "היכולת שנבחרה אינה מוגדרת בקטלוג היכולות"
-    );
-  }
   const existingIds = new Set(
     (person.data.allowedHours ?? []).map((limit) => limit.id)
   );
@@ -640,7 +648,6 @@ async function inspectConditions(
   const data: Soldier = {
     ...person.data,
     version: person.version + 1,
-    capabilities,
     allowedHours,
   };
   // Gender is a required profile field (decision 222): it can change here but
