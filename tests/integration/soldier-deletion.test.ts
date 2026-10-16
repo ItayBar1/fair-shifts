@@ -264,16 +264,14 @@ describe("deleting a user", () => {
               start: "2026-01-01",
               end: "2030-12-31",
             },
-          ],
-          inactivePeriods: [{ start: "2026-03-01", end: "2026-03-05" }],
-          allowedHours: [
             {
-              id: randomUUID(),
+              exemptionId: randomUUID(),
               start: "2026-01-01",
               end: "2030-12-31",
               windows: [{ startTime: "08:00", endTime: "16:00" }],
             },
           ],
+          inactivePeriods: [{ start: "2026-03-01", end: "2026-03-05" }],
           rankHistory: [
             {
               effectiveFrom: "2026-01-01",
@@ -360,7 +358,6 @@ describe("deleting a user", () => {
     expect(row.idNumber).toBe(testIdNumber("00203"));
     expect(row.data.exemptions).toEqual([]);
     expect(row.data.inactivePeriods).toEqual([]);
-    expect(row.data.allowedHours).toEqual([]);
     expect(row.data.capabilities).toEqual([]);
     expect(row.data.gender).toBeUndefined();
     // Employment facts stay with the history.

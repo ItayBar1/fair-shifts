@@ -6,7 +6,7 @@ import {
 import { windowBoundary } from "../../src/domain/time";
 import { duty, soldier } from "../fixtures";
 import type {
-  AllowedHours,
+  TimedExemption,
   Duty,
   EligibilityContext,
   Soldier,
@@ -28,8 +28,9 @@ const codes = (person: Soldier, target: Duty, context = automatic) => {
     messages: result.blockers.map((item) => item.message),
   };
 };
-const limit = (overrides: Partial<AllowedHours> = {}): AllowedHours => ({
-  id: "limit",
+// An hours exemption (decision 226): the windows travel with the soldier's entry.
+const limit = (overrides: Partial<TimedExemption> = {}): TimedExemption => ({
+  exemptionId: "limit",
   start: "2026-01-01",
   end: "2026-12-31",
   windows: [{ startTime: "08:00", endTime: "17:00" }],
@@ -150,17 +151,17 @@ describe("capability conditions", () => {
   });
 });
 
-describe("personal allowed hours", () => {
+describe("hours exemptions", () => {
   const night = limit({ windows: [{ startTime: "22:00", endTime: "06:00" }] });
   it("accepts a night inside a window that crosses midnight", () =>
     expect(
       codes(
-        soldier({ allowedHours: [night] }),
+        soldier({ exemptions: [night] }),
         at("2026-09-27T23:00:00+03:00", "2026-09-28T05:00:00+03:00")
       ).status
     ).toBe("eligible"));
   it("checks the whole execution, not only its start", () => {
-    const person = soldier({ allowedHours: [night] });
+    const person = soldier({ exemptions: [night] });
     expect(
       codes(
         person,
@@ -180,7 +181,7 @@ describe("personal allowed hours", () => {
         { startTime: "08:00", endTime: "17:00", weekdays: [7, 1, 2, 3, 4] },
       ],
     });
-    const person = soldier({ allowedHours: [weekdays] });
+    const person = soldier({ exemptions: [weekdays] });
     expect(
       codes(
         person,
@@ -196,7 +197,7 @@ describe("personal allowed hours", () => {
   });
   it("limits only the part of a duty inside the validity dates", () => {
     const person = soldier({
-      allowedHours: [limit({ start: "2026-09-28", end: "2026-09-30" })],
+      exemptions: [limit({ start: "2026-09-28", end: "2026-09-30" })],
     });
     expect(
       codes(
@@ -219,10 +220,10 @@ describe("personal allowed hours", () => {
   });
   it("requires every overlapping limit to be met", () => {
     const person = soldier({
-      allowedHours: [
+      exemptions: [
         limit(),
         limit({
-          id: "second",
+          exemptionId: "second",
           windows: [{ startTime: "12:00", endTime: "20:00" }],
         }),
       ],
@@ -241,7 +242,7 @@ describe("personal allowed hours", () => {
     ).toEqual(["allowed_hours"]);
   });
   it("blocks lottery and volunteers but allows a specific manual exception", () => {
-    const person = soldier({ allowedHours: [limit()] });
+    const person = soldier({ exemptions: [limit()] });
     const late = at("2026-09-27T18:00:00+03:00", "2026-09-27T23:00:00+03:00");
     expect(
       codes(person, late, { ...automatic, mode: "volunteer" }).status
@@ -278,7 +279,7 @@ describe("personal allowed hours", () => {
     ).toEqual(["allowed_hours"]);
   });
   it("does not let an hours exception bypass a capability", () => {
-    const person = soldier({ allowedHours: [limit()] });
+    const person = soldier({ exemptions: [limit()] });
     const target = at(
       "2026-09-27T18:00:00+03:00",
       "2026-09-27T23:00:00+03:00",
@@ -312,7 +313,7 @@ describe("hours windows across Israeli clock changes", () => {
       Date.parse("2026-03-27T03:00:00+03:00")
     );
     const person = soldier({
-      allowedHours: [
+      exemptions: [
         limit({ windows: [{ startTime: "02:30", endTime: "06:00" }] }),
       ],
     });
@@ -331,7 +332,7 @@ describe("hours windows across Israeli clock changes", () => {
       Date.parse("2026-10-25T01:30:00+02:00")
     );
     const person = soldier({
-      allowedHours: [
+      exemptions: [
         limit({ windows: [{ startTime: "01:30", endTime: "03:00" }] }),
       ],
     });
@@ -342,4 +343,29 @@ describe("hours windows across Israeli clock changes", () => {
       ).status
     ).toBe("eligible");
   });
+});
+
+describe("an hours exemption beside duty-type exemptions", () => {
+  it("never blocks a whole duty that lists it, and a plain exemption still does", () => {
+    const listing = (exemptionId: string) =>
+      at("2026-09-27T09:00:00+03:00", "2026-09-27T12:00:00+03:00", {
+        requirements: { blockingExemptionIds: [exemptionId] },
+      });
+    expect(
+      codes(soldier({ exemptions: [limit()] }), listing("limit")).status
+    ).toBe("eligible");
+    expect(
+      codes(
+        soldier({ exemptions: [{ exemptionId: "plain" }] }),
+        listing("plain")
+      ).blockers
+    ).toEqual(["exemption"]);
+  });
+  it("applies with open dates, before and after", () =>
+    expect(
+      codes(
+        soldier({ exemptions: [limit({ start: undefined, end: undefined })] }),
+        at("2030-01-06T20:00:00+02:00", "2030-01-06T23:00:00+02:00")
+      ).blockers
+    ).toEqual(["allowed_hours"]));
 });

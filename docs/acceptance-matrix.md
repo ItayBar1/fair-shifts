@@ -99,6 +99,8 @@
 ### 15. כאחראי, אני רוצה לבצע עקיפת פטור נקודתית רק לאחר אישור חריג מפורש כדי לתעד את ההחלטה בלי לשנות את הפטור. — מכוסה
 
 - [auth.test.ts](../tests/integration/auth.test.ts): `persists a justified rank exception through another seat assignment and publication`; `rejects an obsolete exception preview and never permits it to bypass a missing capability`; `checks personal hours over a night in Israeli time, keeps them out of the lottery and allows only a justified manual exception`
+- [hours-exemptions.test.ts](../tests/integration/hours-exemptions.test.ts): `gives each window set one catalog entry, moves every limit and its approvals, and runs again without change`
+- [eligibility-conditions.test.ts](../tests/unit/eligibility-conditions.test.ts): `never blocks a whole duty that lists it, and a plain exemption still does`; `applies with open dates, before and after`
 - [first-duty.spec.ts](../tests/e2e/first-duty.spec.ts): `manager invites, assigns and publishes; soldier sees only published duties`
 
 ### 16. כאחראי, אני רוצה לפתוח ולסגור סבב אילוצים משותף ולהגדיר בנפרד את תקופת היעד כדי לשלוט במועדי ההגשה. — מכוסה
@@ -446,7 +448,7 @@
 
 - [domain.test.ts](../tests/unit/domain.test.ts): `checks a dated capability throughout the execution`; `treats missing capability and exemption dates as open (decision 224)`
 - [capability-validity.test.ts](../tests/integration/capability-validity.test.ts): `keeps every soldier's qualifications and capabilities, the catalog and the conditions, and runs again without change`
-- [eligibility-conditions.spec.ts](../tests/e2e/eligibility-conditions.spec.ts): `manager gives dated or permanent capabilities and exemptions, filters by them, and reviews gender and hours impact before saving`
+- [eligibility-conditions.spec.ts](../tests/e2e/eligibility-conditions.spec.ts): `manager gives dated or permanent capabilities and exemptions, an hours exemption among them, filters by them, and reviews the impact`
 - [auth.test.ts](../tests/integration/auth.test.ts): `requires exemption approval for a partial overlap, rejects an obsolete preview and saves one of two competing confirmations`; `rejects an obsolete exception preview and never permits it to bypass a missing capability`; `removes an exemption without discarding approved constraints and restricts both preview and catalog edits to managers`
 - [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `hides the soldier through the last day of the exemption, inclusive`
 

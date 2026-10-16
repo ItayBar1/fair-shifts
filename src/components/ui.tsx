@@ -487,9 +487,12 @@ export function ActionDialog({
   description,
   danger = false,
   submitLabel,
+  onOpen,
 }: {
   title: string;
   buttonLabel?: string;
+  /** Lets the caller reset what it tracks about the form each time it opens. */
+  onOpen?: () => void;
   fields: Field[];
   action: Action;
   type: string;
@@ -512,7 +515,10 @@ export function ActionDialog({
       <button
         ref={trigger}
         className={`btn ${danger ? "danger" : "secondary"}`}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          onOpen?.();
+          setOpen(true);
+        }}
       >
         {buttonLabel || (
           <>

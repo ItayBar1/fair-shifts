@@ -7597,11 +7597,9 @@ describe("gender, capability and personal hours conditions", () => {
       kind: "exemption",
       name: "פטור שאינו כשירות",
     });
-    const limit = {
-      start: day(),
-      end: day(10),
-      windows: [{ startTime: "08:00", endTime: "17:00", weekdays: [7, 1] }],
-    };
+    const windows = [
+      { startTime: "08:00", endTime: "17:00", weekdays: [7, 1] },
+    ];
     const soldierId = actor.soldierId;
     await expect(
       command(
@@ -7630,35 +7628,29 @@ describe("gender, capability and personal hours conditions", () => {
         1
       )
     ).rejects.toMatchObject({ code: "date_range" });
+    // Hours windows belong to an hours exemption in the catalog (decision 226).
     await expect(
-      previewConditions(
-        { soldierId, allowedHours: [{ ...limit, start: day(10), end: day() }] },
-        1
-      )
-    ).rejects.toMatchObject({ code: "date_range" });
-    await expect(
-      previewConditions(
-        { soldierId, allowedHours: [{ ...limit, id: randomUUID() }] },
-        1
-      )
-    ).rejects.toMatchObject({ code: "not_found" });
+      command("eligibility.catalog.save", {
+        kind: "capability",
+        name: "כשירות עם שעות",
+        windows,
+      })
+    ).rejects.toMatchObject({ code: "catalog_kind" });
     for (const invalid of [
-      { allowedHours: [{ ...limit, windows: [] }] },
-      {
-        allowedHours: [
-          { ...limit, windows: [{ ...limit.windows[0], startTime: "25:00" }] },
-        ],
-      },
-      {
-        allowedHours: [
-          { ...limit, windows: [{ ...limit.windows[0], weekdays: [0] }] },
-        ],
-      },
-      { gender: "unknown" },
+      [],
+      [{ ...windows[0], startTime: "25:00" }],
+      [{ ...windows[0], weekdays: [0] }],
     ])
       await expect(
-        previewConditions({ soldierId, ...invalid }, 1)
+        command("eligibility.catalog.save", {
+          kind: "exemption",
+          name: "פטור שעות שגוי",
+          windows: invalid,
+        })
       ).rejects.toThrow();
+    await expect(
+      previewConditions({ soldierId, gender: "unknown" }, 1)
+    ).rejects.toThrow();
     await expect(previewConditions({ soldierId }, 1)).rejects.toMatchObject({
       code: "no_change",
     });
@@ -7682,52 +7674,89 @@ describe("gender, capability and personal hours conditions", () => {
         ],
       })
     ).rejects.toThrow();
-    const saved = await saveConditions({ soldierId, allowedHours: [limit] }, 1);
-    const [person] = await db
-      .select()
-      .from(soldiers)
-      .where(eq(soldiers.id, saved.id));
-    expect(person.data.allowedHours).toEqual([
+    const hours = await command("eligibility.catalog.save", {
+      kind: "exemption",
+      name: "פטור שעות יום",
+      windows,
+    });
+    // A plain exemption cannot become an hours exemption, nor the reverse.
+    await expect(
+      command(
+        "eligibility.catalog.save",
+        { id: exemption.id, kind: "exemption", name: "פטור", windows },
+        1
+      )
+    ).rejects.toMatchObject({ code: "catalog_kind" });
+    await expect(
+      command(
+        "eligibility.catalog.save",
+        { id: hours.id, kind: "exemption", name: "פטור שעות יום" },
+        1
+      )
+    ).rejects.toMatchObject({ code: "catalog_kind" });
+    const saved = await addEntry(
       {
-        ...limit,
-        id: expect.any(String),
-        windows: [{ ...limit.windows[0], weekdays: [1, 7] }],
+        soldierId,
+        kind: "exemption",
+        value: hours.id,
+        startDate: day(),
+        endDate: day(10),
+      },
+      1
+    );
+    const stored = async () =>
+      (await db.select().from(soldiers).where(eq(soldiers.id, saved.id)))[0];
+    // The soldier holds a copy of the windows, weekdays sorted.
+    expect((await stored()).data.exemptions).toEqual([
+      {
+        exemptionId: hours.id,
+        start: day(),
+        end: day(10),
+        windows: [{ ...windows[0], weekdays: [1, 7] }],
       },
     ]);
-    // Keeping the stored id edits the same limit instead of replacing it.
-    const id = person.data.allowedHours![0].id;
-    const end = day(12);
-    await saveConditions(
-      { soldierId, allowedHours: [{ ...limit, id, end }] },
-      2
+    // A changed window in the catalog reaches every soldier who holds it.
+    const evening = [{ startTime: "16:00", endTime: "23:00", weekdays: [5] }];
+    await command(
+      "eligibility.catalog.save",
+      {
+        id: hours.id,
+        kind: "exemption",
+        name: "פטור שעות ערב",
+        windows: evening,
+      },
+      1
     );
-    expect(
-      (await db.select().from(soldiers).where(eq(soldiers.id, soldierId!)))[0]
-        .data.allowedHours
-    ).toMatchObject([{ id, end }]);
+    expect((await stored()).data.exemptions[0].windows).toEqual(evening);
   });
 
   it("rejects a stale conditions preview and saves only one of two competing confirmations", async () => {
     const actor = await member();
     const type = await plainType();
     const row = await localDuty(type.id, `${day()}T18:00`, `${day()}T23:00`);
-    const input = {
-      soldierId: actor.soldierId,
-      allowedHours: [
+    const hours = await command("eligibility.catalog.save", {
+      kind: "exemption",
+      name: "פטור שעות יום",
+      windows: [
         {
-          start: day(),
-          end: day(),
-          windows: [
-            {
-              startTime: "08:00",
-              endTime: "17:00",
-              weekdays: [1, 2, 3, 4, 5, 6, 7],
-            },
-          ],
+          startTime: "08:00",
+          endTime: "17:00",
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
         },
       ],
+    });
+    const input = {
+      soldierId: actor.soldierId,
+      kind: "exemption",
+      value: hours.id,
+      startDate: day(),
+      endDate: day(),
     };
-    const obsolete = await previewConditions(input, 1);
+    const obsolete = (await command(
+      "soldier.timeline.preview",
+      input,
+      1
+    )) as unknown as ConditionsPreview;
     expect(obsolete.impact).toEqual([]);
     await command(
       "duty.assign",
@@ -7740,12 +7769,16 @@ describe("gender, capability and personal hours conditions", () => {
     );
     await expect(
       command(
-        "soldier.conditions",
+        "soldier.timeline",
         { ...input, confirmed: true, previewToken: obsolete.previewToken },
         1
       )
     ).rejects.toMatchObject({ code: "stale_preview", status: 409 });
-    const current = await previewConditions(input, 1);
+    const current = (await command(
+      "soldier.timeline.preview",
+      input,
+      1
+    )) as unknown as ConditionsPreview;
     expect(current.impact[0]).toMatchObject({
       before: "eligible",
       after: "approval_required",
@@ -7754,7 +7787,7 @@ describe("gender, capability and personal hours conditions", () => {
     const outcomes = await Promise.allSettled(
       [0, 1].map(() =>
         command(
-          "soldier.conditions",
+          "soldier.timeline",
           { ...input, confirmed: true, previewToken: current.previewToken },
           1
         )
@@ -7768,7 +7801,7 @@ describe("gender, capability and personal hours conditions", () => {
       .from(soldiers)
       .where(eq(soldiers.id, actor.soldierId!));
     expect(person.version).toBe(2);
-    expect(person.data.allowedHours).toHaveLength(1);
+    expect(person.data.exemptions).toHaveLength(1);
     const [assigned] = await db.select().from(assignments);
     expect(assigned.status).toBe("reserved");
     expect(assigned.data.needsAttention).toEqual(["allowed_hours"]);
@@ -7789,22 +7822,24 @@ describe("gender, capability and personal hours conditions", () => {
       `${day(6)}T02:00`,
       "ערב שחורג מהחלון"
     );
-    await saveConditions(
+    const nights = await command("eligibility.catalog.save", {
+      kind: "exemption",
+      name: "פטור שעות לילה",
+      windows: [
+        {
+          startTime: "22:00",
+          endTime: "06:00",
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
+        },
+      ],
+    });
+    await addEntry(
       {
         soldierId: actor.soldierId,
-        allowedHours: [
-          {
-            start: day(),
-            end: day(6),
-            windows: [
-              {
-                startTime: "22:00",
-                endTime: "06:00",
-                weekdays: [1, 2, 3, 4, 5, 6, 7],
-              },
-            ],
-          },
-        ],
+        kind: "exemption",
+        value: nights.id,
+        startDate: day(),
+        endDate: day(6),
       },
       1
     );
@@ -7812,7 +7847,7 @@ describe("gender, capability and personal hours conditions", () => {
       .select()
       .from(soldiers)
       .where(eq(soldiers.id, actor.soldierId!));
-    const limitId = person.data.allowedHours![0].id;
+    const limitId = nights.id;
     const preview = async (row: typeof night) =>
       (await command(
         "duty.assignment.preview",
@@ -7898,8 +7933,8 @@ describe("gender, capability and personal hours conditions", () => {
           .select()
           .from(soldiers)
           .where(eq(soldiers.id, actor.soldierId!))
-      )[0].data.allowedHours
-    ).toEqual(person.data.allowedHours);
+      )[0].data.exemptions
+    ).toEqual(person.data.exemptions);
   });
 
   it("snapshots role conditions into a duty and keeps them when the catalog changes later", async () => {
