@@ -85,10 +85,31 @@ test("manager defines gender and capability conditions and reviews personal hour
       .plus({ days: offset })
       .toISODate()!;
   await login(page, managerEmail);
+  const dialog = page.getByRole("dialog");
+  const openProfile = async () => {
+    await page
+      .getByRole("row")
+      .filter({ hasText: "חיילת תנאים" })
+      .getByRole("button", { name: "פרופיל ועריכה" })
+      .click();
+    await dialog.getByText("תנאי התאמה אישיים: מגדר, יכולות ושעות").click();
+  };
+
+  // With an empty catalog the profile points to where capabilities are defined.
+  await page.goto("/manage/soldiers");
+  await openProfile();
+  const emptyCapabilities = dialog.getByRole("group", {
+    name: "יכולות",
+    exact: true,
+  });
+  await expect(emptyCapabilities).toContainText("עדיין לא הוגדרו יכולות.");
+  await emptyCapabilities
+    .getByRole("link", { name: "פטורים וכשירויות" })
+    .click();
+  await expect(page).toHaveURL(/\/manage\/eligibility$/);
 
   await page.goto("/manage/eligibility");
   await page.getByRole("button", { name: "הגדרה חדשה", exact: true }).click();
-  const dialog = page.getByRole("dialog");
   await dialog.getByLabel("סוג ההגדרה").selectOption("capability");
   await dialog.getByLabel("שם", { exact: true }).fill("נשיאת משקל");
   await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
@@ -127,16 +148,18 @@ test("manager defines gender and capability conditions and reviews personal hour
   ]);
 
   await page.goto("/manage/soldiers");
-  const openProfile = async () => {
-    await page
-      .getByRole("row")
-      .filter({ hasText: "חיילת תנאים" })
-      .getByRole("button", { name: "פרופיל ועריכה" })
-      .click();
-    await dialog.getByText("תנאי התאמה אישיים: מגדר, יכולות ושעות").click();
-  };
   await openProfile();
-  await expect(dialog).toContainText("לא הוזן");
+  // Gender and capabilities appear once each, as the editable control.
+  const genderControl = dialog.getByLabel("מגדר", { exact: true });
+  const capabilitiesControl = dialog.getByRole("group", {
+    name: "יכולות",
+    exact: true,
+  });
+  await expect(genderControl).toHaveCount(1);
+  await expect(genderControl).toHaveValue("");
+  await expect(capabilitiesControl).toHaveCount(1);
+  await expect(capabilitiesControl).toContainText("כמו רישיון נהיגה");
+  await expect(capabilitiesControl.getByLabel("נשיאת משקל")).not.toBeChecked();
   await dialog.getByLabel("מגדר", { exact: true }).selectOption("female");
   await dialog.getByLabel("נשיאת משקל").check();
   await dialog.getByRole("button", { name: "הוספת הגבלת שעות" }).click();
@@ -160,8 +183,11 @@ test("manager defines gender and capability conditions and reviews personal hour
   await first.getByLabel("בדקתי את ההשפעה ומאשר את שינוי תנאי ההתאמה").check();
   await first.getByRole("button", { name: "אישור שינוי התנאים" }).click();
   await expect(first).toHaveCount(0);
-  await expect(dialog).toContainText("נקבה");
-  await expect(dialog).toContainText("17:00–23:30 · כל הימים");
+  await expect(genderControl).toHaveValue("female");
+  await expect(capabilitiesControl.getByLabel("נשיאת משקל")).toBeChecked();
+  const savedLimit = dialog.getByRole("group", { name: "הגבלת שעות 1" });
+  await expect(savedLimit.getByLabel("תחילת חלון 1")).toHaveValue("17:00");
+  await expect(savedLimit.getByLabel("סיום חלון 1")).toHaveValue("23:30");
 
   // A reserved duty inside the window, then a narrower window that excludes it.
   const [account] = await db
@@ -225,7 +251,11 @@ test("manager defines gender and capability conditions and reviews personal hour
   await second.getByLabel("בדקתי את ההשפעה ומאשר את שינוי תנאי ההתאמה").check();
   await second.getByRole("button", { name: "אישור שינוי התנאים" }).click();
   await expect(second).toHaveCount(0);
-  await expect(dialog).toContainText("17:00–22:00 · כל הימים");
+  await expect(
+    dialog
+      .getByRole("group", { name: "הגבלת שעות 1" })
+      .getByLabel("סיום חלון 1")
+  ).toHaveValue("22:00");
   const [flagged] = await db.select().from(assignments);
   expect(flagged.status).toBe("reserved");
   expect(flagged.data.needsAttention).toEqual(["allowed_hours"]);
