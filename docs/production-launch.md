@@ -67,7 +67,7 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 
 **HSTS בדומיין החדש:** כמו ב־staging, ב־**SSL/TLS → Edge Certificates → HSTS** מגדירים `max-age` של שנה, בלי includeSubDomains ובלי preload ([ראיות המעבר](security-live-transition-evidence.md)). הסיומת `.app` כולה כבר ברשימת ה־HSTS preload של הדפדפנים. לכן כל כתובת תחת `fairshifts.app`, כולל תת־דומיינים, נפתחת רק ב־HTTPS בלי קשר להגדרה. זה לא סותר את ההגדרה של האתר, ודרך ה־Tunnel אין גישה ב־HTTP בכל מקרה.
 
-**מצב 16.10.2026:** שלב 3 הושלם. ב־Tunnel, ששמו שונה ל־`fair-shifts` (המזהה וה־token לא השתנו), נוסף route ל־`fairshifts.app` עם הגדרות ברירת מחדל. HSTS הוגדר לשנה, ו־`/api/health` בדומיין עונה 200 בבדיקה חיצונית. בלקוח הכניסה, ששמו שונה ל־`fair-shifts`, נוספו המקור וכתובת החזרה. בפרויקט יש שני דומיינים מורשים, ובו ארבעת ההיקפים ה־non-sensitive בלבד. ב־Brevo הדומיין מאומת (DKIM ו־DMARC), והשולח `no-reply@fairshifts.app` מאומת. תיקיית Drive: לפי ההחלטה למעלה, משתמשים באותה תיקייה.
+**מצב 16.10.2026:** שלב 3 הושלם. ב־Tunnel, ששמו שונה ל־`fair-shifts` (המזהה וה־token לא השתנו), נוסף route ל־`fairshifts.app` עם הגדרות ברירת מחדל. HSTS הוגדר לשנה, ו־`/api/health` בדומיין עונה 200 בבדיקה חיצונית. בלקוח הכניסה, ששמו שונה ל־`fair-shifts`, נוספו המקור וכתובת החזרה. דומיין ה־staging הוסר מהלקוח ומהדומיינים המורשים. בפרויקט נשארו ארבעת ההיקפים ה־non-sensitive בלבד, והמיתוג (״תורנות הוגנת״) אומת ופורסם (הכרעה 228). ב־Brevo הדומיין מאומת (DKIM ו־DMARC), והשולח `no-reply@fairshifts.app` מאומת. תיקיית Drive: לפי ההחלטה למעלה, משתמשים באותה תיקייה.
 
 ## 4. יום ההחלפה
 
@@ -124,6 +124,19 @@ rm /opt/fair-shifts/deploy-state/paused
 אחרי ההחלפה, כל פקודת תפעול ידנית רצה עם `COMPOSE_PROJECT_NAME=fair-shifts-live`. בלי המשתנה, Compose משתמש בשם ברירת המחדל `fair-shifts-production` ולא ימצא את השירותים.
 
 **חזרה עד הקליטה:** כל עוד לא נקלטו נתוני אמת, עוצרים את `fair-shifts-live`, מחזירים את `config-staging` ל־`config`, מחזירים את ה־override ל־`fair-shifts-production-alpine` ומפעילים את staging. אחרי הקליטה חוזרים רק משחזור גיבוי של production, לפי מדריך ההפעלה.
+
+**מצב 16.10.2026, אחרי ההחלפה:**
+
+- **ההחלפה:** production רצה בפרויקט `fair-shifts-live` על מסד ריק, בגרסה `9a27810`. בדיקת הבריאות תקינה, והאתר והעובד באותה גרסה.
+- **הפריסה האוטומטית:** הטיימר מפנה ל־`fair-shifts-live`, וההשהיה הוסרה.
+- **ה־staging:** עצור, ונפחי `fair-shifts-production-alpine` ו־`config-staging` שמורים.
+- **התצורה:** סודות חדשים מ־`init`, וערכי הספקים הועתקו מ־staging. `GOOGLE_DRIVE_FOLDER_ID` ריק: היישום מוצא בעצמו את התיקייה שסימן. עותק התאוששות של מפתח החתימה נשמר מחוץ לשרת, והדגל אושר.
+- **הקמה (שלב 5):**
+  - `bootstrap` יצר מנהל טכני ואחראי ראשון.
+  - קוד כניסה הגיע לדואר הנכנס מ־`no-reply@fairshifts.app`, וכניסה עם Google עובדת בדומיין.
+  - גיבוי ידני וגיבוי אוטומטי אומתו ב־Drive, ובתיקייה יש רק גיבויי production.
+  - תרגיל שחזור מבודד על הגיבוי האחרון עבר (`PASSED`, 23 מיגרציות). הגיבוי פוענח במחשב הטכני והוזרם לשרת.
+- **נשאר לשלב 5:** אחראי שני והגדרות היחידה.
 
 ## 5. הקמה במסד הריק
 
