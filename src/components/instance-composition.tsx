@@ -152,9 +152,10 @@ export function CompositionEditor({
     setSurcharges(
       surcharges.map((item, i) => (i === index ? { ...item, ...patch } : item))
     );
+  // An hours exemption applies to every duty, so a seat does not pick it (decision 226).
   const catalogOptions = (kind: string) =>
     rows(state.eligibilityCatalog)
-      .filter((item) => item.kind === kind)
+      .filter((item) => item.kind === kind && !rows(item.windows).length)
       .map((item) => ({ value: item.id, label: str(item.name) }));
   return (
     <Form

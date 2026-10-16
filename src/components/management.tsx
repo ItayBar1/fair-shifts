@@ -56,9 +56,13 @@ import { SoldierDeletion } from "./soldier-deletion";
 import {
   ConditionToggles,
   SoldierConditions,
+  WindowsEditor,
   capabilityOptions,
+  describeWindow,
   genderHint,
   genders,
+  newWindow,
+  windowsOf,
 } from "./eligibility-conditions";
 import type { Gender, RankClause, Requirements } from "@/domain/types";
 /** The phone format the server accepts (decision 222). */
@@ -597,12 +601,13 @@ export function SoldiersView({
                 kinds={["capability", "exemption"]}
                 empty="אין כשירויות או פטורים."
               />
-              <h3>הוספת כשירות או פטור</h3>
-              <CatalogEntryAdd
-                state={state}
-                action={action}
-                soldierId={selected.id}
-              />
+              <Link
+                className="text-link"
+                href={`/manage/eligibility?soldier=${str(selected.id)}`}
+              >
+                שיוך כשירות או פטור במסך פטורים וכשירויות{" "}
+                <ArrowLeft size={15} />
+              </Link>
             </div>
           </details>
           <details className="disclosure">
@@ -693,7 +698,7 @@ export function SoldiersView({
             </div>
           </details>
           <details className="disclosure">
-            <summary>תנאי התאמה אישיים: מגדר ושעות</summary>
+            <summary>תנאי התאמה אישיים: מגדר</summary>
             <div className="stack">
               <SoldierConditions
                 key={String(selected.version)}
@@ -765,6 +770,71 @@ export function SoldiersView({
     </>
   );
 }
+/** An hours exemption carries fixed daily windows (decision 226). */
+const isHours = (entry: Row) => rows(entry.windows).length > 0;
+const catalogKindLabel = (entry: Row) =>
+  entry.kind === "capability"
+    ? "כשירות"
+    : isHours(entry)
+      ? "פטור שעות"
+      : "פטור";
+/**
+ * Creates or edits an hours exemption: a name and the windows every duty of a
+ * soldier who holds it must fall in. A changed window reaches every soldier
+ * who holds it and flags assignments that no longer fit.
+ */
+function HoursExemptionDialog({
+  action,
+  entry,
+}: {
+  action: Action;
+  entry?: Row;
+}) {
+  const [windows, setWindows] = useState(() =>
+    entry ? windowsOf(entry.windows) : [newWindow()]
+  );
+  return (
+    <ActionDialog
+      title={entry ? `עריכת ${str(entry.name)}` : "פטור שעות חדש"}
+      action={action}
+      type="eligibility.catalog.save"
+      payload={
+        entry ? { id: entry.id, kind: "exemption" } : { kind: "exemption" }
+      }
+      version={entry ? num(entry.version) : undefined}
+      onOpen={() =>
+        setWindows(entry ? windowsOf(entry.windows) : [newWindow()])
+      }
+      transform={(values) => ({
+        name: values.name,
+        description: values.description,
+        windows,
+      })}
+      description="פטור שעות חל על כל התורנויות של החייל שמחזיק בו, בתוקף שנקבע בשיוך. כל חלק מהתורנות חייב להיות בתוך אחד החלונות, לפי שעון ישראל. חלון שחוצה חצות שייך ליום שבו הוא מתחיל. חריגה אפשרית רק בשיבוץ ידני, עם אישור ונימוק."
+      fields={[
+        {
+          name: "name",
+          label: "שם הפטור",
+          required: true,
+          value: str(entry?.name),
+        },
+        {
+          name: "description",
+          label: "הסבר לשימוש",
+          type: "textarea",
+          full: true,
+          value: str(entry?.description),
+        },
+        {
+          name: "windows",
+          label: "חלונות השעות המותרים",
+          type: "custom",
+          custom: <WindowsEditor windows={windows} onChange={setWindows} />,
+        },
+      ]}
+    />
+  );
+}
 export function EligibilityView({
   state,
   action,
@@ -774,6 +844,13 @@ export function EligibilityView({
 }) {
   const catalogs = rows(state.eligibilityCatalog);
   const [catalogId, setCatalogId] = useState("");
+  // Opened from a soldier's profile: the assignment form starts with that
+  // soldier. The view renders only in the browser, after the state loads.
+  const [preset] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : (new URLSearchParams(window.location.search).get("soldier") ?? "")
+  );
   const listed = state.soldiers.filter(
     (person) =>
       !person.deletedAt &&
@@ -792,37 +869,41 @@ export function EligibilityView({
       <Notice>
         כשירויות ופטורים מוזנים לאחר בדיקת האחראי, עם תאריך התחלה ותאריך סיום.
         בלי תאריך סיום הם קבועים. כשירות נדרשת חייבת להיות בתוקף לכל משך
-        התורנות; פטור חוסם אם הוא חל בחלק ממנה. שינוי נתונים מסמן שיבוצים שנפגעו
-        לטיפול ואינו מבטל אותם אוטומטית.
+        התורנות; פטור חוסם את סוגי התורנות שסימנו אותו, אם הוא חל בחלק מהתורנות.
+        פטור שעות חל על כל התורנויות: כל חלק מהתורנות חייב להיות בתוך החלון שלו.
+        שינוי נתונים מסמן שיבוצים שנפגעו לטיפול ואינו מבטל אותם אוטומטית.
       </Notice>
       <div className="two-columns">
         <Panel
           title="סוגי פטורים וכשירויות"
           actions={
-            <ActionDialog
-              title="הגדרה חדשה"
-              fields={[
-                {
-                  name: "kind",
-                  label: "סוג ההגדרה",
-                  type: "select",
-                  required: true,
-                  options: [
-                    { value: "capability", label: "כשירות" },
-                    { value: "exemption", label: "פטור" },
-                  ],
-                },
-                { name: "name", label: "שם", required: true },
-                {
-                  name: "description",
-                  label: "הסבר לשימוש",
-                  type: "textarea",
-                  full: true,
-                },
-              ]}
-              action={action}
-              type="eligibility.catalog.save"
-            />
+            <div className="panel-actions-row">
+              <HoursExemptionDialog action={action} />
+              <ActionDialog
+                title="הגדרה חדשה"
+                fields={[
+                  {
+                    name: "kind",
+                    label: "סוג ההגדרה",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { value: "capability", label: "כשירות" },
+                      { value: "exemption", label: "פטור" },
+                    ],
+                  },
+                  { name: "name", label: "שם", required: true },
+                  {
+                    name: "description",
+                    label: "הסבר לשימוש",
+                    type: "textarea",
+                    full: true,
+                  },
+                ]}
+                action={action}
+                type="eligibility.catalog.save"
+              />
+            </div>
           }
         >
           {catalogs.length ? (
@@ -834,30 +915,39 @@ export function EligibilityView({
                 <span>
                   <strong>{str(c.name)}</strong>
                   <small>{str(c.description)}</small>
+                  {isHours(c) && (
+                    <small>
+                      {rows(c.windows).map(describeWindow).join(" · ")}
+                    </small>
+                  )}
                 </span>
-                <Badge>{c.kind === "exemption" ? "פטור" : "כשירות"}</Badge>
-                <ActionDialog
-                  title={`עריכת ${str(c.name)}`}
-                  action={action}
-                  type="eligibility.catalog.save"
-                  payload={{ id: c.id, kind: c.kind }}
-                  version={c.version}
-                  fields={[
-                    {
-                      name: "name",
-                      label: "שם ההגדרה",
-                      required: true,
-                      value: str(c.name),
-                    },
-                    {
-                      name: "description",
-                      label: "הסבר לשימוש",
-                      type: "textarea",
-                      full: true,
-                      value: str(c.description),
-                    },
-                  ]}
-                />
+                <Badge>{catalogKindLabel(c)}</Badge>
+                {isHours(c) ? (
+                  <HoursExemptionDialog action={action} entry={c} />
+                ) : (
+                  <ActionDialog
+                    title={`עריכת ${str(c.name)}`}
+                    action={action}
+                    type="eligibility.catalog.save"
+                    payload={{ id: c.id, kind: c.kind }}
+                    version={c.version}
+                    fields={[
+                      {
+                        name: "name",
+                        label: "שם ההגדרה",
+                        required: true,
+                        value: str(c.name),
+                      },
+                      {
+                        name: "description",
+                        label: "הסבר לשימוש",
+                        type: "textarea",
+                        full: true,
+                        value: str(c.description),
+                      },
+                    ]}
+                  />
+                )}
               </div>
             ))
           ) : (
@@ -871,7 +961,12 @@ export function EligibilityView({
           title="שיוך לחייל"
           subtitle="תחילת התוקף היא היום כברירת מחדל; בלי תאריך סיום השיוך קבוע"
         >
-          <CatalogEntryAdd state={state} action={action} />
+          <CatalogEntryAdd
+            key={preset}
+            state={state}
+            action={action}
+            presetSoldierId={preset || undefined}
+          />
         </Panel>
       </div>
       <Panel
@@ -885,7 +980,7 @@ export function EligibilityView({
             <option value="">כל השיוכים ותקופות אי־הפעילות</option>
             {catalogs.map((c) => (
               <option key={c.id} value={c.id}>
-                {str(c.name)} · {c.kind === "exemption" ? "פטור" : "כשירות"}
+                {str(c.name)} · {catalogKindLabel(c)}
               </option>
             ))}
           </select>
@@ -1012,8 +1107,9 @@ function CatalogForm({
       name: "exemptionIds",
       label: "פטורים פוסלים",
       type: "multiselect",
+      // An hours exemption applies to every duty, so a type does not pick it.
       options: rows(state.eligibilityCatalog)
-        .filter((r) => r.kind === "exemption")
+        .filter((r) => r.kind === "exemption" && !isHours(r))
         .map((r) => ({ value: r.id, label: str(r.name) })),
       value: Array.isArray(initial?.exemptionIds)
         ? initial.exemptionIds.map(String)

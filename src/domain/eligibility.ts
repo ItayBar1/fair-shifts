@@ -335,6 +335,8 @@ export function evaluateEligibility(
         !soldier.exemptions.some(
           (exemption) =>
             exemption.exemptionId === exemptionId &&
+            // An hours exemption limits hours; it never blocks a whole duty.
+            !exemption.windows?.length &&
             overlaps(target, openDatesToInstants(exemption))
         )
       )
@@ -376,29 +378,31 @@ export function evaluateEligibility(
   if (slot.requirements)
     checkRequirements(slot.requirements, `slot:${slot.id}`);
 
-  for (const limit of soldier.allowedHours ?? []) {
-    const period = datesToInstants(limit);
+  // An hours exemption limits every duty within its dates to its windows (decision 226).
+  for (const exemption of soldier.exemptions) {
+    if (!exemption.windows?.length) continue;
+    const period = openDatesToInstants(exemption);
     const limited = {
       start: Math.max(target.start, period.start),
       end: Math.min(target.end, period.end),
     };
     if (limited.start >= limited.end) continue;
-    const allowed = limit.windows.flatMap((window) =>
+    const allowed = exemption.windows.flatMap((window) =>
       dailyWindows(duty, window, true)
     );
     if (coveredByRanges(limited, allowed)) continue;
     if (context.mode === "manual") {
-      if (!hasApproval("allowed_hours", limit.id))
+      if (!hasApproval("allowed_hours", exemption.exemptionId))
         requireApproval(
           "allowed_hours",
-          "התורנות חורגת מטווח השעות המותר; נדרש אישור חריג עם סיבה",
-          limit.id
+          "התורנות חורגת מטווח השעות של פטור השעות; נדרש אישור חריג עם סיבה",
+          exemption.exemptionId
         );
     } else
       block(
         "allowed_hours",
-        "התורנות חורגת מטווח השעות המותר; חריגה אפשרית בשיבוץ ידני בלבד",
-        limit.id
+        "התורנות חורגת מטווח השעות של פטור השעות; חריגה אפשרית בשיבוץ ידני בלבד",
+        exemption.exemptionId
       );
   }
   // A consenting volunteer's own pending constraints never route a transfer to a manager (decision 163).

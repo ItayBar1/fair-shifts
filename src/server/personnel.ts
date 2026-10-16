@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { DateTime } from "luxon";
 import type { DbTransaction } from "./db";
@@ -18,7 +18,7 @@ import { id, date, population, text, gender } from "./validation";
 import { invariant } from "./errors";
 import { evaluateEligibility, populationTimeline } from "../domain/eligibility";
 import { executionDuty } from "../domain/execution";
-import type { AllowedHours, Soldier } from "../domain/types";
+import type { DailyWindow, Soldier } from "../domain/types";
 import { refreshRankReminders } from "./ranks";
 
 /** Changed rules flag existing reservations; they never silently remove an assignee. */
@@ -74,6 +74,30 @@ export async function reassessAssignments(
   }
   return flagged;
 }
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה לא תקינה");
+const hoursWindows = z
+  .array(
+    z.object({
+      startTime: clock,
+      endTime: clock,
+      weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+    })
+  )
+  .min(1)
+  .max(7);
+function normalWindows(windows: DailyWindow[]): DailyWindow[] {
+  return windows.map((window) => ({
+    startTime: window.startTime,
+    endTime: window.endTime,
+    weekdays: [...new Set(window.weekdays ?? [])].sort(),
+  }));
+}
+/** The windows an hours exemption in the catalog carries (decision 226). */
+function catalogWindows(data: Record<string, unknown>) {
+  return Array.isArray(data.windows) && data.windows.length
+    ? (data.windows as DailyWindow[])
+    : undefined;
+}
 export async function saveEligibilityCatalog(
   tx: DbTransaction,
   actor: Actor,
@@ -87,13 +111,22 @@ export async function saveEligibilityCatalog(
       kind: z.enum(["exemption", "capability"]),
       name: text,
       description: z.string().max(2000).default(""),
+      // Present only for an hours exemption; it limits every duty to these windows.
+      windows: hoursWindows.optional(),
     })
     .parse(payload);
+  invariant(
+    !input.windows || input.kind === "exemption",
+    "catalog_kind",
+    "חלון שעות שייך לפטור שעות בלבד"
+  );
+  const windows = input.windows && normalWindows(input.windows);
   if (input.id) {
     const existing = await findRecord(tx, "eligibility_catalog", input.id);
     currentVersion(existing.version, expectedVersion);
     invariant(
-      existing.data.kind === input.kind,
+      existing.data.kind === input.kind &&
+        Boolean(catalogWindows(existing.data)) === Boolean(windows),
       "catalog_kind",
       "אין לשנות את סוג ההגדרה הקיימת"
     );
@@ -101,13 +134,54 @@ export async function saveEligibilityCatalog(
       ...existing.data,
       name: input.name,
       description: input.description,
+      ...(windows ? { windows } : {}),
     });
     await audit(tx, actor, "eligibility.catalog.update", existing.id);
-    return { id: updated.id, version: updated.version };
+    // Each soldier holds a copy of the windows; a changed window reaches all of
+    // them, and their reserved assignments are checked again.
+    let flagged = 0;
+    if (
+      windows &&
+      JSON.stringify(windows) !== JSON.stringify(catalogWindows(existing.data))
+    )
+      flagged = await spreadWindows(tx, existing.id, windows);
+    return { id: updated.id, version: updated.version, flagged };
   }
-  const record = await createRecord(tx, "eligibility_catalog", input);
+  const record = await createRecord(tx, "eligibility_catalog", {
+    kind: input.kind,
+    name: input.name,
+    description: input.description,
+    ...(windows ? { windows } : {}),
+  });
   await audit(tx, actor, "eligibility.catalog.create", record.id);
   return { id: record.id };
+}
+async function spreadWindows(
+  tx: DbTransaction,
+  exemptionId: string,
+  windows: DailyWindow[]
+) {
+  let flagged = 0;
+  for (const person of await tx.select().from(soldiers)) {
+    if (
+      person.deletedAt ||
+      !person.data.exemptions.some((row) => row.exemptionId === exemptionId)
+    )
+      continue;
+    const data: Soldier = {
+      ...person.data,
+      version: person.version + 1,
+      exemptions: person.data.exemptions.map((row) =>
+        row.exemptionId === exemptionId ? { ...row, windows } : row
+      ),
+    };
+    await tx
+      .update(soldiers)
+      .set({ data, version: data.version, updatedAt: new Date() })
+      .where(eq(soldiers.id, person.id));
+    flagged += await reassessAssignments(tx, person.id);
+  }
+  return flagged;
 }
 /** An empty date field means no date: open validity for capabilities and exemptions. */
 const optionalDate = z.preprocess(
@@ -148,6 +222,11 @@ function validityOf(
     ...(startDate ? { start: startDate } : {}),
     ...(endDate ? { end: endDate } : {}),
   };
+}
+/** An hours exemption carries its catalog windows onto the soldier (decision 226). */
+function hoursOf(catalog?: { data: Record<string, unknown> }) {
+  const windows = catalog && catalogWindows(catalog.data);
+  return windows ? { windows } : {};
 }
 function replaceEntry<T>(entries: T[], index: number, replacement?: T) {
   return entries.flatMap((entry, i) =>
@@ -256,9 +335,10 @@ async function inspectTimelineEdit(
   const range = removing
     ? {}
     : validityOf(input.kind, input.startDate, input.endDate);
+  let catalog: Awaited<ReturnType<typeof findRecord>> | undefined;
   if (!removing) {
     if (input.kind !== "inactive") {
-      const catalog = await findRecord(
+      catalog = await findRecord(
         tx,
         "eligibility_catalog",
         id.parse(input.value)
@@ -281,7 +361,9 @@ async function inspectTimelineEdit(
     data.exemptions = replaceEntry(
       data.exemptions,
       input.index,
-      removing ? undefined : { ...range, exemptionId: input.value! }
+      removing
+        ? undefined
+        : { ...range, exemptionId: input.value!, ...hoursOf(catalog) }
     );
   else
     data.inactivePeriods = replaceEntry(
@@ -455,7 +537,7 @@ async function inspectTimelineAdd(
       else
         data.exemptions = [
           ...data.exemptions,
-          { ...range, exemptionId: catalog.id },
+          { ...range, exemptionId: catalog.id, ...hoursOf(catalog) },
         ];
     }
   }
@@ -563,45 +645,23 @@ export async function updateTimeline(
     flagged: await reassessAssignments(tx, person.id),
   };
 }
-const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה לא תקינה");
 const conditionsInput = z.object({
   soldierId: id,
   gender: z.preprocess(
     (value) => (value === "" || value === null ? undefined : value),
     gender.optional()
   ),
-  allowedHours: z
-    .array(
-      z.object({
-        id: id.optional(),
-        start: date,
-        end: date,
-        windows: z
-          .array(
-            z.object({
-              startTime: clock,
-              endTime: clock,
-              weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
-            })
-          )
-          .min(1)
-          .max(7),
-      })
-    )
-    .max(20)
-    .default([]),
   reason: z.string().trim().max(2000).default(""),
 });
 function conditionsOf(data: Soldier) {
   return {
     gender: data.gender ?? null,
-    allowedHours: data.allowedHours ?? [],
   };
 }
 /**
- * Gender and personal hours limits are replaced as one set, and only against
- * the impact the manager reviewed (decision 164). Capabilities are dated
- * entries since decision 224 and change through the timeline actions.
+ * Gender is replaced only against the impact the manager reviewed (decision
+ * 164). Capabilities and exemptions, hours exemptions among them (decision
+ * 226), are dated entries and change through the timeline actions.
  */
 async function inspectConditions(
   tx: DbTransaction,
@@ -614,42 +674,7 @@ async function inspectConditions(
     input.soldierId,
     expectedVersion
   );
-  const existingIds = new Set(
-    (person.data.allowedHours ?? []).map((limit) => limit.id)
-  );
-  const allowedHours: AllowedHours[] = input.allowedHours.map((limit) => {
-    invariant(
-      limit.start <= limit.end,
-      "date_range",
-      "נדרש טווח תוקף תקין להגבלת השעות"
-    );
-    invariant(
-      !limit.id || existingIds.has(limit.id),
-      "not_found",
-      "הגבלת השעות שנבחרה לא נמצאה",
-      404
-    );
-    return {
-      id: limit.id ?? randomUUID(),
-      start: limit.start,
-      end: limit.end,
-      windows: limit.windows.map((window) => ({
-        startTime: window.startTime,
-        endTime: window.endTime,
-        weekdays: [...new Set(window.weekdays)].sort(),
-      })),
-    };
-  });
-  invariant(
-    new Set(allowedHours.map((limit) => limit.id)).size === allowedHours.length,
-    "invalid_input",
-    "הגבלת שעות מופיעה פעמיים"
-  );
-  const data: Soldier = {
-    ...person.data,
-    version: person.version + 1,
-    allowedHours,
-  };
+  const data: Soldier = { ...person.data, version: person.version + 1 };
   // Gender is a required profile field (decision 222): it can change here but
   // not be cleared; only a record from before the rule may still lack it.
   invariant(
@@ -661,17 +686,8 @@ async function inspectConditions(
   else delete data.gender;
   const before = conditionsOf(person.data);
   const after = conditionsOf(data);
-  const comparable = (value: typeof before) =>
-    JSON.stringify({
-      ...value,
-      allowedHours: value.allowedHours.map(({ start, end, windows }) => ({
-        start,
-        end,
-        windows,
-      })),
-    });
   invariant(
-    comparable(before) !== comparable(after),
+    JSON.stringify(before) !== JSON.stringify(after),
     "no_change",
     "לא בוצע שינוי בתנאי ההתאמה"
   );

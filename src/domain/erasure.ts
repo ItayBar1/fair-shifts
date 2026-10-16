@@ -126,7 +126,6 @@ export function withoutConditions(person: Soldier): Soldier {
     inactivePeriods: [],
     constraints: [],
     capabilities: [],
-    allowedHours: [],
   };
   delete next.gender;
   return next;
@@ -138,8 +137,7 @@ export function hasConditions(person: Soldier) {
     person.exemptions.length > 0 ||
     person.inactivePeriods.length > 0 ||
     Boolean(person.gender) ||
-    (person.capabilities ?? []).length > 0 ||
-    (person.allowedHours ?? []).length > 0
+    (person.capabilities ?? []).length > 0
   );
 }
 
