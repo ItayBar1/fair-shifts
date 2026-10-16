@@ -36,7 +36,6 @@ export function soldier(overrides: Partial<Soldier> = {}): Soldier {
     },
     populationHistory: [],
     rankHistory: [],
-    qualifications: [],
     exemptions: [],
     inactivePeriods: [],
     constraints: [],

@@ -250,17 +250,17 @@ describe("deleting a user", () => {
         data: {
           ...row.data,
           gender: "female",
-          capabilities: ["driver"],
-          exemptions: [
+          capabilities: [
+            { capabilityId: "driver" },
             {
-              exemptionId: randomUUID(),
+              capabilityId: randomUUID(),
               start: "2026-01-01",
               end: "2030-12-31",
             },
           ],
-          qualifications: [
+          exemptions: [
             {
-              qualificationId: randomUUID(),
+              exemptionId: randomUUID(),
               start: "2026-01-01",
               end: "2030-12-31",
             },
@@ -359,7 +359,6 @@ describe("deleting a user", () => {
     expect(row.name).toBe("חייל למחיקה");
     expect(row.idNumber).toBe(testIdNumber("00203"));
     expect(row.data.exemptions).toEqual([]);
-    expect(row.data.qualifications).toEqual([]);
     expect(row.data.inactivePeriods).toEqual([]);
     expect(row.data.allowedHours).toEqual([]);
     expect(row.data.capabilities).toEqual([]);

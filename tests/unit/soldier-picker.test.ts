@@ -251,14 +251,14 @@ describe("exemptions apply at the duty date", () => {
   });
 });
 
-describe("qualifications valid for the whole range", () => {
+describe("capabilities valid for the whole range (decision 224)", () => {
   const trained = soldier({
-    qualifications: [
-      { qualificationId: "q1", start: "2026-10-01", end: "2026-10-10" },
+    capabilities: [
+      { capabilityId: "q1", start: "2026-10-01", end: "2026-10-10" },
     ],
   });
-  const need = { qualifications: ["q1"] };
-  it("keeps a soldier whose qualification covers the range, to the last day", () => {
+  const need = { capabilities: ["q1"] };
+  it("keeps a soldier whose capability covers the range, to the last day", () => {
     expect(
       shown(trained, need, {
         start: "2026-10-10T08:00:00+03:00",
@@ -272,7 +272,7 @@ describe("qualifications valid for the whole range", () => {
       })
     ).toBe(true);
   });
-  it("hides a soldier whose qualification expires, or starts, inside the range", () => {
+  it("hides a soldier whose capability expires, or starts, inside the range", () => {
     expect(
       shown(trained, need, {
         start: "2026-10-10T20:00:00+03:00",
@@ -294,15 +294,15 @@ describe("qualifications valid for the whole range", () => {
   });
   it("joins periods that follow each other and rejects a gap", () => {
     const renewed = soldier({
-      qualifications: [
-        { qualificationId: "q1", start: "2026-10-01", end: "2026-10-05" },
-        { qualificationId: "q1", start: "2026-10-06", end: "2026-10-10" },
+      capabilities: [
+        { capabilityId: "q1", start: "2026-10-01", end: "2026-10-05" },
+        { capabilityId: "q1", start: "2026-10-06", end: "2026-10-10" },
       ],
     });
     const gap = soldier({
-      qualifications: [
-        { qualificationId: "q1", start: "2026-10-01", end: "2026-10-04" },
-        { qualificationId: "q1", start: "2026-10-06", end: "2026-10-10" },
+      capabilities: [
+        { capabilityId: "q1", start: "2026-10-01", end: "2026-10-04" },
+        { capabilityId: "q1", start: "2026-10-06", end: "2026-10-10" },
       ],
     });
     const over = {
@@ -312,29 +312,43 @@ describe("qualifications valid for the whole range", () => {
     expect(shown(renewed, need, over)).toBe(true);
     expect(shown(gap, need, over)).toBe(false);
   });
-  it("requires every qualification selected, and no other soldier's", () => {
+  it("requires every capability selected, and no other soldier's", () => {
     const two = soldier({
-      qualifications: [
-        { qualificationId: "q1", start: "2026-10-01", end: "2026-10-10" },
-        { qualificationId: "q2", start: "2026-10-01", end: "2026-10-04" },
+      capabilities: [
+        { capabilityId: "q1", start: "2026-10-01", end: "2026-10-10" },
+        { capabilityId: "q2", start: "2026-10-01", end: "2026-10-04" },
       ],
     });
-    expect(shown(two, { qualifications: ["q1", "q2"] }, day)).toBe(false);
-    expect(shown(two, { qualifications: ["q1"] }, day)).toBe(true);
+    expect(shown(two, { capabilities: ["q1", "q2"] }, day)).toBe(false);
+    expect(shown(two, { capabilities: ["q1"] }, day)).toBe(true);
     expect(shown(soldier(), need, day)).toBe(false);
   });
 });
 
-describe("capabilities", () => {
-  it("needs each selected capability, with no dates", () => {
-    const person = soldier({ capabilities: ["driver", "medic"] });
+describe("capabilities without dates", () => {
+  it("keeps a permanent capability for any range, and one open on either side", () => {
+    const person = soldier({
+      capabilities: [
+        { capabilityId: "driver" },
+        { capabilityId: "medic", start: "2026-10-05" },
+        { capabilityId: "pilot", end: "2026-10-05" },
+      ],
+    });
     expect(shown(person, { capabilities: ["driver"] }, day)).toBe(true);
-    expect(shown(person, { capabilities: ["driver", "medic"] }, day)).toBe(
+    const later = {
+      start: "2027-03-01T08:00:00+02:00",
+      end: "2027-03-01T16:00:00+02:00",
+    };
+    expect(shown(person, { capabilities: ["driver", "medic"] }, later)).toBe(
       true
     );
-    expect(shown(person, { capabilities: ["driver", "pilot"] }, day)).toBe(
-      false
-    );
+    expect(shown(person, { capabilities: ["pilot"] }, later)).toBe(false);
+    const early = {
+      start: "2026-10-04T08:00:00+03:00",
+      end: "2026-10-04T16:00:00+03:00",
+    };
+    expect(shown(person, { capabilities: ["medic"] }, early)).toBe(false);
+    expect(shown(person, { capabilities: ["pilot"] }, early)).toBe(true);
     expect(shown(soldier(), { capabilities: ["driver"] }, day)).toBe(false);
     expect(shown(soldier(), {}, day)).toBe(true);
   });
@@ -396,7 +410,7 @@ describe("combining filters", () => {
     const person = soldier({
       name: "דנה כהן",
       gender: "female",
-      capabilities: ["driver"],
+      capabilities: [{ capabilityId: "driver" }],
     });
     const all = {
       search: "דנה",
@@ -416,8 +430,8 @@ describe("combining filters", () => {
       exemptions: [
         { exemptionId: "guard", start: "2026-10-01", end: "2026-10-31" },
       ],
-      qualifications: [
-        { qualificationId: "q1", start: "2026-10-01", end: "2026-10-31" },
+      capabilities: [
+        { capabilityId: "q1", start: "2026-10-01", end: "2026-10-31" },
       ],
     });
     const reversed = {
@@ -427,7 +441,7 @@ describe("combining filters", () => {
     const noZone = { start: "2026-10-05T08:00", end: "2026-10-05T16:00" };
     for (const range of [reversed, noZone]) {
       expect(shown(person, { exemptions: ["guard"] }, range)).toBe(true);
-      expect(shown(person, { qualifications: ["q1"] }, range)).toBe(true);
+      expect(shown(person, { capabilities: ["q1"] }, range)).toBe(true);
       expect(shown(person, { populations: ["career"] }, range)).toBe(true);
       expect(shown(person, { ranks: ["r1"] }, range)).toBe(true);
       expect(shown(person, { search: "דנה" }, range)).toBe(true);
@@ -477,7 +491,6 @@ describe("options come from the catalogs", () => {
   const catalog = [
     { id: "x2", kind: "exemption", name: "פטור ב" },
     { id: "x1", kind: "exemption", name: "פטור א" },
-    { id: "q1", kind: "qualification", name: "כשירות" },
     { id: "c1", kind: "capability", name: "נהג" },
   ];
   const ranks = [
@@ -494,7 +507,6 @@ describe("options come from the catalogs", () => {
       "פטור א",
       "פטור ב",
     ]);
-    expect(options.qualifications).toEqual([{ value: "q1", label: "כשירות" }]);
     expect(options.capabilities).toEqual([{ value: "c1", label: "נהג" }]);
     expect(options.ranks.map((track) => track.track)).toEqual([
       "חובה",
@@ -530,7 +542,6 @@ describe("options come from the catalogs", () => {
   it("copes with catalogs that did not arrive", () => {
     expect(pickerOptions({})).toEqual({
       exemptions: [],
-      qualifications: [],
       capabilities: [],
       ranks: [],
     });
@@ -561,25 +572,22 @@ describe("defaults from the duty and the role", () => {
       []
     );
   });
-  it("fills populations, genders, qualifications, capabilities and the blocking exemptions", () => {
+  it("fills populations, genders, capabilities and the blocking exemptions", () => {
     const duty: Requirements = {
       populations: ["mandatory", "academic"],
       genders: ["male", "female"],
-      qualificationIds: ["q1"],
       capabilityIds: ["c1"],
       blockingExemptionIds: ["x1"],
     };
     const role: Requirements = {
       populations: ["mandatory"],
       genders: ["female"],
-      qualificationIds: ["q1", "q2"],
       capabilityIds: ["c2"],
       blockingExemptionIds: ["x2"],
     };
     expect(defaultFilters([duty], ranks)).toMatchObject({
       populations: ["mandatory", "academic"],
       genders: ["male", "female"],
-      qualifications: ["q1"],
       capabilities: ["c1"],
       exemptions: ["x1"],
     });
@@ -587,7 +595,6 @@ describe("defaults from the duty and the role", () => {
     expect(defaultFilters([duty, role], ranks)).toMatchObject({
       populations: ["mandatory"],
       genders: ["female"],
-      qualifications: ["q1", "q2"],
       capabilities: ["c1", "c2"],
       exemptions: ["x1", "x2"],
     });
@@ -688,7 +695,6 @@ describe("a soldier row as the rules read it", () => {
       id: "p",
       name: "חייל",
       populationHistory: [],
-      qualifications: [],
       exemptions: [],
       capabilities: [],
     });

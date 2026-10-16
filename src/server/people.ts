@@ -357,7 +357,7 @@ function profileData(
     currentScore: existing?.currentScore ?? 0,
     populationHistory: existing?.populationHistory ?? [],
     rankHistory: existing?.rankHistory ?? [],
-    qualifications: existing?.qualifications ?? [],
+    capabilities: existing?.capabilities ?? [],
     exemptions: existing?.exemptions ?? [],
     inactivePeriods: existing?.inactivePeriods ?? [],
     constraints: [],

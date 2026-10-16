@@ -446,7 +446,7 @@ describe("what each role is shown", () => {
             },
           ],
           gender: "female",
-          capabilities: ["capability-private"],
+          capabilities: [{ capabilityId: "capability-private" }],
         },
       })
       .where(eq(soldiers.id, bar.soldierId!));

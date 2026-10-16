@@ -87,9 +87,9 @@
 
 ### 13. כאחראי, אני רוצה להזין כשירות ותוקף כדי למנוע שיבוץ שאינו מתאים לכל משך התורנות. — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `previews a shortened qualification for the whole performance, retains the assignment and flags it after explicit confirmation`; `counts combined qualification periods over the whole duty and clears the attention flag only when they cover it`
-- [domain.test.ts](../tests/unit/domain.test.ts): `checks qualification throughout the execution`
-- [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `hides a soldier whose qualification expires, or starts, inside the range`
+- [auth.test.ts](../tests/integration/auth.test.ts): `previews a shortened capability for the whole performance, retains the assignment and flags it after explicit confirmation`; `counts combined capability periods over the whole duty and clears the attention flag only when they cover it`
+- [domain.test.ts](../tests/unit/domain.test.ts): `checks a dated capability throughout the execution`; `treats missing capability and exemption dates as open (decision 224)`
+- [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `hides a soldier whose capability expires, or starts, inside the range`; `keeps a permanent capability for any range, and one open on either side`
 
 ### 14. כאחראי, אני רוצה להגדיר מנוחה לפני ואחרי סוג תורנות כדי למנוע שיבוצים שאינם מאפשרים אותה. — מכוסה
 
@@ -98,7 +98,7 @@
 
 ### 15. כאחראי, אני רוצה לבצע עקיפת פטור נקודתית רק לאחר אישור חריג מפורש כדי לתעד את ההחלטה בלי לשנות את הפטור. — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `persists a justified rank exception through another seat assignment and publication`; `rejects an obsolete exception preview and never permits it to bypass a missing qualification`; `checks personal hours over a night in Israeli time, keeps them out of the lottery and allows only a justified manual exception`
+- [auth.test.ts](../tests/integration/auth.test.ts): `persists a justified rank exception through another seat assignment and publication`; `rejects an obsolete exception preview and never permits it to bypass a missing capability`; `checks personal hours over a night in Israeli time, keeps them out of the lottery and allows only a justified manual exception`
 - [first-duty.spec.ts](../tests/e2e/first-duty.spec.ts): `manager invites, assigns and publishes; soldier sees only published duties`
 
 ### 16. כאחראי, אני רוצה לפתוח ולסגור סבב אילוצים משותף ולהגדיר בנפרד את תקופת היעד כדי לשלוט במועדי ההגשה. — מכוסה
@@ -344,7 +344,7 @@
 
 ### 59. כאחראי, אני רוצה לאשר חריג דרגה נקודתי בחלון מפורש, כדי לתעד שיבוץ חריג בלי לשנות את פרטי החייל. — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `persists a justified rank exception through another seat assignment and publication`; `rejects an obsolete exception preview and never permits it to bypass a missing qualification`
+- [auth.test.ts](../tests/integration/auth.test.ts): `persists a justified rank exception through another seat assignment and publication`; `rejects an obsolete exception preview and never permits it to bypass a missing capability`
 - [domain.test.ts](../tests/unit/domain.test.ts): `routes a volunteer's exemption or rank exception to a manager instead of blocking`
 - [rank-conditions.test.ts](../tests/unit/rank-conditions.test.ts): `leaves a manual selection to an explicit exception instead of blocking`
 
@@ -444,8 +444,10 @@
 
 ### 8. פטורים ותוקף כשירות — כשירות וזמינות — מכוסה
 
-- [domain.test.ts](../tests/unit/domain.test.ts): `checks qualification throughout the execution`
-- [auth.test.ts](../tests/integration/auth.test.ts): `requires exemption approval for a partial overlap, rejects an obsolete preview and saves one of two competing confirmations`; `rejects an obsolete exception preview and never permits it to bypass a missing qualification`; `removes an exemption without discarding approved constraints and restricts both preview and catalog edits to managers`
+- [domain.test.ts](../tests/unit/domain.test.ts): `checks a dated capability throughout the execution`; `treats missing capability and exemption dates as open (decision 224)`
+- [capability-validity.test.ts](../tests/integration/capability-validity.test.ts): `keeps every soldier's qualifications and capabilities, the catalog and the conditions, and runs again without change`
+- [eligibility-conditions.spec.ts](../tests/e2e/eligibility-conditions.spec.ts): `manager gives dated or permanent capabilities and exemptions, filters by them, and reviews gender and hours impact before saving`
+- [auth.test.ts](../tests/integration/auth.test.ts): `requires exemption approval for a partial overlap, rejects an obsolete preview and saves one of two competing confirmations`; `rejects an obsolete exception preview and never permits it to bypass a missing capability`; `removes an exemption without discarding approved constraints and restricts both preview and catalog edits to managers`
 - [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `hides the soldier through the last day of the exemption, inclusive`
 
 ### 9. חפיפה ומנוחה — כשירות וזמינות; החלפות — מכוסה
@@ -771,7 +773,7 @@
 
 ### 58. בחירת חייל לשיבוץ — שיבוץ; כשירות; עברית ושימוש מעשי — מכוסה
 
-- [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `matches a name part, or the whole issued ID number`; `hides a soldier whose exemption covers only part of the range`; `hides a soldier whose qualification expires, or starts, inside the range`; `uses Israel days on the night the clocks go back`; `shows a value added to a catalog with no change in code`
+- [soldier-picker.test.ts](../tests/unit/soldier-picker.test.ts): `matches a name part, or the whole issued ID number`; `hides a soldier whose exemption covers only part of the range`; `hides a soldier whose capability expires, or starts, inside the range`; `uses Israel days on the night the clocks go back`; `shows a value added to a catalog with no change in code`
 - [soldier-picker.spec.ts](../tests/e2e/soldier-picker.spec.ts): `the picker opens filtered by the duty and the role, and finds by name and ID number`; `the server still checks a soldier the filters had hidden`; `the picker works with the keyboard and on a phone without sideways scrolling`
 
 ### 59. תורנויות ביומן Google — הודעות והעדפות; חשבונות — מכוסה
