@@ -37,7 +37,7 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 
 ## 2. תנאים מוקדמים
 
-- **אישור הפעלה (סעיף 7.6):** הגוף המפעיל ובעל השליטה, מטרות והרשאה לעבד את המידע, הספקים (Cloudflare, ‏Brevo, ‏Google), אירוח בשרת פרטי, ונוסח היידוע לחיילים. המסמכים נשמרים אצל המפעיל ולא ב־Git. מומלץ לבדוק גם את סיווג המידע על לוח התורנויות עצמו.
+- **אישור הפעלה (סעיף 7.6):** התקבל לפי המשתמש ב־16.10.2026. הנושאים שהאישור מכסה: הגוף המפעיל ובעל השליטה, מטרות והרשאה לעבד את המידע, הספקים (Cloudflare, ‏Brevo, ‏Google), אירוח בשרת פרטי, ונוסח היידוע לחיילים. המסמכים נשמרים אצל המפעיל ולא ב־Git. מומלץ לבדוק גם את סיווג המידע על לוח התורנויות עצמו.
 - **מזהה החייל:** המימוש של #175 מוזג ונפרס, וקובץ הייבוא הוכן לפי התבנית החדשה.
 - **ערכי היחידה:** מחירון, תוספות, מנוחה, פטורים, כשירויות, דרגות ויתרות פתיחה, מאומתים בידי האחראים. אסור להשתמש בערכי הדוגמה.
 - **דומיין:** `fairshifts.app` נרכש ב־14.10.2026 ב־Cloudflare Registrar, ולכן ה־DNS שלו כבר מנוהל ב־Cloudflare. האתר יושב על הדומיין עצמו, `https://fairshifts.app`, בלי תת־דומיין. הרכישה היא לשנה, והחידוש עולה 14.20 דולר. בודקים ב־**Domain Registration** שהחידוש האוטומטי פעיל, כי דומיין שפג מפיל את האתר ואת שליחת המייל.
@@ -61,11 +61,13 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 2. **Clients → fair-shifts-staging:** מוסיפים מקור `https://fairshifts.app` וכתובת חזרה `https://fairshifts.app/api/auth/callback/google`. משאירים את כתובות ה־staging עד אחרי ההחלפה. אפשר לשנות את שם הלקוח ל־`fair-shifts`. המזהה והסוד לא משתנים.
 3. **Data Access:** בודקים שמופיעים `openid`, ‏`email`, ‏`profile` ו־`calendar.app.created` בלבד, ושכולם מסומנים non-sensitive.
 
-**Google Drive — גיבוי:** יוצרים בחשבון הייעודי תיקייה חדשה לגיבויי production, נפרדת מתיקיית ה־staging, ושומרים את המזהה שלה (`GOOGLE_DRIVE_FOLDER_ID`). לקוח Drive, אסימון הרענון ו־`AGE_RECIPIENT` נשארים. המפתח הפרטי של age נשאר מחוץ לשרת.
+**Google Drive — גיבוי:** לפי החלטת המשתמש (16.10.2026), production שומרת באותה תיקייה של staging, ולא בתיקייה נפרדת. לפני ההחלפה המשתמש מוחק מהתיקייה את הגיבויים הישנים של staging, כך שבתיקייה יישמרו רק גיבויי production. `GOOGLE_DRIVE_FOLDER_ID`, לקוח Drive, אסימון הרענון ו־`AGE_RECIPIENT` נשארים. המפתח הפרטי של age נשאר מחוץ לשרת.
 
 **Cloudflare Tunnel:** משתמשים באותו Tunnel. בלשונית **Routes** מוסיפים **Published application** עבור `fairshifts.app` לשירות `http://app:3000`. ה־route הישן נשאר עד אחרי ההחלפה.
 
 **HSTS בדומיין החדש:** כמו ב־staging, ב־**SSL/TLS → Edge Certificates → HSTS** מגדירים `max-age` של שנה, בלי includeSubDomains ובלי preload ([ראיות המעבר](security-live-transition-evidence.md)). הסיומת `.app` כולה כבר ברשימת ה־HSTS preload של הדפדפנים. לכן כל כתובת תחת `fairshifts.app`, כולל תת־דומיינים, נפתחת רק ב־HTTPS בלי קשר להגדרה. זה לא סותר את ההגדרה של האתר, ודרך ה־Tunnel אין גישה ב־HTTP בכל מקרה.
+
+**מצב 16.10.2026:** שלב 3 הושלם. ב־Tunnel, ששמו שונה ל־`fair-shifts` (המזהה וה־token לא השתנו), נוסף route ל־`fairshifts.app` עם הגדרות ברירת מחדל. HSTS הוגדר לשנה, ו־`/api/health` בדומיין עונה 200 בבדיקה חיצונית. בלקוח הכניסה, ששמו שונה ל־`fair-shifts`, נוספו המקור וכתובת החזרה. בפרויקט יש שני דומיינים מורשים, ובו ארבעת ההיקפים ה־non-sensitive בלבד. ב־Brevo הדומיין מאומת (DKIM ו־DMARC), והשולח `no-reply@fairshifts.app` מאומת. תיקיית Drive: לפי ההחלטה למעלה, משתמשים באותה תיקייה.
 
 ## 4. יום ההחלפה
 
@@ -99,7 +101,7 @@ sh scripts/production.sh init --environment=production --url=https://fairshifts.
 | `MAIL_QUOTA_TIME_ZONE=Asia/Jerusalem`                                                | `app.env`, `worker.env`, `operations.env` |
 | `BACKUP_STORAGE=drive`, `BACKUP_TIME`, `AGE_RECIPIENT`                               | `app.env`, `worker.env`, `operations.env` |
 | `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | `worker.env`, `operations.env`            |
-| `GOOGLE_DRIVE_FOLDER_ID` — **התיקייה החדשה**                                         | `worker.env`, `operations.env`            |
+| `GOOGLE_DRIVE_FOLDER_ID` — אותה תיקייה                                               | `worker.env`, `operations.env`            |
 
 את המפתח הפרטי של חתימת המחיקות (`worker-secrets.env`) מעתיקים לאחסון התאוששות מחוץ לשרת, בודקים שאפשר לקרוא אותו, ורק אז מגדירים `DELETION_LOG_KEY_RECOVERY_CONFIRMED=true`.
 

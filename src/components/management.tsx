@@ -962,7 +962,7 @@ export function EligibilityView({
         <Panel
           title="סוגי פטורים וכשירויות"
           actions={
-            <div className="panel-actions-row">
+            <div className="inline">
               <HoursExemptionDialog action={action} />
               <ActionDialog
                 title="הגדרה חדשה"

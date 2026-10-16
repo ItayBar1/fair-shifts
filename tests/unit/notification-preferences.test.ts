@@ -214,6 +214,7 @@ describe("notification preferences", () => {
       "deletion",
       "restore",
       "backup-alert",
+      "contact-digest",
     ] as const) {
       expect(emailAllowed(off, kind)).toBe(false);
       expect(emailAllowed(systemDefaults, kind)).toBe(true);

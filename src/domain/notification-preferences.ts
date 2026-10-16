@@ -115,6 +115,8 @@ const preferenceByKind = {
   deletion: "deletion",
   restore: "restore",
   "backup-alert": "operations",
+  // The daily digest of the public contact form (decision 228).
+  "contact-digest": "operations",
 } as const satisfies Record<string, PreferenceType>;
 export type EmailKind =
   | (typeof mandatoryEmailKinds)[number]

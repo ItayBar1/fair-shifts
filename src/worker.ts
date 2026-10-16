@@ -12,6 +12,7 @@ import { recordWorkerHeartbeat } from "./server/operations/health";
 import { refreshRoundNotices } from "./server/round-notices";
 import { backupConfig, runBackupCycle } from "./server/operations/backup";
 import { refreshDrillAlert } from "./server/operations/restore";
+import { refreshContactDigest } from "./server/contact-requests";
 import { refreshDutyReminders } from "./server/duty-reminders";
 import { listenForMail, singleFlight } from "./server/operations/mail-signal";
 import { calendarSyncEnabled } from "./server/calendar/config";
@@ -82,6 +83,15 @@ await boss.work("unit-maintenance", async () => {
     await tx
       .delete(authRateLimit)
       .where(lt(authRateLimit.expiresAt, new Date(now.getTime() - 86_400_000)));
+    // The daily digest of the public contact form (decision 228), in a savepoint like the drill reminder.
+    await tx
+      .transaction((inner) => refreshContactDigest(inner, now))
+      .catch((error: unknown) =>
+        console.error(
+          "Contact digest failed",
+          error instanceof Error ? error.name : "unknown"
+        )
+      );
     // A restore drill overdue by more than 100 days reminds the technical account (decision 200).
     // In a savepoint: a failed reminder must not undo the settlement above.
     await tx
