@@ -33,3 +33,17 @@ test("the login screen links to a public privacy policy that explains the Google
   await page.getByRole("link", { name: "חזרה לכניסה" }).click();
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test("anyone can send a contact request from the privacy page, and it waits for the daily digest", async ({
+  page,
+}) => {
+  await page.goto("/privacy");
+  await page.getByRole("button", { name: "שליחת הפנייה" }).click();
+  // The browser's own required check stops an empty form.
+  await expect(page.getByLabel("שם", { exact: true })).toBeFocused();
+  await page.getByLabel("שם", { exact: true }).fill("פונה מבחוץ");
+  await page.getByLabel("מייל או טלפון לחזרה").fill("0501234567");
+  await page.getByLabel("הפנייה").fill("רציתי לבקש לעיין במידע שנשמר עליי");
+  await page.getByRole("button", { name: "שליחת הפנייה" }).click();
+  await expect(page.getByText("הפנייה התקבלה")).toBeVisible();
+});

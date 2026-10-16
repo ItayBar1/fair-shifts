@@ -30,6 +30,7 @@ const kindLabels: Record<string, string> = {
   deletion: "מחיקת חייל שדורשת טיפול",
   restore: "שחזור מגיבוי",
   "backup-alert": "התראת גיבוי",
+  "contact-digest": "פניות מטופס יצירת הקשר",
 };
 const errorLabels: Record<string, string> = {
   delivery_failed: "הספק לא קיבל את המייל גם אחרי ניסיונות חוזרים",

@@ -383,3 +383,22 @@ export const calendarEvent = pgTable(
     ),
   ]
 );
+/**
+ * A request sent from the public contact form (decision 228). The worker sends
+ * the technical account one digest a day of the requests not yet sent, and
+ * deletes a request 30 days after its digest.
+ */
+export const contactRequests = pgTable(
+  "contact_requests",
+  {
+    id: uuid("id").primaryKey(),
+    name: text("name").notNull(),
+    contact: text("contact").notNull(),
+    message: text("message").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    digestedAt: timestamp("digested_at", { withTimezone: true }),
+  },
+  (t) => [index("contact_requests_pending").on(t.digestedAt, t.createdAt)]
+);

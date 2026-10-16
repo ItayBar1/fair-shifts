@@ -610,6 +610,8 @@ describe("a restore drill", () => {
         "drop table assignment_mail_event, assignment_mail_window"
       );
       await client.query("alter table email_outbox drop column duty_ids");
+      // Migration 0022 (decision 228).
+      await client.query("drop table contact_requests");
       await client.query(
         "alter table auth_user drop column assignment_feed_cursor"
       );
