@@ -779,6 +779,30 @@ describe("granting and removing the role", () => {
     expect(again.status).toBe("eligible");
   });
 
+  it("keeps a manager's balance frozen, also against a direct call and a role change after the preview", async () => {
+    const input = {
+      soldierIds: [otherManager.soldierId],
+      operation: "add",
+      value: 5,
+      reason: "ניסיון לשנות יתרה מוקפאת",
+    };
+    await expect(
+      command(manager, "score.preview", input)
+    ).rejects.toMatchObject({ code: "manager_balance_frozen" });
+    const both = { ...input, soldierIds: [bar.soldierId, alon.soldierId] };
+    const preview = (await command(
+      manager,
+      "score.preview",
+      both
+    )) as unknown as { token: string };
+    await setRole(alon, "manager");
+    await expect(
+      command(manager, "score.apply", { ...both, token: preview.token })
+    ).rejects.toMatchObject({ code: "manager_balance_frozen" });
+    expect(await balanceOf(alon)).toBe(100);
+    expect(await balanceOf(bar)).toBe(100);
+  });
+
   it("closes the decision once, by setting the balance with a preview", async () => {
     const appointed = await setRole(alon, "manager");
     await setRole(appointed, "soldier");

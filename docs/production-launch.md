@@ -1,50 +1,37 @@
-# העלאה לפרודקשן — דומיין קבוע, שולח Brevo ונתוני אמת
+# העלאה לפרודקשן — הגדרות הספקים והשלבים שנותרו
 
-10.10.2026 · [#172](https://github.com/ItayBar1/fair-shifts/issues/172) · הכרעה 221 ב[יומן ההכרעות](open-decisions.md) · אפיון 1.75.
+[#172](https://github.com/ItayBar1/fair-shifts/issues/172) · הכרעה 221 ב[יומן ההכרעות](open-decisions.md).
 
-המסמך מתאר איך מחליפים את סביבת ה־staging הסינתטית בסביבת production על אותו שרת, עם דומיין קבוע ונתוני אמת. הוא משלים את [מדריך ההפעלה](operations.md), ואינו אישור לפתוח נתוני אמת: שער הקליטה לפי סעיף 7.6 באפיון נשאר בתוקף ([הכנה לנתוני אמת](real-data-readiness-2026-10-09.md)).
+ההחלפה של staging ב־production בוצעה ב־16.10.2026: `https://fairshifts.app` פעיל בפרויקט Compose ‏`fair-shifts-live`, עם מסד חדש. המסמך שומר את הגדרות הספקים כפי שנעשו, ואת השלבים שנותרו עד שהיחידה עובדת במערכת. התפעול השוטף ב[מדריך ההפעלה](operations.md). פקודות ההחלפה עצמה נשמרות בהיסטוריית Git.
 
 כל הפקודות כאן רצות בשרת, וההערות שבהן באנגלית (הכרעה 187). אין להדביק סודות לפקודה שנשמרת בהיסטוריית המסוף; עורכים את קובצי התצורה ב־`nano`.
+
+| שלב                                               | מצב                                     |
+| ------------------------------------------------- | --------------------------------------- |
+| ספקים, דומיין, HSTS, בריאות                       | הושלם 16.10.2026                        |
+| חשבונות ראשונים (טכני ואחראי), מייל וכניסת Google | הושלם 16.10.2026                        |
+| גיבוי ידני ואוטומטי, תרגיל שחזור מבודד            | הושלם 16.10.2026                        |
+| אחראי שני והגדרות היחידה (שלב 5)                  | פתוח                                    |
+| קליטת נתוני אמת ופרסום ההזמנות (שלב 6)            | פתוח                                    |
+| ניקוי staging (שלב 7)                             | פתוח, באישור המשתמש ולא לפני 23.10.2026 |
 
 ## ההחלטות
 
 - **סביבה אחת (הכרעה 221).** production מחליפה את staging על אותו שרת. אין סביבת בדיקות קבועה נוספת. ההגנות על עדכון הן בדיקות Docker ו־CI לפני מיזוג, גיבוי מאומת לפני שינוי מסד, בדיקת בריאות וחזרה אוטומטית כשאין שינוי מסד (הכרעות 186 ו־191). תיקון בקוד נבדק ב־Docker מקומי ובבדיקת העשן של התמונה (`scripts/production-smoke.sh`).
 - **מסד חדש ולא ניקוי.** production עולה בפרויקט Compose חדש עם נפח ריק. נתוני הדמו נשארים בנפח של staging, עצור, לפחות שבוע, ונמחקים רק באישור המשתמש. כך אין צורך לנקות את מסד הדמו, ויש דרך חזרה עד הקליטה.
 - **Calendar פעיל מההתחלה.** ההיקף `calendar.app.created` מוצג בקונסולת Google כ־non-sensitive, ופרויקט `fairshifts-backup` כבר במצב In production.
-- **מזהה החייל (הכרעה 222, #175).** המספר האישי הצבאי אינו נשמר. המערכת מייצרת מספר זיהוי סידורי, ובקובץ הייבוא אין עמודת מספר אישי. שדות חובה: שם פרטי, שם משפחה, מגדר, מייל וטלפון. עד שהמימוש של #175 ימוזג אין לקלוט נתוני אמת.
+- **מזהה החייל (הכרעה 222, #175).** המספר האישי הצבאי אינו נשמר. המערכת מייצרת מספר זיהוי סידורי, ובקובץ הייבוא אין עמודת מספר אישי. שדות חובה: שם פרטי, שם משפחה, מגדר, מייל וטלפון.
 
-## 1. לפני ההחלפה — על staging הסינתטי
-
-אחרי ההחלפה לא תהיה סביבה עם נתוני דמה. לכן ההדגמות שנותרו נעשות קודם, ומתועדות בכרטיסים עצמם. תיעוד הוא תיאור של מה שנראה, בלי כתובות, קודים או צילומים עם פרטים אישיים.
-
-| כרטיס                                                      | מה מדגימים                                                                                                                                              |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [#167](https://github.com/ItayBar1/fair-shifts/issues/167) | `health` מראה אתר ועובד ב־main העדכני (`4f5eeaa` או חדש יותר), ו־metrics של cloudflared מראים Go 1.26.9 וחיבורי Tunnel. דף הכניסה עונה 200 דרך הדומיין. |
-| [#163](https://github.com/ItayBar1/fair-shifts/issues/163) | ייבוא קובץ סינתטי עם כתובת בדיקה אחת אמיתית: אין הזמנה בתור, כניסה בקוד לפני הפרסום, ״פרסום הזמנות״, ההזמנה מגיעה, ופתיחת האצווה מחדש מראה שפורסמה.     |
-| [#144](https://github.com/ItayBar1/fair-shifts/issues/144) | מעבר קצר כחייל וכאחראי, במחשב ובנייד: ניווט, מרכז טיפול, מצב כהה.                                                                                       |
-| [#114](https://github.com/ItayBar1/fair-shifts/issues/114) | הטכני מוסיף משתמש בודד, ממנה אותו לאחראי, והמשתמש נכנס עם המייל המאושר.                                                                                 |
-| [#90](https://github.com/ItayBar1/fair-shifts/issues/90)   | הטכני מחליף את כתובתו באתר: קוד לכל אחת משתי הכתובות, והכניסה בכתובת החדשה.                                                                             |
-| [#95](https://github.com/ItayBar1/fair-shifts/issues/95)   | פרסום כמה טיוטות יחד, כולל טיוטה חסומה שנשארת טיוטה, ומייל מרוכז אחד לחייל.                                                                             |
-| [#34](https://github.com/ItayBar1/fair-shifts/issues/34)   | מחיקת חייל סינתטי בזמן ביצוע: הטיפול הדחוף נפתח, הזקיפה נעצרת, ו־`deletion-log verify` מוצא את הרשומה בקובץ ובעותק ב־Drive.                             |
-| [#38](https://github.com/ItayBar1/fair-shifts/issues/38)   | מעבר עם קורא מסך (VoiceOver או NVDA) בכניסה, בלוח ובשיבוצים שלי.                                                                                        |
-
-```sh
-# Live version check for #167 (read only)
-cd /opt/fair-shifts/app
-sh scripts/production.sh health
-cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
-```
-
-## 2. תנאים מוקדמים
+## תנאים מוקדמים
 
 - **אישור הפעלה (סעיף 7.6):** התקבל לפי המשתמש ב־16.10.2026. הנושאים שהאישור מכסה: הגוף המפעיל ובעל השליטה, מטרות והרשאה לעבד את המידע, הספקים (Cloudflare, ‏Brevo, ‏Google), אירוח בשרת פרטי, ונוסח היידוע לחיילים. המסמכים נשמרים אצל המפעיל ולא ב־Git. מומלץ לבדוק גם את סיווג המידע על לוח התורנויות עצמו.
 - **מזהה החייל:** המימוש של #175 מוזג ונפרס, וקובץ הייבוא הוכן לפי התבנית החדשה.
 - **ערכי היחידה:** מחירון, תוספות, מנוחה, פטורים, כשירויות, דרגות ויתרות פתיחה, מאומתים בידי האחראים. אסור להשתמש בערכי הדוגמה.
 - **דומיין:** `fairshifts.app` נרכש ב־14.10.2026 ב־Cloudflare Registrar, ולכן ה־DNS שלו כבר מנוהל ב־Cloudflare. האתר יושב על הדומיין עצמו, `https://fairshifts.app`, בלי תת־דומיין. הרכישה היא לשנה, והחידוש עולה 14.20 דולר. בודקים ב־**Domain Registration** שהחידוש האוטומטי פעיל, כי דומיין שפג מפיל את האתר ואת שליחת המייל.
 
-## 3. הכנת הספקים — לפני יום ההחלפה
+## הגדרות הספקים
 
-אפשר להשלים את השלב הזה בזמן ש־staging עוד פעיל, כי אף אחד מהשינויים אינו מסיר את ההגדרות הקיימות.
+כך הוגדרו הספקים ל־`fairshifts.app`. משתמשים בהן כשמחליפים מפתח, דומיין או לקוח.
 
 **Brevo:**
 
@@ -65,82 +52,15 @@ cat /opt/fair-shifts/deploy-state/deployed; ls /opt/fair-shifts/deploy-state
 
 **Cloudflare Tunnel:** משתמשים באותו Tunnel. בלשונית **Routes** מוסיפים **Published application** עבור `fairshifts.app` לשירות `http://app:3000`. ה־route הישן נשאר עד אחרי ההחלפה.
 
-**HSTS בדומיין החדש:** כמו ב־staging, ב־**SSL/TLS → Edge Certificates → HSTS** מגדירים `max-age` של שנה, בלי includeSubDomains ובלי preload ([ראיות המעבר](security-live-transition-evidence.md)). הסיומת `.app` כולה כבר ברשימת ה־HSTS preload של הדפדפנים. לכן כל כתובת תחת `fairshifts.app`, כולל תת־דומיינים, נפתחת רק ב־HTTPS בלי קשר להגדרה. זה לא סותר את ההגדרה של האתר, ודרך ה־Tunnel אין גישה ב־HTTP בכל מקרה.
+**HSTS בדומיין החדש:** כמו ב־staging, ב־**SSL/TLS → Edge Certificates → HSTS** מגדירים `max-age` של שנה, בלי includeSubDomains ובלי preload. הסיומת `.app` כולה כבר ברשימת ה־HSTS preload של הדפדפנים. לכן כל כתובת תחת `fairshifts.app`, כולל תת־דומיינים, נפתחת רק ב־HTTPS בלי קשר להגדרה. זה לא סותר את ההגדרה של האתר, ודרך ה־Tunnel אין גישה ב־HTTP בכל מקרה.
 
-**מצב 16.10.2026:** שלב 3 הושלם. ב־Tunnel, ששמו שונה ל־`fair-shifts` (המזהה וה־token לא השתנו), נוסף route ל־`fairshifts.app` עם הגדרות ברירת מחדל. HSTS הוגדר לשנה, ו־`/api/health` בדומיין עונה 200 בבדיקה חיצונית. בלקוח הכניסה, ששמו שונה ל־`fair-shifts`, נוספו המקור וכתובת החזרה. דומיין ה־staging הוסר מהלקוח ומהדומיינים המורשים. בפרויקט נשארו ארבעת ההיקפים ה־non-sensitive בלבד, והמיתוג (״תורנות הוגנת״) אומת ופורסם (הכרעה 228). ב־Brevo הדומיין מאומת (DKIM ו־DMARC), והשולח `no-reply@fairshifts.app` מאומת. תיקיית Drive: לפי ההחלטה למעלה, משתמשים באותה תיקייה.
-
-## 4. יום ההחלפה
-
-הסדר חשוב: קודם עוצרים את staging, ורק אחר כך מזיזים את התצורה שלו.
-
-```sh
-cd /opt/fair-shifts/app
-# 1. Pause automatic deployment and make sure the checkout is the live version
-touch /opt/fair-shifts/deploy-state/paused
-test "$(git rev-parse HEAD)" = "$(cat /opt/fair-shifts/deploy-state/deployed)" && echo "checkout matches the live version"
-
-# 2. Stop staging; containers and volumes stay, nothing is deleted
-export COMPOSE_PROJECT_NAME=fair-shifts-production-alpine
-sh scripts/production.sh stop
-sh scripts/production.sh ps -a
-
-# 3. Keep the staging configuration aside, then create the production configuration
-mv /opt/fair-shifts/config /opt/fair-shifts/config-staging
-export COMPOSE_PROJECT_NAME=fair-shifts-live
-sh scripts/production.sh init --environment=production --url=https://fairshifts.app
-```
-
-ל־`init` נוצרות שש תצורות חדשות: סיסמאות מסד, סודות כניסה, מפתח הצפנה לתור המייל ומפתח חתימה ליומן המחיקות. **אין להעתיק סודות אלה מ־staging.** מעתיקים מ־`config-staging` רק את ערכי הספקים, בעורך:
-
-| ערך                                                                                  | קבצים                                     |
-| ------------------------------------------------------------------------------------ | ----------------------------------------- |
-| `TUNNEL_TOKEN`                                                                       | `tunnel.env`                              |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_SYNC=true`              | `app.env`, `worker.env`                   |
-| `MAIL_TRANSPORT=brevo`                                                               | `app.env`, `worker.env`                   |
-| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL=no-reply@fairshifts.app`                        | `worker.env`                              |
-| `MAIL_QUOTA_TIME_ZONE=Asia/Jerusalem`                                                | `app.env`, `worker.env`, `operations.env` |
-| `BACKUP_STORAGE=drive`, `BACKUP_TIME`, `AGE_RECIPIENT`                               | `app.env`, `worker.env`, `operations.env` |
-| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | `worker.env`, `operations.env`            |
-| `GOOGLE_DRIVE_FOLDER_ID` — אותה תיקייה                                               | `worker.env`, `operations.env`            |
-
-את המפתח הפרטי של חתימת המחיקות (`worker-secrets.env`) מעתיקים לאחסון התאוששות מחוץ לשרת, בודקים שאפשר לקרוא אותו, ורק אז מגדירים `DELETION_LOG_KEY_RECOVERY_CONFIRMED=true`.
-
-```sh
-# 4. Point the deployment timer at the new Compose project
-sudo systemctl edit "fair-shifts-deploy@$USER.service"
-#    in the override, set: Environment=COMPOSE_PROJECT_NAME=fair-shifts-live
-sudo systemctl daemon-reload
-systemctl show "fair-shifts-deploy@$USER.service" -p Environment
-
-# 5. First deployment on an empty database, then health
-cd /opt/fair-shifts/app
-export COMPOSE_PROJECT_NAME=fair-shifts-live
-sh scripts/production.sh deploy
-sh scripts/production.sh health
-git rev-parse HEAD > /opt/fair-shifts/deploy-state/deployed
-rm /opt/fair-shifts/deploy-state/paused
-```
-
-אחרי ההחלפה, כל פקודת תפעול ידנית רצה עם `COMPOSE_PROJECT_NAME=fair-shifts-live`. בלי המשתנה, Compose משתמש בשם ברירת המחדל `fair-shifts-production` ולא ימצא את השירותים.
-
-**חזרה עד הקליטה:** כל עוד לא נקלטו נתוני אמת, עוצרים את `fair-shifts-live`, מחזירים את `config-staging` ל־`config`, מחזירים את ה־override ל־`fair-shifts-production-alpine` ומפעילים את staging. אחרי הקליטה חוזרים רק משחזור גיבוי של production, לפי מדריך ההפעלה.
-
-**מצב 16.10.2026, אחרי ההחלפה:**
-
-- **ההחלפה:** production רצה בפרויקט `fair-shifts-live` על מסד ריק, בגרסה `9a27810`. בדיקת הבריאות תקינה, והאתר והעובד באותה גרסה.
-- **הפריסה האוטומטית:** הטיימר מפנה ל־`fair-shifts-live`, וההשהיה הוסרה.
-- **ה־staging:** עצור, ונפחי `fair-shifts-production-alpine` ו־`config-staging` שמורים.
-- **התצורה:** סודות חדשים מ־`init`, וערכי הספקים הועתקו מ־staging. `GOOGLE_DRIVE_FOLDER_ID` ריק: היישום מוצא בעצמו את התיקייה שסימן. עותק התאוששות של מפתח החתימה נשמר מחוץ לשרת, והדגל אושר.
-- **הקמה (שלב 5):**
-  - `bootstrap` יצר מנהל טכני ואחראי ראשון.
-  - קוד כניסה הגיע לדואר הנכנס מ־`no-reply@fairshifts.app`, וכניסה עם Google עובדת בדומיין.
-  - גיבוי ידני וגיבוי אוטומטי אומתו ב־Drive, ובתיקייה יש רק גיבויי production.
-  - תרגיל שחזור מבודד על הגיבוי האחרון עבר (`PASSED`, 23 מיגרציות). הגיבוי פוענח במחשב הטכני והוזרם לשרת.
-- **נשאר לשלב 5:** אחראי שני והגדרות היחידה.
+**מצב 16.10.2026:** ההגדרות הושלמו. ב־Tunnel, ששמו שונה ל־`fair-shifts` (המזהה וה־token לא השתנו), נוסף route ל־`fairshifts.app` עם הגדרות ברירת מחדל. HSTS הוגדר לשנה, ו־`/api/health` בדומיין עונה 200 בבדיקה חיצונית. בלקוח הכניסה, ששמו שונה ל־`fair-shifts`, נוספו המקור וכתובת החזרה. דומיין ה־staging הוסר מהלקוח ומהדומיינים המורשים. בפרויקט נשארו ארבעת ההיקפים ה־non-sensitive בלבד, והמיתוג (״תורנות הוגנת״) אומת ופורסם (הכרעה 228). ב־Brevo הדומיין מאומת (DKIM ו־DMARC), והשולח `no-reply@fairshifts.app` מאומת. תיקיית Drive: לפי ההחלטה למעלה, משתמשים באותה תיקייה.
 
 ## 5. הקמה במסד הריק
 
-1. **חשבונות ראשונים** ב־bootstrap, עם המייל של המנהל הטכני ושל האחראי הראשון ([הפקודה](operations.md#גישה-ותחזוקה), עם `COMPOSE_PROJECT_NAME=fair-shifts-live`). את קודי השחזור של הטכני שומרים מחוץ לשרת ומחוץ ל־Git.
+סעיפים 1, 2 ו־5 הושלמו ב־16.10.2026.
+
+1. **חשבונות ראשונים** ב־bootstrap, עם המייל של המנהל הטכני ושל האחראי הראשון ([הפקודה](operations.md#פעולות-תחזוקה-בשרת), עם `COMPOSE_PROJECT_NAME=fair-shifts-live`). את קודי השחזור של הטכני שומרים מחוץ לשרת ומחוץ ל־Git.
 2. **בדיקת ספקים:** קוד כניסה במייל מגיע לתיבת הדואר הנכנס מהשולח החדש. כניסה ב־Google עובדת בדומיין החדש. מסך ״משלוחי מייל״ אינו מציג השהיה.
 3. **אחראי שני:** הטכני מוסיף אותו כמשתמש בודד וממנה אותו לאחראי (#114).
 4. **הגדרות יחידה:** האחראים מזינים את הערכים המאומתים מסעיף 2.
@@ -157,5 +77,4 @@ rm /opt/fair-shifts/deploy-state/paused
 
 - מסירים את כתובות ה־staging מלקוח Google ואת ה־route הישן מה־Tunnel.
 - `config-staging` ונפח המסד של `fair-shifts-production-alpine` נשמרים עצורים לפחות שבוע. מחיקה (`down --volumes` לפרויקט הישן בלבד, ומחיקת התיקייה) רק באישור המשתמש.
-- מעדכנים את [מדריך ההפעלה](operations.md) ואת זיכרון הפרויקט: production הוא הסביבה הפעילה, ואילו כתובת ה־staging ופרויקט ה־Compose הקודם כבר אינם בשימוש.
-- מכאן כל מיזוג ל־main נפרס על נתוני אמת, ולכן נדרש Review לכל PR (הכרעה 221).
+- כל מיזוג ל־main נפרס על production, ולכן נדרש Review לכל PR (הכרעה 221).

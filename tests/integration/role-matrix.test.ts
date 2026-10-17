@@ -19,6 +19,7 @@ import { errorResponse } from "../../src/server/http";
 import { readState } from "../../src/server/state";
 import { GET as readStateRoute } from "../../src/app/api/v1/state/route";
 import { POST as actionRoute } from "../../src/app/api/v1/actions/route";
+import { POST as contactRoute } from "../../src/app/api/contact/route";
 import { soldier, testIdNumber, testProfile } from "../fixtures";
 
 if (
@@ -362,6 +363,21 @@ describe("the API in front of the commands", () => {
       expect(
         ((await response.json()) as { error: { code: string } }).error.code
       ).toBe("forbidden_origin");
+    }
+  });
+  it("refuses the public contact form from another origin", async () => {
+    for (const headers of [
+      {} as Record<string, string>,
+      { origin: "https://elsewhere.example" },
+    ]) {
+      const response = await contactRoute(
+        new Request(`${origin}/api/contact`, {
+          method: "POST",
+          headers: { "content-type": "text/plain", ...headers },
+          body: JSON.stringify({ name: "א", contact: "abc", message: "ב" }),
+        })
+      );
+      expect(response.status).toBe(403);
     }
   });
   it("turns an anonymous command from the right origin away", async () => {

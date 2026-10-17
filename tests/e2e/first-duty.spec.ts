@@ -1979,7 +1979,7 @@ test("manager resolves a pending balance decision from the handling center after
     await createInvitedAccount({ name, email, role, soldierId: id });
     return id;
   }
-  const managerSoldier = await account(
+  await account(
     "הכרעה אחראי",
     "decide-manager@example.invalid",
     "310001",
@@ -1989,6 +1989,13 @@ test("manager resolves a pending balance decision from the handling center after
     "הכרעה חייל",
     "decide-soldier@example.invalid",
     "310002",
+    "soldier"
+  );
+  // The second person of the normalization; a manager's balance is frozen (decision 192).
+  const otherId = await account(
+    "הכרעה חייל נוסף",
+    "decide-other@example.invalid",
+    "310003",
     "soldier"
   );
   await login(page, "decide-manager@example.invalid");
@@ -2043,7 +2050,7 @@ test("manager resolves a pending balance decision from the handling center after
     .where(eq(duties.id, row.id));
   await unitTransaction((tx) => settleDue(tx));
   const normalization = {
-    soldierIds: [memberId, managerSoldier],
+    soldierIds: [memberId, otherId],
     operation: "percent",
     value: 50,
     reason: "נרמול רבעוני סינתטי",
