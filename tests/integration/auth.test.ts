@@ -97,6 +97,19 @@ async function invite(
   await db.insert(balances).values({ soldierId: id });
   return createInvitedAccount({ name, role, email, soldierId: id });
 }
+/**
+ * A second soldier for normalizations over several people. A duty manager's
+ * balance is frozen (decision 192), so the manager cannot be the other one.
+ */
+async function bystander() {
+  const account = await invite(
+    "חייל נוסף לנרמול",
+    "soldier",
+    "bystander@example.invalid",
+    "00077"
+  );
+  return account.soldierId!;
+}
 beforeEach(async () => {
   await db.execute(
     sql`truncate table auth_user, auth_budget, auth_rate_limit, soldiers, duty_types, unit_lock, email_quota, operations_state, command_results cascade`
@@ -1424,12 +1437,13 @@ describe("first duty vertical slice", () => {
       .update(balances)
       .set({ current: 47 })
       .where(eq(balances.soldierId, actor.soldierId!));
+    const peer = await bystander();
     await db
       .update(balances)
       .set({ current: 51 })
-      .where(eq(balances.soldierId, manager.soldierId!));
+      .where(eq(balances.soldierId, peer));
     const score = {
-      soldierIds: [actor.soldierId!, manager.soldierId!],
+      soldierIds: [actor.soldierId!, peer],
       operation: "percent",
       value: 20,
       reason: "נרמול סינתטי",
@@ -1458,7 +1472,9 @@ describe("first duty vertical slice", () => {
       idempotencyKey: key,
     });
     expect(
-      (await db.select().from(balances)).map((row) => row.current)
+      (await db.select().from(balances))
+        .filter((row) => [actor.soldierId, peer].includes(row.soldierId))
+        .map((row) => row.current)
     ).toEqual([41, 41]);
     expect(
       (await db.select().from(ledger)).filter(
@@ -1473,8 +1489,9 @@ describe("first duty vertical slice", () => {
   });
   it("rejects a normalization preview after a concurrent balance change without partially applying it", async () => {
     const { actor } = await fixtureDuty();
+    const peer = await bystander();
     const input = {
-      soldierIds: [manager.soldierId!, actor.soldierId!],
+      soldierIds: [peer, actor.soldierId!],
       operation: "add",
       value: 5,
       reason: "בדיקת תצוגה",
@@ -1499,12 +1516,8 @@ describe("first duty vertical slice", () => {
       command("score.apply", { ...input, token: preview.token })
     ).rejects.toThrow("יתרה השתנתה");
     expect(
-      (
-        await db
-          .select()
-          .from(balances)
-          .where(eq(balances.soldierId, manager.soldierId!))
-      )[0].current
+      (await db.select().from(balances).where(eq(balances.soldierId, peer)))[0]
+        .current
     ).toBe(0);
     expect(
       (
@@ -6724,7 +6737,7 @@ describe("past performance corrections", () => {
     const soldier = await member();
     const { assignment, start, end } = await credited(soldier.soldierId);
     await adjust(
-      [soldier.soldierId, manager.soldierId!],
+      [soldier.soldierId, await bystander()],
       "percent",
       50,
       "נרמול סינתטי"
@@ -6986,7 +6999,7 @@ describe("past performance corrections", () => {
       lottery
     );
     await adjust(
-      [soldier.soldierId, manager.soldierId!],
+      [soldier.soldierId, await bystander()],
       "percent",
       50,
       "נרמול סינתטי"
@@ -7292,7 +7305,7 @@ describe("past performance corrections", () => {
     await adjust([soldier.soldierId], "percent", 50, "הפחתה שחלה לפני הסיום");
     await adjust([soldier.soldierId], "set", 20, "קביעה שנרשמה ראשונה");
     await adjust(
-      [soldier.soldierId, manager.soldierId!],
+      [soldier.soldierId, await bystander()],
       "subtract",
       1,
       "נרמול שנרשם אחרון"

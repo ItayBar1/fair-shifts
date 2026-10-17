@@ -1,0 +1,75 @@
+# אבטחה
+
+מודל האבטחה של Fair Shifts: גבולות האמון, ההגנות שבקוד, הבדיקות ששומרות עליהן והסיכונים שהתקבלו. ההכרעות המלאות ב[יומן ההכרעות](open-decisions.md) (בעיקר 207–217), והתפעול ב[מדריך ההפעלה](operations.md). המסמך מחליף את מפת התיקונים ואת מסמכי הראיות מביקורת 05–10.10.2026, שנשמרים בהיסטוריית Git.
+
+## גבולות אמון
+
+| גורם           | מה מותר לו                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| אנונימי        | דף הכניסה, `/privacy`, טופס הפנייה (`/api/contact`), `/api/health` (רק `ok`/`unavailable`) ונתיבי האימות הציבוריים. אין הרשמה פתוחה: רק כתובת שהוזמנה נכנסת. |
+| חייל           | הלוח שפורסם, טבלת הצדק (שמות וניקוד), והמידע שלו בלבד. לא פרטי קשר, פטורים או נימוקי אילוצים של אחרים, ולא סיבות של אחראי ביומן הניקוד (הכרעה 168).          |
+| אחראי תורנויות | כל נתוני השיבוץ של היחידה. אינו משובץ, והיתרה שלו מוקפאת (הכרעה 192).                                                                                        |
+| מנהל טכני      | חשבונות, הרשאות, תפעול וגיבוי. אינו רואה נתוני חיילים או טבלת צדק.                                                                                           |
+| מפעיל השרת     | פקודות Compose, שחזור ותצורה. סודות מחוץ למאגר, מפתח פענוח הגיבויים מחוץ לשרת.                                                                               |
+
+## ההגנות בקוד
+
+- **אימות.** קוד בן 6 ספרות במייל (HMAC במסד, 10 דקות, דקה בין שליחות, חמש טעויות שורפות את הקוד בלבד והמתנה מוכפלת עד 24 שעות, הכרעה 207), או Google לפי `sub` יציב אחרי `email_verified` בקישור הראשון. כל חיבור קשור ל־`securityEpoch` של החשבון; נעילה, שינוי תפקיד או מייל מעלים אותו ומבטלים חיבורים. תוקף חיבור: שבוע לחייל, יום לאחראי ולטכני. `src/server/auth/`.
+- **מוני קצב** אטומיים ב־PostgreSQL לפי IP (`cf-connecting-ip` רק עם `TRUST_CLOUDFLARE_IP=true` מאחורי ה־Tunnel), ומכסות יומיות לכתובת ולאתר. `src/server/auth/rate-limit.ts`, `budgets.ts`.
+- **הרשאות.** כל פעולה עוברת ב־`executeAction` (`src/server/actions.ts`) עם בדיקת תפקיד בתחילת המטפל (`manager`/`technical` ב־`repository.ts`). `tests/integration/role-matrix.test.ts` משווה את מפת ההרשאות ל־switch ונכשל על פעולה חדשה שלא נוספה אליה. `readState` (`src/server/state.ts`) מסנן לפי תפקיד את מה שנשלח לדפדפן.
+- **CSRF.** כל POST שמשנה מצב (`/api/v1/*`, `/api/auth/*`, `/api/contact`) מחייב `Origin` זהה ל־`BETTER_AUTH_URL`; עוגיית החיבור `HttpOnly`, `SameSite=Lax`.
+- **קלט.** פעולות עד 2MiB ועומק JSON 32, אימות עד 16KiB (`bounded-body.ts`); Zod לכל payload (`validation.ts`); idempotency key לכל פעולה, עם בדיקת טביעת הבקשה. XLSX עד 5MiB דחוסים ו־50MiB פרוסים, בתהליך ילד עם גבולות זיכרון וזמן (`workbook-*.ts`).
+- **דפדפן.** CSP עם nonce לכל בקשה ו־`strict-dynamic` (`src/proxy.ts`, `browser-security.ts`), `frame-ancestors 'none'`, HSTS לשנה, `nosniff`, `Referrer-Policy: same-origin`. סגנונות inline מותרים בגלל Radix.
+- **סודות במסד.** קודי מייל ואסימוני Calendar מוצפנים ב־AES-256-GCM עם AAD של מטרה ורשומה (`src/server/secrets.ts`). אסימוני Google אינם נשמרים בטבלת הכניסה. מייל נשלח כטקסט בלבד, בלי HTML.
+- **מחיקה.** מחיקת חייל מסירה מידע רגיש מכל עותק פעיל, ויומן מחיקות חתום ב־Ed25519 מחוץ למסד מחיל אותה מחדש אחרי שחזור (הכרעות 192, 196). מאגר הסוגים ב־`src/domain/erasure.ts` נבדק מול הקוד.
+- **לוגים.** שורת כשל אחת באנגלית עם שיטה, נתיב, סוג פעולה ומיקום בקוד, בלי גוף, כותרות, עוגיות או מידע אישי (`diagnostics.ts`).
+- **תשתית.** אין פורט מפורסם; האתר נגיש רק דרך cloudflared, ולמסד אין יציאה מהשרת. login נפרד לכל שירות בלי superuser; רק `operations` משנה סכמה. התמונות רצות כמשתמש לא־root, בלי מנהל חבילות.
+- **פריסה.** השרת מושך את main רק אחרי ריצת CI ירוקה של אותו commit (`scripts/auto-deploy.sh`); אין runner או סודות פריסה ב־GitHub. main מוגן: PR, ‏`verify` על ענף עדכני ואישור של המפתח השני, בלי bypass (הכרעה 217).
+
+## שרשרת אספקה
+
+`sh scripts/security-scan.sh` רץ ב־CI על כל push: pnpm audit ו־Trivy על התלויות ועל כל תמונות הייצור. High/Critical חוסמים, אלא אם יש חריגה ב־`config/security-exceptions.json` עם אישור GitHub של המפתח השני ותפוגה של עד 30 יום. כרגע אין חריגות.
+
+החלפות תלויות פעילות ב־`pnpm-workspace.yaml`, ש־`tests/unit/dependency-overrides.test.ts` שומרת עליהן:
+
+| ממצא שהוסר               | ההחלפה                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| braces 3.0.3 (High)      | `fast-glob` של תוסף ה־lint של Next מוחלף ב־`tinyglobby`, ואיתו יוצאים micromatch ו־braces |
+| esbuild 0.18.20 (Medium) | `@esbuild-kit/esm-loader` של drizzle-kit, שאינו בשימוש, הוסר                              |
+| uuid 8.3.2 (Medium)      | `exceljs>uuid` הועלה ל־11.1.1                                                             |
+
+cloudflared נבנה ממקור 2026.10.0 מוצמד ל־commit ול־SHA256, עם Go 1.26.9 ו־`golang.org/x/net` v0.60.0 (`Dockerfile.tunnel`). בעדכון Next, drizzle-kit, exceljs או cloudflared בודקים אם ההחלפה עדיין נחוצה.
+
+## רגרסיות שנשמרות
+
+| נושא                                            | בדיקות                                                                                       |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| השתלטות דרך שינוי מייל של אחראי                 | `tests/integration/technical-email.test.ts`, `tests/e2e/technical-email-change.spec.ts`      |
+| נעילת חשבון אנונימית, ניצול מכסה, גילוי חשבונות | `tests/integration/otp-protection.test.ts`, `auth.test.ts`                                   |
+| קישור Google בלי נעילת חשבון                    | `tests/integration/auth.test.ts`, `google-sign-in.test.ts`                                   |
+| מיילים לנמען שאינו רלוונטי או שסיים שירות       | `tests/integration/security-mail.test.ts`, `notifications.test.ts`                           |
+| שאריות מידע אחרי מחיקה                          | `tests/integration/security-erasure.test.ts`, `soldier-deletion.test.ts`                     |
+| גוף בקשה, ZIP ופענוח XLSX                       | `tests/unit/bounded-body.test.ts`, `workbook-archive.test.ts`, `workbook-process.test.ts`    |
+| הצפנה ויומן חתום                                | `tests/unit/secrets.test.ts`, `tests/integration/deletion-log.test.ts`                       |
+| CSP ו־HSTS                                      | `tests/unit/browser-security.test.ts`, `tests/e2e/browser-security.spec.ts`                  |
+| הרשאות מסד ותצורה נפרדת                         | `tests/integration/database-permissions.test.ts`, `tests/unit/service-configuration.test.ts` |
+| הגנת main וכללי המאגר                           | `tests/unit/repository-rules.test.ts`, `supply-chain.test.ts`                                |
+
+## סיכונים שהתקבלו
+
+- **מצב חשבון לפני כניסה** (נעול, לא קיים) אינו נחשף בתשובות, אבל הודעות ניהול היסטוריות עשויות להזכיר אותו. התקבל בהחלטה.
+- **פתיחת ״השיבוצים שלי״ ב־GET מקדמת את סמן הקריאה** (`readMyAssignments`), גם מבקשה בין־אתרית. ממצא דחוי, השפעה על חיווי ״חדש״ בלבד.
+- **מייל שנמסר לספק אינו ניתן למשיכה**, גם אם מחיקה הגיעה אחריו.
+- **חתימת יומן המחיקות** אינה מגינה מהשתלטות על העובד ועל המפתח יחד, ואינה מזהה החזרה לאחור של המסד ושני עותקי היומן יחד.
+- **פריסה אוטומטית** סומכת על הגנת main ב־GitHub: מי שמצליח למזג ל־main מריץ קוד בשרת. אין אימות חתימות commit.
+- **טופס הפנייה** מוגבל ל־3 פניות ביום לכתובת ול־30 ביום לאתר. מי שמשתמש בכתובות רבות יכול למלא את מכסת האתר ליום אחד.
+
+## ביקורת 17.10.2026
+
+סקירה אחרונה לפני העבודה השוטפת, אחרי העלייה ל־production. מה תוקן ומה נשאר, לפי חומרה:
+
+| ממצא                                                                                                     | מצב                                                                                            |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `score.preview`/`score.apply` לא חסמו שינוי יתרה של אחראי, אף שהיא מוקפאת לפי הכרעה 192 (הממשק חסם בלבד) | תוקן: `manager_balance_frozen` בשרת, רגרסיה ב־`tests/integration/manager-exclusion.test.ts`    |
+| `/api/contact` לא בדק `Origin`, כך שאתר אחר יכול היה למלא את מכסת הפניות היומית דרך הדפדפנים של מבקריו   | תוקן: `verifyOrigin`, רגרסיה ב־`tests/integration/role-matrix.test.ts`                         |
+| `readState` קורא כמה טבלאות ב־READ COMMITTED, כך שתשובה אחת יכולה לערבב מצב לפני ואחרי commit            | פתוח, השפעה תצוגתית שמתוקנת בריענון הבא (ראו [מצב הפרויקט](../config/memory/project-state.md)) |

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import Decimal from "decimal.js";
 import type { DbTransaction } from "./db";
 import { assignments, balances, duties, ledger, soldiers } from "./schema";
+import { user } from "./auth-schema";
 import {
   audit,
   createRecord,
@@ -151,6 +152,27 @@ function adjusted(before: number, operation: string, value: number) {
   );
 }
 
+/** A duty manager's balance stays frozen while they hold the role (decision 192). */
+async function refuseFrozenBalances(tx: DbTransaction, soldierIds: string[]) {
+  const frozen = soldierIds.length
+    ? await tx
+        .select({ soldierId: user.soldierId })
+        .from(user)
+        .where(
+          and(
+            eq(user.role, "manager"),
+            isNull(user.deletedAt),
+            inArray(user.soldierId, soldierIds)
+          )
+        )
+    : [];
+  invariant(
+    !frozen.length,
+    "manager_balance_frozen",
+    "היתרה של אחראי תורנויות מוקפאת ואינה ניתנת לשינוי"
+  );
+}
+
 export async function previewScore(
   tx: DbTransaction,
   actor: Actor,
@@ -164,6 +186,7 @@ export async function previewScore(
     "duplicate_soldier",
     "רשימת החיילים מכילה כפילות"
   );
+  await refuseFrozenBalances(tx, input.soldierIds);
   const all = await tx
     .select({
       id: soldiers.id,
@@ -230,6 +253,11 @@ export async function applyScore(
     after: number;
     version: number;
   }[];
+  // The role may have changed since the preview.
+  await refuseFrozenBalances(
+    tx,
+    rows.map((row) => row.soldierId)
+  );
   for (const row of rows) {
     const [balance] = await tx
       .select()
