@@ -17,6 +17,7 @@ import {
   evaluateEligibility,
   genderCondition,
 } from "../domain/eligibility";
+import { assertDefaultHours } from "../domain/default-hours";
 import { calculatePrice } from "../domain/pricing";
 import { membershipIn } from "../domain/rank-tracks";
 import { publishBlock } from "../domain/publication";
@@ -81,6 +82,15 @@ const catalogInput = z.object({
   capabilityIds: z.array(id).max(50).default([]),
   restBeforeMinutes: z.number().int().nonnegative().default(0),
   restAfterMinutes: z.number().int().nonnegative().default(0),
+  // Prefills a new instance only; null clears it (decision 229).
+  defaultHours: z
+    .object({
+      startTime: z.string(),
+      endTime: z.string(),
+      endDays: z.number().int(),
+    })
+    .nullable()
+    .optional(),
   roles: z
     .array(
       z.object({
@@ -193,7 +203,22 @@ export async function saveDutyType(
     requirements,
     ...input.roles.map((role) => role.requirements ?? {}),
   ]);
-  const data = { ...input, pricing, uiPricing: input.pricing, requirements };
+  if (input.defaultHours)
+    try {
+      assertDefaultHours(input.defaultHours);
+    } catch (error) {
+      throw new AppError(
+        "invalid_default_hours",
+        error instanceof Error ? error.message : "שעות ברירת המחדל אינן תקינות"
+      );
+    }
+  const data = {
+    ...input,
+    defaultHours: input.defaultHours ?? undefined,
+    pricing,
+    uiPricing: input.pricing,
+    requirements,
+  };
   if (input.id) {
     const [existing] = await tx
       .select()

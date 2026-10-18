@@ -96,18 +96,20 @@ export function windowsOf(value: unknown): Window[] {
       : everyDay,
   }));
 }
+/** ISO weekdays as names in the order of the Israeli week; none or all is every day. */
+export function describeWeekdays(days: number[]) {
+  return !days.length || days.length === 7
+    ? "כל הימים"
+    : weekdays
+        .filter((day) => days.includes(day.value))
+        .map((day) => day.label)
+        .join(", ");
+}
 export function describeWindow(window: Row) {
   const days = Array.isArray(window.weekdays)
     ? window.weekdays.map(Number)
     : [];
-  const names =
-    !days.length || days.length === 7
-      ? "כל הימים"
-      : weekdays
-          .filter((day) => days.includes(day.value))
-          .map((day) => day.label)
-          .join(", ");
-  return `${str(window.startTime)}–${str(window.endTime)} · ${names}`;
+  return `${str(window.startTime)}–${str(window.endTime)} · ${describeWeekdays(days)}`;
 }
 
 /**

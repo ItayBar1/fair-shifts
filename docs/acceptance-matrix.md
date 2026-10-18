@@ -143,6 +143,9 @@
 
 - [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices and composition only through an explicit proposal`
 - [instance-composition.test.ts](../tests/integration/instance-composition.test.ts): `edits a draft's roles and daily pricing, prices each seat once and leaves the catalog and other instances alone`
+- [default-hours.test.ts](../tests/unit/default-hours.test.ts): `fills local start and end from a start date across a month, a year and the night of a clock change`; `finds the start weekdays on which the hours fall outside an hours exemption`
+- [duty-type-default-hours.test.ts](../tests/integration/duty-type-default-hours.test.ts): `saves and clears default hours, rejects invalid ones and sends them to managers only`; `checks an instance created from the default hours against each soldier's hours exemption`
+- [default-hours.spec.ts](../tests/e2e/default-hours.spec.ts): `sets default hours on a duty type, lists the hours exemptions they exceed and prefills a new instance`; `a new duty type starts at one point and one call-up point, either can change and the call-up can be cleared`
 
 ### 24. כאחראי, אני רוצה ליצור תורנות מסוימת עם מועדים, מיקום והנחיות משתנים כדי לשמור את פרטי הביצוע הנכונים. — מכוסה
 

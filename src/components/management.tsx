@@ -58,6 +58,7 @@ import {
   SoldierConditions,
   WindowsEditor,
   capabilityOptions,
+  describeWeekdays,
   describeWindow,
   genderHint,
   genders,
@@ -65,6 +66,13 @@ import {
   windowsOf,
 } from "./eligibility-conditions";
 import type { Gender, RankClause, Requirements } from "@/domain/types";
+import { MAX_END_DAYS, defaultHoursRange } from "@/domain/default-hours";
+import {
+  defaultHoursOf,
+  describeDefaultHours,
+  readDefaultHours,
+  relevantHoursExemptions,
+} from "@/client/default-hours";
 /** The phone format the server accepts (decision 222). */
 export const phoneHint = "נייד ישראלי שמתחיל ב־05, או מספר בינלאומי שמתחיל ב־+";
 /** Saving a second soldier with the same first and last name is allowed after this. */
@@ -1120,6 +1128,20 @@ function CatalogForm({
       : [{ id: crypto.randomUUID(), name: "תורן", count: 1, requirements: {} }]
   );
   const [bonus, setBonus] = useState(false);
+  const saved = defaultHoursOf(initial);
+  const [hoursInput, setHoursInput] = useState({
+    start: saved?.startTime ?? "",
+    end: saved?.endTime ?? "",
+    days: String(saved?.endDays ?? 0),
+  });
+  const hours = readDefaultHours(
+    hoursInput.start,
+    hoursInput.end,
+    hoursInput.days
+  );
+  const relevant = hours.hours
+    ? relevantHoursExemptions(hours.hours, rows(state.eligibilityCatalog))
+    : [];
   const pricing = obj(initial?.pricing);
   const fields: Field[] = [
     {
@@ -1156,7 +1178,8 @@ function CatalogForm({
       required: true,
       min: 0,
       step: "0.01",
-      value: num(pricing.base ?? pricing.amount),
+      // A new type starts at one point a duty and one a call-up (decision 230).
+      value: initial ? num(pricing.base ?? pricing.amount) : 1,
     },
     {
       name: "callUp",
@@ -1164,8 +1187,8 @@ function CatalogForm({
       type: "number",
       min: 0,
       step: "0.01",
-      value: str(pricing.callUp),
-      hint: "מוצע לאחראי כשהוא מסמן הזנקה; אפשר לאשר או להזין סכום אחר",
+      value: initial ? str(pricing.callUp) : "1",
+      hint: "מוצע לאחראי כשהוא מסמן הזנקה; אפשר לשנות, או לרוקן כדי לא לשמור סכום",
     },
     {
       name: "restBeforeMinutes",
@@ -1180,6 +1203,68 @@ function CatalogForm({
       type: "number",
       min: 0,
       value: num(initial?.restAfterMinutes),
+    },
+    {
+      name: "defaultStart",
+      label: "שעת התחלה",
+      type: "time",
+      group: "שעות ברירת מחדל (רשות)",
+      value: hoursInput.start,
+      hint: "ממלאות מראש מופע חדש; אפשר לשנות במופע",
+      onChange: (start) => setHoursInput((input) => ({ ...input, start })),
+    },
+    {
+      name: "defaultEnd",
+      label: "שעת סיום",
+      type: "time",
+      group: "שעות ברירת מחדל (רשות)",
+      value: hoursInput.end,
+      onChange: (end) => setHoursInput((input) => ({ ...input, end })),
+    },
+    {
+      name: "defaultEndDays",
+      label: "ימים עד הסיום",
+      type: "number",
+      group: "שעות ברירת מחדל (רשות)",
+      min: 0,
+      max: MAX_END_DAYS,
+      value: hoursInput.days,
+      hint: "0 — באותו יום, 1 — למחרת",
+      onChange: (days) => setHoursInput((input) => ({ ...input, days })),
+    },
+    {
+      name: "defaultHoursRelevance",
+      label: "פטורי שעות רלוונטיים",
+      type: "custom",
+      group: "שעות ברירת מחדל (רשות)",
+      custom: hours.error ? (
+        <Notice tone="danger">{hours.error}</Notice>
+      ) : !hours.hours ? (
+        <small className="muted">
+          בלי שעות ברירת מחדל מזינים את המועדים בכל מופע
+        </small>
+      ) : relevant.length ? (
+        <Notice tone="warning">
+          חייל שמחזיק באחד מפטורי השעות האלה אינו מתאים לתורנות בשעות{" "}
+          {describeDefaultHours(hours.hours)}. הוא לא ישובץ אוטומטית, ובשיבוץ
+          ידני נדרש אישור חריג:
+          <ul>
+            {relevant.map((entry) => (
+              <li key={entry.id}>
+                {entry.name} — בתורנות שמתחילה{" "}
+                {entry.weekdays.length === 7
+                  ? "בכל יום"
+                  : `בימי ${describeWeekdays(entry.weekdays)}`}
+              </li>
+            ))}
+          </ul>
+        </Notice>
+      ) : (
+        <small className="muted">
+          אף פטור שעות בקטלוג אינו חוסם תורנות בשעות{" "}
+          {describeDefaultHours(hours.hours)}
+        </small>
+      ),
     },
     {
       name: "description",
@@ -1275,6 +1360,12 @@ function CatalogForm({
       <Form
         fields={fields}
         onSubmit={async (v) => {
+          const defaultHours = readDefaultHours(
+            str(v.defaultStart),
+            str(v.defaultEnd),
+            str(v.defaultEndDays)
+          );
+          if (defaultHours.error) throw new Error(defaultHours.error);
           const supplements = bonus
             ? [
                 ...rows(pricing.supplements),
@@ -1306,6 +1397,7 @@ function CatalogForm({
               },
               restBeforeMinutes: v.restBeforeMinutes,
               restAfterMinutes: v.restAfterMinutes,
+              defaultHours: defaultHours.hours,
               exemptionIds: v.exemptionIds,
               genders: v.genders,
               capabilityIds: v.capabilityIds,
@@ -1505,6 +1597,12 @@ export function CatalogView({
                       : "לביצוע"}
                   </span>
                 </div>
+                {defaultHoursOf(type) && (
+                  <div className="meta-line">
+                    <Clock3 size={15} />
+                    שעות: {describeDefaultHours(defaultHoursOf(type)!)}
+                  </div>
+                )}
                 <div className="meta-line">
                   <Clock3 size={15} />
                   מנוחה: {num(type.restBeforeMinutes)} דקות לפני ·{" "}
@@ -1552,6 +1650,108 @@ export function CatalogView({
     </>
   );
 }
+/**
+ * A new instance starts from its type's default hours when the type has them
+ * (decision 229): a start date fills both moments, and each stays editable.
+ */
+function NewDutyForm({ state, action }: { state: AppState; action: Action }) {
+  const [typeId, setTypeId] = useState("");
+  const [date, setDate] = useState("");
+  const [times, setTimes] = useState({ start: "", end: "" });
+  const typeHours = (id: string) =>
+    defaultHoursOf(state.dutyTypes.find((type) => type.id === id));
+  const hours = typeHours(typeId);
+  const fill = (day: string, from = hours) => {
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(day))
+      setTimes(defaultHoursRange(day, from));
+  };
+  const moment = (name: "start" | "end", label: string) => (
+    <label className="field">
+      <span>
+        {label}
+        <span aria-hidden="true" className="required">
+          {" "}
+          *
+        </span>
+      </span>
+      <input
+        aria-label={label}
+        type="datetime-local"
+        dir="ltr"
+        required
+        value={times[name]}
+        onChange={(e) => setTimes({ ...times, [name]: e.target.value })}
+      />
+    </label>
+  );
+  return (
+    <Form
+      fields={[
+        {
+          name: "typeId",
+          label: "סוג תורנות",
+          type: "select",
+          required: true,
+          options: state.dutyTypes.map((t) => ({
+            value: t.id,
+            label: str(t.name),
+          })),
+          onChange: (id) => {
+            setTypeId(id);
+            fill(date, typeHours(id));
+          },
+        },
+        { name: "name", label: "שם המופע", required: true },
+        {
+          name: "times",
+          label: "מועדי התורנות",
+          type: "custom",
+          custom: (
+            <div className="form-grid">
+              {hours && (
+                <label className="field full">
+                  <span>תאריך התחלה</span>
+                  <input
+                    aria-label="תאריך התחלה"
+                    type="date"
+                    dir="ltr"
+                    value={date}
+                    onChange={(e) => {
+                      setDate(e.target.value);
+                      fill(e.target.value);
+                    }}
+                  />
+                  <small>
+                    ממלא את המועדים לפי שעות ברירת המחדל של הסוג:{" "}
+                    {describeDefaultHours(hours)}. אפשר לשנות אותם.
+                  </small>
+                </label>
+              )}
+              {moment("start", "תחילת התורנות")}
+              {moment("end", "סיום התורנות")}
+            </div>
+          ),
+        },
+        { name: "location", label: "מיקום", required: true },
+        {
+          name: "instructions",
+          label: "הנחיות",
+          type: "textarea",
+          full: true,
+        },
+      ]}
+      onSubmit={(v) =>
+        action("duty.create", {
+          ...v,
+          times: undefined,
+          start: times.start,
+          end: times.end,
+        })
+      }
+      submitLabel="יצירת טיוטה"
+    />
+  );
+}
 export function PlanningView({
   state,
   action,
@@ -1564,42 +1764,7 @@ export function PlanningView({
       <div className="two-columns">
         <Panel title="תורנות חדשה" subtitle="המופע יישמר כטיוטה משותפת לאחראים">
           {state.dutyTypes.length ? (
-            <Form
-              fields={[
-                {
-                  name: "typeId",
-                  label: "סוג תורנות",
-                  type: "select",
-                  required: true,
-                  options: state.dutyTypes.map((t) => ({
-                    value: t.id,
-                    label: str(t.name),
-                  })),
-                },
-                { name: "name", label: "שם המופע", required: true },
-                {
-                  name: "start",
-                  label: "תחילת התורנות",
-                  type: "datetime-local",
-                  required: true,
-                },
-                {
-                  name: "end",
-                  label: "סיום התורנות",
-                  type: "datetime-local",
-                  required: true,
-                },
-                { name: "location", label: "מיקום", required: true },
-                {
-                  name: "instructions",
-                  label: "הנחיות",
-                  type: "textarea",
-                  full: true,
-                },
-              ]}
-              onSubmit={(v) => action("duty.create", v)}
-              submitLabel="יצירת טיוטה"
-            />
+            <NewDutyForm state={state} action={action} />
           ) : (
             <Empty
               title="צריך להגדיר קודם סוג תורנות"
