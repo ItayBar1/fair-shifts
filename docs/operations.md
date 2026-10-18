@@ -52,7 +52,7 @@ sh scripts/production.sh init --environment=production --url=https://fairshifts.
 - `db.env` — מנהל האשכול וסיסמאות ה־bootstrap של PostgreSQL. הסיסמה נקבעת רק באתחול הראשון של הנפח; החלפתה מחייבת נוהל ייעודי.
 - `app.env` — `DEPLOYMENT_ENVIRONMENT`, כתובת המסד של login האתר, `BETTER_AUTH_URL` ב־https, סודות Better Auth וקודי כניסה, מפתח הצפנת הסודות, לקוח Google לכניסה וליומן, ומפת המפתחות הציבוריים של יומן המחיקות.
 - `worker.env` — תצורת העובד: Brevo, Drive, לקוח Google ליומן והגדרות גיבוי.
-- `worker-secrets.env` — מפתח החתימה הפרטי (Ed25519) של יומן המחיקות, לעובד בלבד. לפני הפעלה שומרים עותק מחוץ לשרת ומגדירים `DELETION_LOG_KEY_RECOVERY_CONFIRMED=true`; הדגל הוא הצהרת מפעיל ואינו נבדק.
+- `worker-secrets.env` — מפתח החתימה הפרטי (Ed25519) של יומן המחיקות, לעובד בלבד. לפני הפעלה שומרים עותק מחוץ לשרת ומגדירים `DELETION_LOG_KEY_RECOVERY_CONFIRMED=true`. בדיקת התצורה מחייבת את הערך `true`; קיומו ותקינותו של העותק החיצוני נשארים באחריות המפעיל ואינם נבדקים אוטומטית.
 - `operations.env` — שירות התפעול החד־פעמי: מיגרציות, הרשאות ושחזור, עם Drive ובלי Brevo או מפתח החתימה.
 - `tunnel.env` — `TUNNEL_TOKEN`, שממלאים ידנית (בהמשך).
 
@@ -237,18 +237,20 @@ Google sign-in rejected signup_disabled
 - **מה נשמר:** `pg_dump` בפורמט custom יוצר תמונה עקבית של המסד הפעיל, בלי תור המשימות `pgboss`. הפלט עובר ישירות ל־`age --encrypt` עם המפתח הציבורי, ולכן לדיסק נכתב רק קובץ מוצפן. הקובץ המקומי נמחק בסיום, גם בכשל.
 - **מתי:** כל יום מ־`BACKUP_TIME` (ברירת מחדל 03:30) לפי שעון ישראל, פעם אחת לכל תאריך. עובד שחוזר מהשבתה משלים את הגיבוי של אותו יום. בזמן מצב שחזור לא מתחיל גיבוי. המנהל הטכני יכול להפעיל ״גיבוי עכשיו״ במסך ״גיבוי ושחזור״.
 - **״אומת״:** אחרי ההעלאה הקובץ נקרא מהיעד, וגודלו ו־SHA-256 שלו מושווים למה שהוצפן. זה אינו שחזור בדיקה; השחזור המבודד והתרגיל הרבעוני בסעיף ״שחזור מבודד ותרגיל רבעוני״.
-- **שמירה:** עד 30 עותקים. כשאין מקום נמחקים גיבויי היישום הוותיקים, אבל לא העותק המאומת האחרון. היישום רואה ב־Drive רק קבצים שיצר בעצמו (`drive.file`), ומוחק לצמיתות ולא לאשפה.
+- **שמירה:** עד 30 עותקים. כשאין מקום נמחקים גיבויי היישום הוותיקים, אבל לא העותק המאומת האחרון. הרשאת `drive.file` מאפשרת גישה לקבצים שהיישום יצר או שהמשתמש נתן לו גישה אליהם במפורש, ומחיקה נעשית לצמיתות ולא לאשפה.
 - **כשלים:** כשל זמני נוסה שוב אחרי 15 דקות ואחרי שעה. מפתח חסר, הרשאה שפגה ונפח חסר נכשלים מיד. התראה נשלחת לחשבון הטכני כהודעת אתר וכמייל (סוג העדפה ״תקלות תפעול״). ביומן העובד ובמסד נשמרת רק קטגוריית השגיאה.
 
 ### הגדרות גיבוי ב־`worker.env` וב־`operations.env`
 
-| משתנה                                                                                | משמעות                                                                                                                               |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `BACKUP_STORAGE`                                                                     | `drive` בסביבה אמיתית. ריק: הגיבוי כבוי, והמסך מציג זאת. `directory` מיועד לבדיקות מקומיות בלבד.                                     |
-| `AGE_RECIPIENT`                                                                      | המפתח **הציבורי** (`age1…`). בדיקת התצורה דוחה מפתח פרטי.                                                                            |
-| `BACKUP_TIME`                                                                        | שעת הגיבוי היומי בשעון ישראל, בתבנית `HH:MM`.                                                                                        |
-| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | לקוח OAuth ואסימון רענון של חשבון Google הייעודי, בהרשאה `drive.file` בלבד. אין להשתמש בחשבון של חייל או באותו לקוח של כניסת Google. |
-| `GOOGLE_DRIVE_FOLDER_ID`                                                             | רשות. ריק: היישום יוצר תיקייה משלו ושומר בה. בהרשאת `drive.file` תיקייה שנוצרה ידנית אינה נגישה ליישום.                              |
+| משתנה                                                                                | משמעות                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BACKUP_STORAGE`                                                                     | `drive` בסביבה אמיתית. ריק: הגיבוי כבוי, והמסך מציג זאת. `directory` מיועד לבדיקות מקומיות בלבד.                                                                                                                                     |
+| `AGE_RECIPIENT`                                                                      | המפתח **הציבורי** (`age1…`). בדיקת התצורה דוחה מפתח פרטי.                                                                                                                                                                            |
+| `BACKUP_TIME`                                                                        | שעת הגיבוי היומי בשעון ישראל, בתבנית `HH:MM`.                                                                                                                                                                                        |
+| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | לקוח OAuth ואסימון רענון של חשבון Google הייעודי, בהרשאה `drive.file` בלבד. אין להשתמש בחשבון של חייל או באותו לקוח של כניסת Google.                                                                                                 |
+| `GOOGLE_DRIVE_FOLDER_ID`                                                             | רשות. ריק: היישום משתמש בתיקייה הראשונה שהוא מוצא עם הסימון `fairShiftsFolder=backups`, ורק אם אין כזאת יוצר תיקייה. מזהה מפורש חייב להפנות לתיקייה נגישה ללקוח; יצירה ידנית והדבקת מזהה בלבד אינן מעניקות גישה בהרשאת `drive.file`. |
+
+ב־production נשמרה אותה תיקייה ששימשה את staging, לפי החלטת המשתמש מ־16.10.2026. בחירת תיקייה אינה מבטיחה כרגע בידוד מלא בין התקנות: חיפוש יומן המחיקות (`findKind`) וחיפוש לפי ריצה (`findRun`) אינם מוגבלים לתיקייה הנבחרת. אם לקוח Drive רואה קבצים מהתקנה אחרת, עלולה להיות התנגשות. יש לתקן את הסינון לפני שימוש בלקוח משותף להתקנות נוספות; אין בכך ראיה להתנגשות בסביבה הפעילה. ההוכחה וגבולות הבדיקה ב[ביקורת production](production-audit-2026-10-18.md).
 
 ### מפתח ההצפנה
 
@@ -261,28 +263,51 @@ age-keygen -y ~/fair-shifts-backup.key   # prints the public key for AGE_RECIPIE
 
 ### חיבור Drive וחידוש הרשאה
 
-שינוי אסימון או לקוח Drive מחייב סנכרון גם ל־operations.env, בלי להוסיף סודות אלה ל־app.env. שינויים בלקוח כניסה או Calendar מחייבים את app.env ואת worker.env.
+שינוי אסימון או לקוח Drive מחייב עדכון זהה ב־`worker.env` וב־`operations.env`, בלי להוסיף סודות אלה ל־`app.env`. שינויים בלקוח הכניסה או בדגל Calendar מחייבים את `app.env` ואת `worker.env`.
 
 כרטיס [#37](https://github.com/ItayBar1/fair-shifts/issues/37). ההגדרה בחשבון Google הייעודי:
 
-1. פרויקט Cloud נפרד מהפרויקט של כניסת Google, ובו Google Drive API מופעל.
-2. ב־Google Auth Platform: ב־Audience ‏External, ב־Data Access ההרשאה `.../auth/drive.file` בלבד, והאפליקציה מפורסמת (**In production**). במצב Testing אסימון הרענון פג אחרי שבעה ימים.
-3. לקוח OAuth מסוג Web application, עם redirect ‏`https://developers.google.com/oauthplayground`. סוד הלקוח מוצג פעם אחת בלבד, ונשמר מיד במנהל הסיסמאות.
+1. בפרויקט Cloud ‏`fairshifts-backup` מפעילים Google Drive API. בפריסה הנוכחית הפרויקט משותף לכניסה ולגיבוי, עם **לקוחות OAuth נפרדים**; אין דרישה לפרויקט נוסף.
+2. ב־Google Auth Platform: ב־Audience ‏External, האפליקציה מפורסמת (**In production**), וב־Data Access נכללת ההרשאה `.../auth/drive.file`. אסימון הגיבוי מופק להרשאה זו בלבד; הרשאות הכניסה ו־Calendar שייכות למסלול הכניסה ואינן מתווספות לבקשת אסימון הגיבוי. במצב Testing אסימון הרענון פג אחרי שבעה ימים.
+3. לקוח OAuth נפרד לגיבוי מסוג Web application, עם redirect ‏`https://developers.google.com/oauthplayground`. סוד הלקוח מוצג פעם אחת בלבד, ונשמר מיד במנהל הסיסמאות.
 4. אסימון רענון ב־[OAuth Playground](https://developers.google.com/oauthplayground):
    - בגלגל השיניים: Access type ‏Offline, ו־**Use your own OAuth credentials** עם הלקוח מסעיף 3.
    - ההרשאה `drive.file`, התחברות עם החשבון הייעודי, ואז Exchange.
    - **במסך ההסכמה צריך להופיע שם האפליקציה מ־Branding.** אם מופיע "Google OAuth 2.0 Playground", האסימון שייך ללקוח של Google ויידחה. הגיבוי ייכשל כ"הרשאה פגה", ויש להסיר את הגישה של Playground ב־[האפליקציות המקושרות](https://myaccount.google.com/connections).
 
-**הרשאה שפגה או בוטלה:** הגיבוי נכשל מיד, בלי ניסיונות חוזרים, והחשבון הטכני מקבל הודעה ומייל. מפיקים אסימון חדש לפי סעיף 4 ומחליפים רק אותו:
+**הרשאה שפגה או בוטלה:** הגיבוי נכשל מיד, בלי ניסיונות חוזרים, והחשבון הטכני מקבל הודעה ומייל. מפיקים אסימון חדש לפי סעיף 4, ומעדכנים את `GOOGLE_DRIVE_REFRESH_TOKEN` בשני הקבצים שנפתחים בעורך. אין להדפיס או להעביר את האסימון בפקודת CLI. הנוהל מאמת תצורה בקונטיינרים חד־פעמיים ללא מיגרציה, ומפעיל מחדש רק את העובד; `operations` יקרא את הקובץ המעודכן בהפעלה הבאה.
 
 ```sh
-cd /opt/fair-shifts/app && [ "$(git rev-parse HEAD)" = "$(cat /opt/fair-shifts/deploy-state/deployed)" ] && touch /opt/fair-shifts/deploy-state/paused && echo "OK: timer paused" || echo "STOP: checkout differs from the live version"
-read -rsp 'Drive refresh token: ' token; echo   # paste this line on its own
-env=/opt/fair-shifts/config/worker.env; { grep -v '^GOOGLE_DRIVE_REFRESH_TOKEN=' "$env"; printf 'GOOGLE_DRIVE_REFRESH_TOKEN=%s\n' "$token"; } > "$env.new" && chmod 600 "$env.new" && mv "$env.new" "$env"; unset token
-sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && sh scripts/production.sh health && rm -f /opt/fair-shifts/deploy-state/paused
+(
+  set -eu
+  cd /opt/fair-shifts/app
+  export COMPOSE_PROJECT_NAME=fair-shifts-live
+  export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
+  touch /opt/fair-shifts/deploy-state/paused
+  exec 9>/opt/fair-shifts/deploy-state/lock
+  if ! flock -n 9; then
+    echo "STOP: deployment is running; keep deployment paused and retry after it finishes"
+    exit 1
+  fi
+  if [ "$(git rev-parse HEAD)" != "$(cat /opt/fair-shifts/deploy-state/deployed)" ] || ! git diff --quiet HEAD; then
+    echo "STOP: checkout differs from the live version; keep deployment paused"
+    exit 1
+  fi
+  APP_VERSION=$(git rev-parse --short=12 HEAD)
+  export APP_VERSION
+  nano /opt/fair-shifts/config/worker.env /opt/fair-shifts/config/operations.env
+  chmod 600 /opt/fair-shifts/config/worker.env /opt/fair-shifts/config/operations.env
+  for service in worker operations; do
+    sh scripts/production.sh --profile operations run --rm --no-deps --entrypoint node "$service" \
+      scripts/run-runtime.mjs scripts/check-config.ts
+  done
+  sh scripts/production.sh up -d --wait --no-build --no-deps --force-recreate worker
+  sh scripts/production.sh health
+  rm -f /opt/fair-shifts/deploy-state/paused
+)
 ```
 
-אחר כך מריצים ״גיבוי עכשיו״ ומוודאים שהוא מגיע ל״אומת״.
+אם פקודה נכשלה, הפריסה נשארת מושהית עד לתיקון. אחר כך מריצים ״גיבוי עכשיו״ ומוודאים שהוא מגיע ל״אומת״. בדיקת התצורה אינה פונה ל־Google ואינה מאמתת שהאסימון תקף.
 
 ## יומן מחיקות עצמאי ושחזור מחיקות
 
@@ -434,35 +459,45 @@ sh scripts/production.sh health
 
 כרטיס [#92](https://github.com/ItayBar1/fair-shifts/issues/92), הכרעות 195 ו־205. חייל שנכנס ב־Google ונתן את ההרשאה מקבל את תורנויותיו ביומן ״תורנויות״ בחשבון שלו. היכולת נשלטת בדגל `GOOGLE_CALENDAR_SYNC`, ופעילה ב־production. במצב כבוי הכניסה ב־Google ומסכי האתר אינם משתנים.
 
-**החלפת לקוח הכניסה בלי החלפת הגרסה:** משהים את הטיימר ובודקים שה־checkout הוא הגרסה הפעילה. המשתמש מעתיק בעצמו את שני ערכי הלקוח מהקונסולה ל־`app.env`, בלי שינוי `GOOGLE_DRIVE_*`, מפתח ההצפנה או דגל Calendar. אין להדפיס את הסוד או להכניסו לפקודה שנשמרת בהיסטוריית המסוף.
+**החלפת סוד או לקוח הכניסה בלי החלפת הגרסה:** משהים את הטיימר ובודקים שה־checkout הוא הגרסה הפעילה. המשתמש מעתיק בעצמו את `GOOGLE_CLIENT_ID` ואת `GOOGLE_CLIENT_SECRET` מהקונסולה, באותם ערכים ל־`app.env` ול־`worker.env`. אין להדפיס את הסוד או להכניסו לפקודה שנשמרת בהיסטוריית המסוף. שינוי מזהה הלקוח עצמו עלול לדרוש מחיילים אישור Calendar מחדש: אסימוני הרענון הקיימים קשורים ללקוח שהנפיק אותם.
 
 ```sh
-cd /opt/fair-shifts/app
-touch /opt/fair-shifts/deploy-state/paused
-if [ "$(git rev-parse HEAD)" != "$(cat /opt/fair-shifts/deploy-state/deployed)" ]; then
-  echo "STOP: checkout differs from the live version; keep deployment paused"
-else
-  if nano /opt/fair-shifts/config/app.env && chmod 600 /opt/fair-shifts/config/app.env && sh scripts/production.sh up -d --wait --no-build --force-recreate app worker && sh scripts/production.sh health; then
-    rm -f /opt/fair-shifts/deploy-state/paused
-    echo "Google client configuration loaded; verify a fresh Google sign-in"
-  else
-    echo "STOP: update or health check failed; keep deployment paused and inspect the services"
+(
+  set -eu
+  cd /opt/fair-shifts/app
+  export COMPOSE_PROJECT_NAME=fair-shifts-live
+  export FAIR_SHIFTS_CONFIG_DIR=/opt/fair-shifts/config
+  touch /opt/fair-shifts/deploy-state/paused
+  exec 9>/opt/fair-shifts/deploy-state/lock
+  if ! flock -n 9; then
+    echo "STOP: deployment is running; keep deployment paused and retry after it finishes"
+    exit 1
   fi
-fi
+  if [ "$(git rev-parse HEAD)" != "$(cat /opt/fair-shifts/deploy-state/deployed)" ] || ! git diff --quiet HEAD; then
+    echo "STOP: checkout differs from the live version; keep deployment paused"
+    exit 1
+  fi
+  APP_VERSION=$(git rev-parse --short=12 HEAD)
+  export APP_VERSION
+  nano /opt/fair-shifts/config/app.env /opt/fair-shifts/config/worker.env
+  chmod 600 /opt/fair-shifts/config/app.env /opt/fair-shifts/config/worker.env
+  for service in app worker; do
+    sh scripts/production.sh run --rm --no-deps --entrypoint node "$service" \
+      scripts/run-runtime.mjs scripts/check-config.ts
+  done
+  sh scripts/production.sh up -d --wait --no-build --no-deps --force-recreate app worker
+  sh scripts/production.sh health
+  rm -f /opt/fair-shifts/deploy-state/paused
+  echo "Google configuration loaded; verify a fresh Google sign-in and Calendar sync"
+)
 ```
 
-כשהתיקייה אינה תואמת לגרסה הפעילה, עוצרים לבירור ולא בונים או פורסים גרסה אחרת כחלק מהחלפת הסוד.
+אם התיקייה אינה תואמת לגרסה הפעילה או שפקודה נכשלה, הפריסה נשארת מושהית עד לבירור. בדיקת התצורה אינה פונה ל־Google; לאחר השינוי בודקים כניסה חדשה וסנכרון ביומן בפועל.
 
 1. בפרויקט Cloud של לקוח הכניסה: **Google Calendar API** מופעל.
 2. ב־Google Auth Platform, ב־Data Access: ההרשאה `https://www.googleapis.com/auth/calendar.app.created` בנוסף ל־`openid`, ‏`email` ו־`profile`. זו ההרשאה היחידה שהאתר מבקש: יומן שהאתר יוצר בעצמו.
 3. בדיקה בקונסולה, במסך ההסכמה: סיווג ההיקף (רגיש או לא) ומספר המשתמשים המותר לפני אימות. אפליקציה ציבורית שמבקשת היקף רגיש חייבת באימות Google: דומיין קבוע, מדיניות פרטיות ציבורית והצדקה להיקף. **במצב Testing אסימון הרענון פג אחרי שבעה ימים**, והחיילים יתבקשו לאשר שוב. ב־production הפרויקט In production וההיקף מסווג non-sensitive.
-4. מדליקים את המתג ומעלים מחדש את האתר והעובד (בשרת עם טיימר הפריסה, כמו ב״שינוי ערך ב־`app.env`״):
-
-```sh
-# Switch the calendar sync on; the app and the worker read it when they start
-env=/opt/fair-shifts/config/app.env; { grep -v '^GOOGLE_CALENDAR_SYNC=' "$env"; printf 'GOOGLE_CALENDAR_SYNC=true\n'; } > "$env.new" && chmod 600 "$env.new" && mv "$env.new" "$env"
-sh scripts/production.sh deploy
-```
+4. ב־production המתג כבר פעיל. לשינוי עתידי מריצים את נוהל העריכה וההפעלה מחדש שלמעלה, ומעדכנים `GOOGLE_CALENDAR_SYNC=true` (או `false` לכיבוי) **גם ב־`app.env` וגם ב־`worker.env`**. משאירים את פרטי הלקוח הקיימים. שינוי הדגל אינו דורש בנייה או מיגרציה.
 
 בדיקת התצורה דוחה `GOOGLE_CALENDAR_SYNC=true` בלי `GOOGLE_CLIENT_ID` ו־`GOOGLE_CLIENT_SECRET`. הלקוח של הגיבוי (`drive.file`) נשאר נפרד ואין להוסיף לו את הרשאת היומן.
 

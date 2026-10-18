@@ -13,6 +13,7 @@
    - מבנה הקוד וזרימת הבקשות: [ארכיטקטורה](docs/architecture.md).
    - כללי מוצר: [האפיון](docs/duty-management-prd.md), [יומן ההכרעות](docs/open-decisions.md) ו[מפת הכיסוי](docs/requirements-coverage.md) בנושא הרלוונטי.
    - אימות, הרשאות, סודות או קלט: [אבטחה](docs/security.md).
+   - תקלות ידועות והוכחות לאחר העלייה: [ביקורת production מ־18.10.2026](docs/production-audit-2026-10-18.md). בדוק אם תוקנו מאז לפני עבודה עליהן; בדיקות ירוקות אינן סוגרות ממצא בלי רגרסיה מתאימה.
    - שרת, פריסה, גיבוי ושחזור: [מדריך ההפעלה](docs/operations.md) ו[העלאה לפרודקשן](docs/production-launch.md).
    - דרגות, ספק המייל או גיבוי: [מחקר](docs/research-notes.md). הפרד עובדות חיצוניות מהחלטות מוצר.
 
@@ -79,7 +80,8 @@ TypeScript, Next.js לאתר ולשרת, עובד Node.js ו־PostgreSQL, ביי
 בדיקות שמירה במאגר נכשלות אם שוכחים אחד מאלה:
 
 - **פעולה חדשה** (`case` ב־`actions.ts`): להוסיף אותה למפת `access` ב־`tests/integration/role-matrix.test.ts` ול־`diagnosticActionTypes` ב־`src/server/diagnostics.ts`. בדיקת התפקיד (`manager(actor)` וכדומה) רצה לפני פענוח ה־payload, כי הבדיקה שולחת `{}` ומצפה ל־403 לתפקיד שגוי ול־4xx (לא 5xx) לנכון.
-- **סוג רשומה חדש** ב־`records`: לרשום ב־`src/domain/erasure.ts`. `tests/unit/erasure.test.ts` מוצא סוגים רק לפי מחרוזת מילולית ב־`createRecord(tx, "kind", ...)`, לא לפי קבוע.
+- **סוג רשומה חדש** ב־`records`: לרשום ב־`src/domain/erasure.ts`, לממש את המדיניות גם ב־`src/server/soldier-deletion.ts`, ולבדוק מחיקה ושחזור בפועל. רישום במדיניות בלבד אינו מבטיח שהמטפל תומך בסוג. `tests/unit/erasure.test.ts` מוצא סוגים רק לפי מחרוזת מילולית ב־`createRecord(tx, "kind", ...)`, לא לפי קבוע.
+- **שינוי הרשאה או מידע רגיש בתוצאת פעולה:** לבדוק גם replay עם אותו `idempotencyKey` אחרי שינוי תפקיד וכניסה חדשה. שלילת session אינה מחליפה בדיקת הרשאה לתוצאה שמורה; אין למחוק מפתח באופן שיאפשר להפעיל שוב פעולה שכבר בוצעה.
 - **טבלה חדשה:** `tests/integration/restore.test.ts` משחזר ממסד ישן וחייב למחוק גם אותה, אחרת כל הבדיקות שאחריו נכשלות. במיגרציה בדוק שתאריך ה־journal מאוחר מזה של הקודמת.
 - **סיפור או תרחיש חדש באפיון:** רשומה ב־`tests/acceptance/acceptance-map.ts` (שמות הבדיקות חייבים להתקיים מילה במילה), ואז `pnpm docs:matrix` ו־`pnpm docs:render`.
 - **מסך חדש:** להוסיף ל־`screens` ב־`tests/e2e/screens-sweep.spec.ts`, עם שורת `closed` לתפקידים שאסור להם.
