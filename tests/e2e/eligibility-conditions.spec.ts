@@ -142,9 +142,8 @@ test("manager gives dated or permanent capabilities and exemptions, an hours exe
   await page.getByLabel("ניקוד בסיס").fill("4");
   await page.getByLabel("מגדר מותר", { exact: true }).selectOption(["female"]);
   await dialog
-    .getByRole("group", { name: "כשירויות נדרשות לתפקיד 1" })
-    .getByLabel("נשיאת משקל")
-    .check();
+    .getByLabel("כשירויות נדרשות", { exact: true })
+    .selectOption({ label: "נשיאת משקל" });
   // An hours exemption applies to every duty; a type does not pick it.
   await expect(
     dialog.getByLabel("פטורים פוסלים").locator("option", {
@@ -163,10 +162,10 @@ test("manager gives dated or permanent capabilities and exemptions, an hours exe
   expect(hours.data.windows).toEqual([
     { startTime: "17:00", endTime: "23:30", weekdays: [1, 2, 3, 4, 5, 6, 7] },
   ]);
-  expect(type.data.requirements).toMatchObject({ genders: ["female"] });
-  expect(type.data.roles).toMatchObject([
-    { requirements: { capabilityIds: [capability.id] } },
-  ]);
+  expect(type.data.requirements).toMatchObject({
+    genders: ["female"],
+    capabilityIds: [capability.id],
+  });
 
   const [member] = await db
     .select()

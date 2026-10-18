@@ -396,7 +396,6 @@ describe("first duty vertical slice", () => {
     const type = await command("dutyType.save", {
       name: "שמירה סינתטית",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const start = new Date(Date.now() + 86_400_000).toISOString();
     const end = new Date(Date.now() + 2 * 86_400_000).toISOString();
@@ -1122,7 +1121,6 @@ describe("first duty vertical slice", () => {
     const type = await command("dutyType.save", {
       name: "גבולות יום",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const at = (offsetDays: number, hour: number, minute = 0) =>
       day.plus({ days: offsetDays }).set({ hour, minute }).toISO()!;
@@ -1889,6 +1887,10 @@ describe("first duty vertical slice", () => {
       populations: ["mandatory"],
       ranks: [{ trackId: "מסלול סינתטי", minOrder: 1, maxOrder: 2 }],
       pricing: { mode: "fixed", base: 4 },
+    });
+    const start = "2029-06-01T08:00:00+03:00";
+    const end = "2029-06-03T08:00:00+03:00";
+    const created = await command("duty.create", {
       roles: [
         {
           name: "תפקיד מתקדם",
@@ -1905,10 +1907,6 @@ describe("first duty vertical slice", () => {
           },
         },
       ],
-    });
-    const start = "2029-06-01T08:00:00+03:00";
-    const end = "2029-06-03T08:00:00+03:00";
-    const created = await command("duty.create", {
       typeId: type.id,
       name: "הרכב לבדיקה",
       start,
@@ -1970,7 +1968,6 @@ describe("first duty vertical slice", () => {
         name: "תנאי שגוי",
         ranks: [{ trackId: "מסלול סינתטי", rankIds: [foreign.id] }],
         pricing: { mode: "fixed", base: 4 },
-        roles: [{ name: "תפקיד", count: 1 }],
       })
     ).rejects.toThrow("באותו מסלול");
   });
@@ -1996,9 +1993,9 @@ describe("first duty vertical slice", () => {
       name: "חריג דרגה",
       pricing: { mode: "fixed", base: 4 },
       ranks: [{ trackId: "מסלול סינתטי", rankIds: [upper.id] }],
-      roles: [{ name: "תורן", count: 2 }],
     });
     const created = await command("duty.create", {
+      roles: [{ name: "תורן", count: 2 }],
       typeId: type.id,
       name: "בדיקת חריג",
       start: "2029-04-01T08:00:00+03:00",
@@ -2103,7 +2100,6 @@ describe("first duty vertical slice", () => {
       pricing: { mode: "fixed", base: 4 },
       ranks: [{ trackId: "מסלול סינתטי", rankIds: [upper.id] }],
       exemptionIds: [exemption.id],
-      roles: [{ name: "תורן", count: 1 }],
     });
     const created = await command("duty.create", {
       typeId: type.id,
@@ -2307,9 +2303,9 @@ describe("first duty vertical slice", () => {
     const type = await command("dutyType.save", {
       name: "תכנון שלושה מקומות",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 3 }],
     });
     const created = await command("duty.create", {
+      roles: [{ name: "תורן", count: 3 }],
       typeId: type.id,
       name: "תכנון סינתטי",
       start: "2029-05-01T08:00:00+03:00",
@@ -2406,21 +2402,21 @@ describe("first duty vertical slice", () => {
     const common = await command("dutyType.save", {
       name: "תפקיד רגיל",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "רגיל", count: 1 }],
     });
     const rare = await command("dutyType.save", {
       name: "תפקיד נדיר",
       pricing: { mode: "fixed", base: 4 },
       capabilityIds: [qualification.id],
-      roles: [{ name: "נדיר", count: 1 }],
     });
     await command("duty.create", {
+      roles: [{ name: "רגיל", count: 1 }],
       typeId: common.id,
       name: "מוקדם ורגיל",
       start: "2029-05-01T08:00:00+03:00",
       end: "2029-05-01T12:00:00+03:00",
     });
     const scarce = await command("duty.create", {
+      roles: [{ name: "נדיר", count: 1 }],
       typeId: rare.id,
       name: "מאוחר ונדיר",
       start: "2029-05-02T08:00:00+03:00",
@@ -2435,6 +2431,8 @@ describe("first duty vertical slice", () => {
     const mixed = await command("dutyType.save", {
       name: "הרכב מעורב",
       pricing: { mode: "fixed", base: 4 },
+    });
+    const created = await command("duty.create", {
       roles: [
         { name: "רגיל", count: 1 },
         {
@@ -2443,8 +2441,6 @@ describe("first duty vertical slice", () => {
           requirements: { capabilityIds: [qualification.id] },
         },
       ],
-    });
-    const created = await command("duty.create", {
       typeId: mixed.id,
       name: "סדר בתוך מופע",
       start: "2029-05-03T08:00:00+03:00",
@@ -2575,7 +2571,6 @@ describe("first duty vertical slice", () => {
         id: row.typeId,
         name: "קטלוג לטיוטה",
         pricing: { mode: "fixed", base: 9 },
-        roles: [{ name: "תורן", count: 2 }],
       },
       1
     );
@@ -2627,7 +2622,8 @@ describe("first duty vertical slice", () => {
       status: "draft",
       version: 3,
     });
-    expect(updated.data.slots).toHaveLength(2);
+    // The catalog holds no seats, so the draft keeps its own (decision 232).
+    expect(updated.data.slots).toHaveLength(1);
     expect(
       (await db.select().from(assignments)).filter(
         (item) => item.status === "reserved"
@@ -3572,7 +3568,7 @@ describe("first duty vertical slice", () => {
     );
     expect(active.data.approvals?.[0].dutyVersion).toBe(2);
   });
-  it("applies updated catalog prices and composition only through an explicit proposal", async () => {
+  it("applies updated catalog prices only through an explicit proposal and keeps the instance's own seats", async () => {
     const { row } = await publishedFixture();
     await command(
       "dutyType.save",
@@ -3580,7 +3576,6 @@ describe("first duty vertical slice", () => {
         id: row.typeId,
         name: "מחירון מעודכן",
         pricing: { mode: "fixed", base: 9 },
-        roles: [{ name: "תורן", count: 2 }],
       },
       1
     );
@@ -3595,7 +3590,7 @@ describe("first duty vertical slice", () => {
         checks: { beforePoints: number; afterPoints: number }[];
       }[];
     };
-    expect(impact.duties[0].afterSlots).toBe(2);
+    expect(impact.duties[0].afterSlots).toBe(1);
     expect(impact.duties[0].checks[0]).toMatchObject({
       beforePoints: 4,
       afterPoints: 9,
@@ -3620,7 +3615,7 @@ describe("first duty vertical slice", () => {
       .select()
       .from(duties)
       .where(eq(duties.id, row.id));
-    expect(updated.data.slots).toHaveLength(2);
+    expect(updated.data.slots).toHaveLength(1);
     expect(
       (await db.select().from(assignments)).filter(
         (item) => item.status === "reserved"
@@ -3649,7 +3644,6 @@ describe("first duty vertical slice", () => {
       name: `סוג ${name}`,
       populations,
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const duty = await command("duty.create", {
       typeId: type.id,
@@ -6563,7 +6557,6 @@ describe("past performance corrections", () => {
     const type = await run("dutyType.save", {
       name: "שמירה סינתטית",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const created = await run("duty.create", {
       typeId: type.id,
@@ -7464,16 +7457,22 @@ describe("gender, capability and personal hours conditions", () => {
     typeId: string,
     start: string,
     end: string,
-    name = "תורנות תנאים"
+    name = "תורנות תנאים",
+    roles?: unknown
   ) {
-    const created = await command("duty.create", { typeId, name, start, end });
+    const created = await command("duty.create", {
+      typeId,
+      name,
+      start,
+      end,
+      roles,
+    });
     return (await db.select().from(duties).where(eq(duties.id, created.id)))[0];
   }
   const plainType = () =>
     command("dutyType.save", {
       name: "תורנות שעות",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
 
   it("saves a gender change only after a current confirmed preview, flags the assignment in the same save and hides conditions from soldiers", async () => {
@@ -7487,7 +7486,6 @@ describe("gender, capability and personal hours conditions", () => {
       pricing: { mode: "fixed", base: 4 },
       genders: ["female"],
       capabilityIds: [capability.id],
-      roles: [{ name: "תורנית", count: 1 }],
     });
     const row = await localDuty(type.id, `${day()}T08:00`, `${day()}T16:00`);
     expect(row.data.requirements).toMatchObject({
@@ -7684,16 +7682,13 @@ describe("gender, capability and personal hours conditions", () => {
         name: "כשירות שגויה",
         pricing: { mode: "fixed", base: 4 },
         capabilityIds: [exemption.id],
-        roles: [{ name: "תורן", count: 1 }],
       })
     ).rejects.toMatchObject({ code: "invalid_requirement" });
     await expect(
       command("dutyType.save", {
         name: "מגדר שגוי",
         pricing: { mode: "fixed", base: 4 },
-        roles: [
-          { name: "תורן", count: 1, requirements: { genders: ["unknown"] } },
-        ],
+        genders: ["unknown"],
       })
     ).rejects.toThrow();
     const hours = await command("eligibility.catalog.save", {
@@ -7978,9 +7973,14 @@ describe("gender, capability and personal hours conditions", () => {
     const type = await command("dutyType.save", {
       name: "סיור",
       pricing: { mode: "fixed", base: 4 },
-      roles,
     });
-    const row = await localDuty(type.id, `${day()}T08:00`, `${day()}T12:00`);
+    const row = await localDuty(
+      type.id,
+      `${day()}T08:00`,
+      `${day()}T12:00`,
+      "סיור לבדיקה",
+      roles
+    );
     expect(row.data.slots.map((slot) => slot.requirements)).toEqual([
       roles[0].requirements,
       undefined,
@@ -7997,7 +7997,6 @@ describe("gender, capability and personal hours conditions", () => {
         name: "סיור",
         pricing: { mode: "fixed", base: 4 },
         genders: ["male"],
-        roles: [{ name: "נהג", count: 1 }],
       },
       1
     );

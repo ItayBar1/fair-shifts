@@ -68,7 +68,6 @@ test.beforeAll(async () => {
     await command("dutyType.save", {
       name: "שמירה לפרסום מרובה",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "שומר", count: 1 }],
     })
   ).id;
 });
@@ -96,6 +95,7 @@ async function draft(name: string, date: string, hour: number, who?: string) {
     name,
     start: start.toISO(),
     end: start.plus({ hours: 4 }).toISO(),
+    roles: [{ name: "שומר", count: 1 }],
   });
   if (who) {
     const [row] = await db

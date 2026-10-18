@@ -81,7 +81,7 @@ async function dutyRow(id: string) {
   const [row] = await db.select().from(duties).where(eq(duties.id, id));
   return row;
 }
-/** A draft duty from a type with the given conditions; its seats are `slots`. */
+/** A draft duty from a type with the given conditions and roles of its own. */
 async function draftFrom(
   genders: Gender[],
   roles: { name: string; count: number; requirements?: object }[] = [
@@ -92,7 +92,6 @@ async function draftFrom(
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: "fixed", base: 4 },
     genders,
-    roles,
   });
   const start = Math.floor(Date.now() / HOUR) * HOUR + 3 * DAY;
   const created = await command("duty.create", {
@@ -100,6 +99,7 @@ async function draftFrom(
     name: "תורנות לבדיקה",
     start: new Date(start).toISOString(),
     end: new Date(start + 8 * HOUR).toISOString(),
+    roles,
   });
   return { kind, duty: await dutyRow(created.id) };
 }
@@ -131,7 +131,7 @@ beforeEach(async () => {
 afterAll(async () => pool.end());
 
 describe("saving a gender condition", () => {
-  it("stores every gender as an empty list in the type, its roles and the duty made from it", async () => {
+  it("stores every gender as an empty list in the type and in the roles of a duty made from it", async () => {
     const { kind, duty } = await draftFrom(everyone, [
       { name: "תורן", count: 1, requirements: { genders: everyone } },
       { name: "מפקד", count: 1, requirements: { genders: ["male"] } },
@@ -141,11 +141,6 @@ describe("saving a gender condition", () => {
     expect((stored.data.requirements as { genders: string[] }).genders).toEqual(
       []
     );
-    const roles = stored.data.roles as {
-      requirements: { genders: string[] };
-    }[];
-    expect(roles[0]!.requirements.genders).toEqual([]);
-    expect(roles[1]!.requirements.genders).toEqual(["male"]);
     expect(duty.data.requirements.genders).toEqual([]);
     expect(duty.data.slots.map((slot) => slot.requirements?.genders)).toEqual([
       [],

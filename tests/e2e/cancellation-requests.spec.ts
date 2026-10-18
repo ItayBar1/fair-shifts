@@ -89,7 +89,6 @@ test("a soldier's request changes nothing until the manager removes the seat in 
   const type = await api("dutyType.save", {
     name: "שמירת בקשות",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   async function publishedDuty(name: string, days: number) {
     const created = await api("duty.create", {

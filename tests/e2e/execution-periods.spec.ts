@@ -132,10 +132,10 @@ async function running(
   const type = await run(manager, "dutyType.save", {
     name: `סוג ${name}`,
     pricing: { mode: options.fixed ? "fixed" : "daily", base: 4 },
-    roles: [{ name: "שומר", count: 1 }],
   });
   const later = Math.floor(Date.now() / HOUR) * HOUR + 72 * HOUR;
   const created = await run(manager, "duty.create", {
+    roles: [{ name: "שומר", count: 1 }],
     typeId: type.id,
     name,
     start: new Date(later).toISOString(),

@@ -141,7 +141,7 @@
 
 ### 23. כאחראי, אני רוצה לנהל קטלוג תורנויות, תנאים, ניקוד ותוספות כדי להשתמש בהגדרות חוזרות. — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices and composition only through an explicit proposal`
+- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices only through an explicit proposal and keeps the instance's own seats`
 - [instance-composition.test.ts](../tests/integration/instance-composition.test.ts): `edits a draft's roles and daily pricing, prices each seat once and leaves the catalog and other instances alone`
 - [default-hours.test.ts](../tests/unit/default-hours.test.ts): `fills local start and end from a start date across a month, a year and the night of a clock change`; `finds the start weekdays on which the hours fall outside an hours exemption`
 - [duty-type-default-hours.test.ts](../tests/integration/duty-type-default-hours.test.ts): `saves and clears default hours, rejects invalid ones and sends them to managers only`; `checks an instance created from the default hours against each soldier's hours exemption`
@@ -155,7 +155,7 @@
 
 ### 25. כאחראי, אני רוצה להגדיר משך ומספר חיילים שונים, ובמידת הצורך מכסות לפי תפקיד, כדי לייצג גם תורנות קצרה וגם שבוע אבט״ש. — מכוסה
 
-- [instance-composition.test.ts](../tests/integration/instance-composition.test.ts): `releases an occupied seat of a published instance only when it is chosen explicitly, and only on update and publish`; `keeps occupied seats before vacant ones when a catalog quota is applied`
+- [instance-composition.test.ts](../tests/integration/instance-composition.test.ts): `releases an occupied seat of a published instance only when it is chosen explicitly, and only on update and publish`; `keeps the instance's own seats and their holders when the catalog is applied`
 - [composition.test.ts](../tests/unit/composition.test.ts): `keeps slot ids and occupants, drops vacant slots first and applies role conditions`
 - [instance-composition.spec.ts](../tests/e2e/instance-composition.spec.ts): `manager reduces an instance's quota, releases a seat explicitly and changes its pricing before update and publish`
 
@@ -207,7 +207,7 @@
 
 ### 34. כאחראי, אני רוצה להשתמש ב״עדכן ופרסם״ לשינוי תורנות שפורסמה כדי שכל המושפעים יקבלו את השינוי המחייב. — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `keeps a published duty binding until an atomic versioned update replaces its reservations`; `applies updated catalog prices and composition only through an explicit proposal`
+- [auth.test.ts](../tests/integration/auth.test.ts): `keeps a published duty binding until an atomic versioned update replaces its reservations`; `applies updated catalog prices only through an explicit proposal and keeps the instance's own seats`
 - [instance-composition.spec.ts](../tests/e2e/instance-composition.spec.ts): `manager reduces an instance's quota, releases a seat explicitly and changes its pricing before update and publish`
 
 ### 35. כחייל, אני רוצה לראות את הלוח היחידתי ולסנן לתורנויותיי כדי להבין את התכנון ואת האחריות האישית שלי. — מכוסה
@@ -237,7 +237,7 @@
 
 ### 39. כאחראי, אני רוצה ששינוי מחירון יחול על תורנויות חדשות כדי לשמור על התמחור שנקבע לקיימות. — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices and composition only through an explicit proposal`
+- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices only through an explicit proposal and keeps the instance's own seats`
 - [instance-composition.test.ts](../tests/integration/instance-composition.test.ts): `edits a draft's roles and daily pricing, prices each seat once and leaves the catalog and other instances alone`
 
 ### 40. כאחראי, אני רוצה לזקוף ניקוד אוטומטית בתום תורנות שלא בוטלה כדי שלא אצטרך לאשר כל ביצוע רגיל. — מכוסה
@@ -516,7 +516,7 @@
 
 ### 19. קטלוג ומופע — תורנויות ולוח; ניקוד — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices and composition only through an explicit proposal`; `edits a draft and explicitly applies catalog changes without publishing or double reserving points`
+- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices only through an explicit proposal and keeps the instance's own seats`; `edits a draft and explicitly applies catalog changes without publishing or double reserving points`
 - [instance-composition.test.ts](../tests/integration/instance-composition.test.ts): `edits a draft's roles and daily pricing, prices each seat once and leaves the catalog and other instances alone`
 
 ### 20. משך, משתתפים ותוספות — ניקוד — מכוסה
@@ -662,7 +662,7 @@
 
 ### 41. שינוי כללים ואילוץ מאושר — לוח ואילוצים — מכוסה
 
-- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices and composition only through an explicit proposal`; `requires a new collision approval for every pending version and never carries it into the approved version`; `requires current impact confirmation and keeps a conflicting assignment for treatment`
+- [auth.test.ts](../tests/integration/auth.test.ts): `applies updated catalog prices only through an explicit proposal and keeps the instance's own seats`; `requires a new collision approval for every pending version and never carries it into the approved version`; `requires current impact confirmation and keeps a conflicting assignment for treatment`
 
 ### 42. שלמים ואחוזים — ניקוד — מכוסה
 
@@ -814,7 +814,7 @@
 
 ### 62. תנאי עם כל המגדרים — כשירות; שיבוץ — מכוסה
 
-- [all-genders.test.ts](../tests/integration/all-genders.test.ts): `stores every gender as an empty list in the type, its roles and the duty made from it`; `is assignable by hand, and a draw offers them, when every gender is allowed`; `is still blocked as missing information when two of three genders are allowed`; `is not blocked by a full list that was saved before the fix`; `clears the gender mark only where no gender condition is left, and logs it as a system action`
+- [all-genders.test.ts](../tests/integration/all-genders.test.ts): `stores every gender as an empty list in the type and in the roles of a duty made from it`; `is assignable by hand, and a draw offers them, when every gender is allowed`; `is still blocked as missing information when two of three genders are allowed`; `is not blocked by a full list that was saved before the fix`; `clears the gender mark only where no gender condition is left, and logs it as a system action`
 - [eligibility-conditions.test.ts](../tests/unit/eligibility-conditions.test.ts): `reads an empty, missing or full list as no condition`; `does not block a soldier without a gender, in every mode`
 
 ### 63. שחזור מבודד ותרגיל רבעוני — גיבוי ושחזור; פרטיות; הרשאות; מקביליות — מכוסה

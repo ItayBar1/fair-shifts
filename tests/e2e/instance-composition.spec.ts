@@ -102,7 +102,6 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
   const type = await command("dutyType.save", {
     name: "אבט״ש סינתטי",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "שומר", count: 2 }],
   });
   let start = DateTime.now()
     .setZone("Asia/Jerusalem")
@@ -111,6 +110,7 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
   while (start.offset !== start.plus({ hours: 36 }).offset)
     start = start.plus({ days: 1 });
   const duty = await command("duty.create", {
+    roles: [{ name: "שומר", count: 2 }],
     typeId: type.id,
     name: "אבט״ש לבדיקת הרכב",
     start: start.toISO(),
@@ -160,6 +160,9 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
   await editor.getByLabel("שם התוספת").fill("לילה");
   await editor.getByLabel("נקודות").fill("0.25");
   await editor.getByLabel("תורן שני (שומר)").check();
+  // Rest is entered in hours and stored in minutes (decision 231).
+  await expect(editor.getByLabel("מנוחה לפני (שעות)")).toHaveValue("0:00");
+  await editor.getByLabel("מנוחה לפני (שעות)").fill("1:30");
   await expect(editor).not.toContainText("לשחרור.");
   await editor.screenshot({ path: "test-results/instance-composition.png" });
   await editor
@@ -175,6 +178,9 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
   await expect(comparison).toContainText("שומר ×1");
   await expect(comparison).toContainText("4 ל־24 שעות");
   await expect(comparison).toContainText("השיבוץ יוסר");
+  await expect(
+    comparison.getByRole("row").filter({ hasText: "מנוחה לפני / אחרי" })
+  ).toContainText("ללא / ללא1:30 שעות / ללא");
   // 36 hours at 4 per day = 6, plus two nights at 0.25, rounded once to 7.
   const seat = comparison.getByRole("row").filter({ hasText: "תורן ראשון" });
   await expect(seat.last()).toContainText("6.5");
@@ -198,7 +204,13 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
     .select()
     .from(dutyTypes)
     .where(eq(dutyTypes.id, type.id));
-  expect(catalog.data.roles).toEqual([{ name: "שומר", count: 2 }]);
+  expect(catalog.data).not.toHaveProperty("roles");
+  const [published] = await db
+    .select()
+    .from(duties)
+    .where(eq(duties.id, duty.id));
+  expect(published.data.restBeforeMinutes).toBe(90);
+  expect(catalog.data.restBeforeMinutes).toBe(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "יצירת הצעת שינוי" }).click();

@@ -147,11 +147,10 @@ async function notices(person: Actor) {
     href?: string;
   }[];
 }
-async function type(roles = 1, mode: "fixed" | "daily" = "fixed") {
+async function type(mode: "fixed" | "daily" = "fixed") {
   return command(manager, "dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode, base: 4 },
-    roles: [{ name: "תורן", count: roles }],
   });
 }
 /** A draft duty `days` ahead, lasting `hours`; its first seat is at `slots[0]`. */
@@ -162,13 +161,14 @@ async function draft(
   name = "תורנות לבדיקה",
   mode: "fixed" | "daily" = "fixed"
 ) {
-  const kind = await type(seats, mode);
+  const kind = await type(mode);
   const start = Math.floor(Date.now() / HOUR) * HOUR + days * DAY;
   const created = await command(manager, "duty.create", {
     typeId: kind.id,
     name,
     start: new Date(start).toISOString(),
     end: new Date(start + hours * HOUR).toISOString(),
+    roles: [{ name: "תורן", count: seats }],
   });
   return dutyRow(created.id);
 }

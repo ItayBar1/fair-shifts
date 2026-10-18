@@ -87,7 +87,12 @@ const dayOf = (value: string) =>
 
 let typeId: string;
 async function draft(name: string, when: { start: string; end: string }) {
-  const created = await command("duty.create", { typeId, name, ...when });
+  const created = await command("duty.create", {
+    typeId,
+    name,
+    ...when,
+    roles: [{ name: "תורן", count: 2 }],
+  });
   return created.id as string;
 }
 async function version(id: string) {
@@ -188,7 +193,6 @@ beforeEach(async () => {
     await command("dutyType.save", {
       name: "שמירה לפרסום מרובה",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 2 }],
     })
   ).id;
 });

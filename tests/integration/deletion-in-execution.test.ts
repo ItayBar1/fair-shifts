@@ -117,10 +117,10 @@ async function runningDuty(
   const type = await command(manager, "dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: "daily", base: 4 },
-    roles: [{ name: "תורן", count: seats.length }],
   });
   const start = Math.floor(Date.now() / HOUR) * HOUR + 3 * DAY;
   const duty = await command(manager, "duty.create", {
+    roles: [{ name: "תורן", count: seats.length }],
     typeId: type.id,
     name: "אבטחה ממושכת",
     start: new Date(start).toISOString(),

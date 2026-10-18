@@ -13,6 +13,7 @@ import { ScoreDecisions } from "./score-decisions";
 import { ManagerReturns } from "./manager-returns";
 import { ExecutionPeriods, referredRequests } from "./execution-periods";
 import { deletedSeats } from "@/client/deleted-seats";
+import { describeRest } from "@/client/rest-duration";
 import { TransferOffer } from "./transfers";
 import { SwapOffer } from "./swaps";
 import {
@@ -1102,11 +1103,11 @@ export function DutyDetail({
             </div>
             <div>
               <small>מנוחה לפני</small>
-              <strong>{num(duty.restBeforeMinutes)} דקות</strong>
+              <strong>{describeRest(num(duty.restBeforeMinutes))}</strong>
             </div>
             <div>
               <small>מנוחה אחרי</small>
-              <strong>{num(duty.restAfterMinutes)} דקות</strong>
+              <strong>{describeRest(num(duty.restAfterMinutes))}</strong>
             </div>
           </div>
         </Panel>

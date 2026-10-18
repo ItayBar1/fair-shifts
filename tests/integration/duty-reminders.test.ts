@@ -71,7 +71,6 @@ async function publishedDuty(startsIn: number, holder = member) {
   const type = await command(manager, "dutyType.save", {
     name: "שמירה סינתטית",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const start = Date.now() + startsIn;
   const duty = await command(manager, "duty.create", {
@@ -202,7 +201,6 @@ describe("duty reminders", () => {
     const type = await command(manager, "dutyType.save", {
       name: "שמירה סינתטית",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const start = Date.now() + 10 * HOUR;
     const draft = await command(manager, "duty.create", {

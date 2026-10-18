@@ -628,7 +628,6 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     name: "הגרלה עם אישור",
     capabilityIds: [specialty.id],
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   await api("duty.create", {
     typeId: lotteryType.id,
@@ -1226,7 +1225,6 @@ test("multi-day duties appear on every Israeli day and month, independent of the
   const type = await api("dutyType.save", {
     name: "לוח רב יומי",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   async function publishedDuty(name: string, start: DateTime, end: DateTime) {
     const created = await api("duty.create", {
@@ -1413,7 +1411,6 @@ test("manager corrects a finished duty with an impact preview while the draw val
   const type = await api("dutyType.save", {
     name: "תיקון עבר",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const created = await api("duty.create", {
     typeId: type.id,
@@ -1562,7 +1559,6 @@ test("a soldier offers a published duty to several replacements and the first co
   const type = await api("dutyType.save", {
     name: "העברה לבדיקה",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const start = DateTime.now()
     .setZone("Asia/Jerusalem")
@@ -1734,7 +1730,6 @@ test("population moves preview their impact before saving in the transition, the
     name: "שמירה לחובה בלבד",
     populations: ["mandatory"],
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const zone = "Asia/Jerusalem";
   const day = (days: number) =>
@@ -2018,7 +2013,6 @@ test("manager resolves a pending balance decision from the handling center after
   const type = await api("dutyType.save", {
     name: "הכרעת ניקוד",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const created = await api("duty.create", {
     typeId: type.id,

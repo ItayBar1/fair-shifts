@@ -79,26 +79,25 @@ function at(days: number, hour = 8, hours = 8) {
     .plus({ days, hours: hour });
   return { start: start.toISO()!, end: start.plus({ hours }).toISO()! };
 }
-async function dutyType(
-  base: number,
-  roles: { name: string; count: number; requirements?: unknown }[] = [
-    { name: "תורן", count: 1 },
-  ],
-  extra: Record<string, unknown> = {}
-) {
+async function dutyType(base: number) {
   return command("dutyType.save", {
     name: `סוג בשווי ${base}`,
     pricing: { mode: "fixed", base },
-    roles,
-    ...extra,
   });
 }
+/** A draft of the type with `seats` seats of its own (decision 232). */
 async function instance(
   typeId: string,
   when: { start: string; end: string },
-  name = "מופע לתכנון"
+  name = "מופע לתכנון",
+  seats = 1
 ) {
-  const created = await command("duty.create", { typeId, name, ...when });
+  const created = await command("duty.create", {
+    typeId,
+    name,
+    ...when,
+    roles: [{ name: "תורן", count: seats }],
+  });
   const [row] = await db.select().from(duties).where(eq(duties.id, created.id));
   return row;
 }
@@ -278,9 +277,9 @@ describe("period planning", () => {
         invite(`מועמד ${index}`, "soldier", score)
       )
     );
-    const type = await dutyType(4, [{ name: "תורן", count: 3 }]);
+    const type = await dutyType(4);
     const when = at(10);
-    const duty = await instance(type.id, when);
+    const duty = await instance(type.id, when, undefined, 3);
     const plan = await command("planning.run", {
       start: day(when.start),
       end: day(when.start),
@@ -378,9 +377,9 @@ describe("period planning", () => {
         invite(`מועמד ${index}`, "soldier", score)
       )
     );
-    const type = await dutyType(4, [{ name: "תורן", count: 2 }]);
+    const type = await dutyType(4);
     const when = at(10);
-    await instance(type.id, when);
+    await instance(type.id, when, undefined, 2);
     const plan = await command("planning.run", {
       start: day(when.start),
       end: day(when.start),
@@ -442,7 +441,6 @@ describe("approvals while data changes", () => {
       {
         name: "סוג אחר",
         pricing: { mode: "fixed", base: 2 },
-        roles: [{ name: "תורן", count: 1 }],
       },
       undefined,
       second
@@ -722,9 +720,9 @@ describe("approvals while data changes", () => {
   it("never changes a published duty or shows the draw explanation to soldiers", async () => {
     const person = await invite("חייל", "soldier", 0);
     await invite("שני", "soldier", 0);
-    const type = await dutyType(4, [{ name: "תורן", count: 2 }]);
+    const type = await dutyType(4);
     const when = at(10);
-    const duty = await instance(type.id, when);
+    const duty = await instance(type.id, when, undefined, 2);
     await command(
       "duty.assign",
       {

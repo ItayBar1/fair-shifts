@@ -121,7 +121,6 @@ test("a manager approves an exemption transfer per exception, rejects another wi
   const type = await run(manager, "dutyType.save", {
     name: "שמירה מאושרת",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   /** A published seat for the owner that the replacement accepted and that now awaits a manager. */
   async function awaiting(name: string, days: number) {

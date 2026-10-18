@@ -136,7 +136,6 @@ test("several publications reach the soldier as one notice that counts them and 
     await command("dutyType.save", {
       name: "שמירה סינתטית",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     })
   ).id;
   const first = await publish("שמירה ראשונה", 3 * DAY);

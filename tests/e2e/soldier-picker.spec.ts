@@ -89,12 +89,13 @@ async function addManager(person: typeof manager) {
     soldierId: id,
   }).then((account) => ({ id: account.id, soldierId: id }));
 }
-async function createDuty(name: string, typeId = ids.type) {
+async function createDuty(name: string, typeId = ids.type, roles?: unknown) {
   const created = await run("duty.create", {
     typeId,
     name,
     start: at(8),
     end: at(16),
+    roles,
   });
   const [row] = await db.select().from(duties).where(eq(duties.id, created.id));
   return row;
@@ -279,21 +280,13 @@ test.beforeAll(async () => {
       populations: ["mandatory"],
       capabilityIds: [ids.qualification],
       exemptionIds: [ids.exemption],
-      roles: [{ name: "תורן", count: 1 }],
     })
   ).id;
-  // The type asks for nothing; only the role asks for a capability.
+  // The type asks for nothing; only the instance's role asks for a capability.
   ids.roleType = (
     await run("dutyType.save", {
       name: "שמירה עם נהג",
       pricing: { mode: "fixed", base: 4 },
-      roles: [
-        {
-          name: "נהג",
-          count: 1,
-          requirements: { capabilityIds: [ids.capability] },
-        },
-      ],
     })
   ).id;
 });
@@ -360,7 +353,13 @@ test("the role's own conditions fill the filters, next to the duty's", async ({
   browser,
 }) => {
   const page = await signedIn(browser);
-  const open = await createDuty("תורנות עם נהג", ids.roleType);
+  const open = await createDuty("תורנות עם נהג", ids.roleType, [
+    {
+      name: "נהג",
+      count: 1,
+      requirements: { capabilityIds: [ids.capability] },
+    },
+  ]);
   const dialog = await openManual(page, open.id);
   expect(await names(dialog)).toEqual(["דנה ירוק"]);
   await expect(count(dialog)).toHaveText("1 מתוך 7 חיילים");

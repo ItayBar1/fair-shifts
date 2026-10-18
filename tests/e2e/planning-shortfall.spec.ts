@@ -113,12 +113,12 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
   const type = await command("dutyType.save", {
     name: "שמירה לתכנון חסר",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "שומר", count: 3 }],
   });
   const start = DateTime.fromISO(`${planned}T08:00`, {
     zone: "Asia/Jerusalem",
   });
   await command("duty.create", {
+    roles: [{ name: "שומר", count: 3 }],
     typeId: type.id,
     name: "שמירה עם חוסר",
     start: start.toISO(),
@@ -178,7 +178,6 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
   const releaseType = await command("dutyType.save", {
     name: "שמירה לפני שחרור",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "שומר", count: 1 }],
   });
   const releaseStart = day.set({
     hour: 8,
@@ -187,6 +186,7 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
     millisecond: 0,
   });
   const duty = await command("duty.create", {
+    roles: [{ name: "שומר", count: 1 }],
     typeId: releaseType.id,
     name: "הצעה שמתיישנת",
     start: releaseStart.toISO(),

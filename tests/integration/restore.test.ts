@@ -262,9 +262,9 @@ async function publishedDuty(seats: Actor[], startInDays: number) {
   const type = await command(manager, "dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: seats.length }],
   });
   const duty = await command(manager, "duty.create", {
+    roles: [{ name: "תורן", count: seats.length }],
     typeId: type.id,
     name: `תורנות ${randomUUID().slice(0, 4)}`,
     start: new Date(Date.now() + 2 * DAY).toISOString(),

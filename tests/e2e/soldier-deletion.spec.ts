@@ -104,9 +104,9 @@ test("the manager sees what a deletion does, deletes the user, and the seat beco
   const type = await api("dutyType.save", {
     name: "שמירת מחיקה",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 2 }],
   });
   const created = await api("duty.create", {
+    roles: [{ name: "תורן", count: 2 }],
     typeId: type.id,
     name: "תורנות עתידית למחיקה",
     start: new Date(Date.now() + 3 * 86_400_000).toISOString(),

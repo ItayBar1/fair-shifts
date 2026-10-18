@@ -91,15 +91,6 @@ const catalogInput = z.object({
     })
     .nullable()
     .optional(),
-  roles: z
-    .array(
-      z.object({
-        name: text,
-        count: z.number().int().min(1).max(120),
-        requirements: requirementsInput.optional(),
-      })
-    )
-    .min(1),
   pricing: z.object({
     mode: z.enum(["fixed", "daily"]),
     base: priceValue,
@@ -120,6 +111,39 @@ const catalogInput = z.object({
       .default([]),
   }),
 });
+/**
+ * The roles and seats of one duty instance. The catalog holds no seats: they
+ * are set when the instance is created and edited on it (decision 232).
+ */
+export const rolesInput = z
+  .array(
+    z.object({
+      name: text,
+      count: z.number().int().min(1).max(120),
+      requirements: requirementsInput.optional(),
+    })
+  )
+  .min(1)
+  .max(30);
+export async function assertRoles(
+  tx: DbTransaction,
+  roles: z.infer<typeof rolesInput>
+) {
+  invariant(
+    new Set(roles.map((role) => role.name)).size === roles.length,
+    "duplicate_role",
+    "לכל תפקיד בהרכב נדרש שם ייחודי"
+  );
+  invariant(
+    roles.reduce((sum, role) => sum + role.count, 0) <= 120,
+    "too_many_slots",
+    "מספר המקומות במופע חורג מ־120"
+  );
+  await assertRequirementReferences(
+    tx,
+    roles.map((role) => role.requirements ?? {})
+  );
+}
 /** Rank, exemption and capability conditions must name existing catalog entries. */
 export async function assertRequirementReferences(
   tx: DbTransaction,
@@ -199,10 +223,7 @@ export async function saveDutyType(
     genders: input.genders,
     capabilityIds: input.capabilityIds,
   };
-  await assertRequirementReferences(tx, [
-    requirements,
-    ...input.roles.map((role) => role.requirements ?? {}),
-  ]);
+  await assertRequirementReferences(tx, [requirements]);
   if (input.defaultHours)
     try {
       assertDefaultHours(input.defaultHours);
@@ -264,8 +285,11 @@ export async function createDuty(
       endOffset: z.number().optional(),
       location: z.string().max(500).default(""),
       instructions: z.string().max(4000).default(""),
+      // One seat when the caller names none, as the new instance form starts.
+      roles: rolesInput.default([{ name: "תורן", count: 1 }]),
     })
     .parse(payload);
+  await assertRoles(tx, input.roles);
   const [type] = await tx
     .select()
     .from(dutyTypes)
@@ -275,11 +299,6 @@ export async function createDuty(
   const end = parseMoment(input.end, input.endOffset);
   interval({ start, end });
   const dutyId = randomUUID();
-  const roles = type.data.roles as {
-    name: string;
-    count: number;
-    requirements?: Requirements;
-  }[];
   const data: Duty & { location: string; instructions: string } = {
     id: dutyId,
     typeId: type.id,
@@ -295,7 +314,7 @@ export async function createDuty(
     requirements: type.data.requirements as Requirements,
     restBeforeMinutes: Number(type.data.restBeforeMinutes),
     restAfterMinutes: Number(type.data.restAfterMinutes),
-    slots: roles.flatMap((role) =>
+    slots: input.roles.flatMap((role) =>
       Array.from({ length: role.count }, () => ({
         id: randomUUID(),
         role: role.name,

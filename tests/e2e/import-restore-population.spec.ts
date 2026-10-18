@@ -125,7 +125,6 @@ test("a restore that moves the population shows its assignments per the chosen d
     name: "שמירה לקבע בלבד",
     populations: ["career"],
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const duty = await ok("duty.create", {
     typeId: type.id,

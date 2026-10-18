@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { DateTime } from "luxon";
 import Link from "next/link";
+import { describeRest } from "@/client/rest-duration";
 import {
   type Action,
   type AppState,
@@ -120,7 +121,8 @@ export function DutyChanges({
             { name: "reason", label: "סיבת השינוי", required: true },
             {
               name: "applyCatalog",
-              label: "להחיל את המחירון, ההרכב וכללי ההתאמה העדכניים מהקטלוג",
+              label:
+                "להחיל את המחירון, המנוחה וכללי ההתאמה העדכניים מהקטלוג (המקומות והתפקידים נשארים של המופע)",
               type: "checkbox",
             },
           ]}
@@ -445,8 +447,8 @@ function ChangeEditor({
                   <th>מנוחה לפני / אחרי</th>
                   {[preview.before, preview.after].map((snapshot, index) => (
                     <td key={index}>
-                      {num(obj(snapshot).restBeforeMinutes)} /{" "}
-                      {num(obj(snapshot).restAfterMinutes)} דקות
+                      {describeRest(num(obj(snapshot).restBeforeMinutes))} /{" "}
+                      {describeRest(num(obj(snapshot).restAfterMinutes))}
                     </td>
                   ))}
                 </tr>

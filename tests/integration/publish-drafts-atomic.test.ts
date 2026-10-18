@@ -90,7 +90,6 @@ describe("publishing several drafts at once is all or nothing", () => {
     const type = await command("dutyType.save", {
       name: "שמירה",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const ids: string[] = [];
     for (const [index, person] of soldiers.entries()) {
