@@ -477,7 +477,6 @@ describe("what each role is shown", () => {
     const kind = await send(manager, "dutyType.save", {
       name: "סוג משותף",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const start = Date.now() + 3 * 86_400_000;
     const created = await send(manager, "duty.create", {
@@ -536,7 +535,6 @@ describe("a version that changed", () => {
     const kind = await send(manager, "dutyType.save", {
       name: "סוג לגרסה",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const start = Date.now() + 3 * 86_400_000;
     const created = await send(manager, "duty.create", {

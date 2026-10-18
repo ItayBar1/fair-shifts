@@ -73,10 +73,10 @@ test.beforeAll(async () => {
   const type = await run(manager, "dutyType.save", {
     name: "סוג מחיקה בביצוע",
     pricing: { mode: "daily", base: 4 },
-    roles: [{ name: "שומר", count: 1 }],
   });
   const later = Math.floor(Date.now() / HOUR) * HOUR + 72 * HOUR;
   const created = await run(manager, "duty.create", {
+    roles: [{ name: "שומר", count: 1 }],
     typeId: type.id,
     name: "שמירה שנקטעה",
     start: new Date(later).toISOString(),

@@ -63,7 +63,6 @@ async function seat(holder: Key, days: number, publish: boolean) {
   const type = await run("dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const start = Math.floor(Date.now() / HOUR) * HOUR + days * DAY;
   const created = await run("duty.create", {

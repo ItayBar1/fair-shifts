@@ -94,7 +94,6 @@ test("duty reminder: one site notice per time, linked to the duty, on mobile too
   const type = await command("dutyType.save", {
     name: "שמירה סינתטית",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const start = Date.now() + 25 * HOUR;
   const created = await command("duty.create", {

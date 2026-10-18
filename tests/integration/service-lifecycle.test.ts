@@ -108,9 +108,9 @@ async function publishedDuty() {
   const type = await command(manager, "dutyType.save", {
     name: "שמירה סינתטית",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 2 }],
   });
   const duty = await command(manager, "duty.create", {
+    roles: [{ name: "תורן", count: 2 }],
     typeId: type.id,
     name: "תורנות לבדיקה",
     start: new Date(Date.now() + 86_400_000).toISOString(),

@@ -739,7 +739,6 @@ describe("applying the log after a restore", () => {
     const type = await command(manager, "dutyType.save", {
       name: `סוג ${randomUUID().slice(0, 6)}`,
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     });
     const seats: string[] = [];
     for (const startInDays of [2, 4]) {

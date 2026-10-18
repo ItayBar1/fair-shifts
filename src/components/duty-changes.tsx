@@ -121,7 +121,8 @@ export function DutyChanges({
             { name: "reason", label: "סיבת השינוי", required: true },
             {
               name: "applyCatalog",
-              label: "להחיל את המחירון, ההרכב וכללי ההתאמה העדכניים מהקטלוג",
+              label:
+                "להחיל את המחירון, המנוחה וכללי ההתאמה העדכניים מהקטלוג (המקומות והתפקידים נשארים של המופע)",
               type: "checkbox",
             },
           ]}

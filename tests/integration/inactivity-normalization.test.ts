@@ -83,7 +83,6 @@ async function draftOn(offset: number) {
   const kind = await command(manager, "dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   const start = today().plus({ days: offset, hours: 8 });
   const created = await command(manager, "duty.create", {

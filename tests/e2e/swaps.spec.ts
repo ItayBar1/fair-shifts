@@ -106,7 +106,6 @@ test("two soldiers swap seats by consent, and a manager approves a swap that nee
   const type = await run(manager, "dutyType.save", {
     name: "שמירה להחלפה",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: 1 }],
   });
   /** A published duty in `days` days with one seat for `person`. */
   async function seat(

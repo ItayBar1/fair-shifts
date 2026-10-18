@@ -271,3 +271,81 @@ test("rest before and after a duty type is entered in hours, saved in minutes an
   await expect(dialog.getByLabel("מנוחה לפני (שעות)")).toHaveValue("12:00");
   await expect(dialog.getByLabel("מנוחה אחרי (שעות)")).toHaveValue("0:30");
 });
+
+// Decision 232: the catalog holds no seats; each instance sets its own.
+test("the catalog has no seats or roles, and a new instance sets its seats or splits them into roles", async ({
+  browser,
+}) => {
+  const page = await signedIn(browser);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/manage/catalog");
+  await page
+    .getByRole("button", { name: "סוג תורנות חדש", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("שם סוג התורנות").fill("שמירת שער");
+  await expect(dialog.getByText("שם תפקיד")).toHaveCount(0);
+  await expect(dialog.getByText("מקומות", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const [type] = await db
+    .select()
+    .from(dutyTypes)
+    .where(eq(dutyTypes.name, "שמירת שער"));
+  expect(type.data).not.toHaveProperty("roles");
+  await expect(
+    page.locator("section.panel", {
+      has: page.getByRole("heading", { name: "שמירת שער", exact: true }),
+    })
+  ).not.toContainText("מקומות");
+
+  const create = async (name: string, seats: () => Promise<void>) => {
+    await page.goto("/manage/planning");
+    await page
+      .getByLabel("סוג תורנות", { exact: true })
+      .selectOption({ label: "שמירת שער" });
+    await page.getByLabel("שם המופע").fill(name);
+    await page
+      .getByLabel("תחילת התורנות", { exact: true })
+      .fill(`${day(3)}T08:00`);
+    await page
+      .getByLabel("סיום התורנות", { exact: true })
+      .fill(`${day(3)}T16:00`);
+    await page.getByLabel("מיקום", { exact: true }).fill("שער ראשי");
+    await expect(page.getByLabel("מספר מקומות")).toHaveValue("1");
+    await seats();
+    await page.getByRole("button", { name: "יצירת טיוטה" }).click();
+    await expect(
+      page.getByRole("link").filter({ hasText: name })
+    ).toBeVisible();
+    const [row] = await db.select().from(duties).where(eq(duties.name, name));
+    return row.data.slots;
+  };
+
+  const plain = await create("שער בשלושה", () =>
+    page.getByLabel("מספר מקומות").fill("3")
+  );
+  expect(plain.map((slot) => slot.role)).toEqual(["תורן", "תורן", "תורן"]);
+
+  const split = await create("שער עם מפקד", async () => {
+    await page.getByLabel("מספר מקומות").fill("2");
+    await page
+      .getByLabel("חלוקה לתפקידים, עם מכסה ותנאי התאמה לכל תפקיד")
+      .check();
+    // The split starts as one role holding the seats entered so far.
+    await expect(page.getByLabel("מספר מקומות")).toHaveCount(0);
+    await expect(page.getByLabel("מכסה", { exact: true })).toHaveValue("2");
+    await page.getByLabel("שם תפקיד").fill("שומר");
+    await page.getByRole("button", { name: "הוספת תפקיד" }).click();
+    await page.getByLabel("שם תפקיד").nth(1).fill("מפקד");
+    await page
+      .getByRole("group", { name: "מגדר מותר לתפקיד מפקד" })
+      .getByLabel("נקבה")
+      .check();
+  });
+  expect(split.map((slot) => [slot.role, slot.requirements?.genders])).toEqual([
+    ["שומר", undefined],
+    ["שומר", undefined],
+    ["מפקד", ["female"]],
+  ]);
+});

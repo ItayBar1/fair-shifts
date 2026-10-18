@@ -75,18 +75,19 @@ function thirtySixHours() {
     start = start.plus({ days: 1 });
   return { start: start.toISO()!, end: start.plus({ hours: 36 }).toISO()! };
 }
-async function dutyType(roles: { name: string; count: number }[]) {
+async function dutyType() {
   return command("dutyType.save", {
     name: "סוג לבדיקת מופע",
     pricing: { mode: "fixed", base: 4 },
-    roles,
   });
 }
-async function instance(typeId: string, name = "מופע לבדיקה") {
+/** The seats are the instance's own; the catalog holds none (decision 232). */
+async function instance(typeId: string, seats = 1, name = "מופע לבדיקה") {
   const created = await command("duty.create", {
     typeId,
     name,
     ...thirtySixHours(),
+    roles: [{ name: "תורן", count: seats }],
   });
   const [row] = await db.select().from(duties).where(eq(duties.id, created.id));
   return row;
@@ -148,9 +149,9 @@ afterAll(async () => pool.end());
 
 describe("local composition and pricing of one instance", () => {
   it("edits a draft's roles and daily pricing, prices each seat once and leaves the catalog and other instances alone", async () => {
-    const type = await dutyType([{ name: "תורן", count: 1 }]);
+    const type = await dutyType();
     const duty = await instance(type.id);
-    const sibling = await instance(type.id, "מופע אחר מאותו סוג");
+    const sibling = await instance(type.id, 1, "מופע אחר מאותו סוג");
     await command(
       "duty.assign",
       {
@@ -246,7 +247,7 @@ describe("local composition and pricing of one instance", () => {
       .select()
       .from(dutyTypes)
       .where(eq(dutyTypes.id, type.id));
-    expect(catalog.data.roles).toEqual([{ name: "תורן", count: 1 }]);
+    expect(catalog.data).not.toHaveProperty("roles");
     expect(catalog.data.pricing).toMatchObject({
       mode: "fixed",
       basePoints: "4",
@@ -268,8 +269,8 @@ describe("local composition and pricing of one instance", () => {
     });
   });
   it("releases an occupied seat of a published instance only when it is chosen explicitly, and only on update and publish", async () => {
-    const type = await dutyType([{ name: "תורן", count: 2 }]);
-    const duty = await instance(type.id);
+    const type = await dutyType();
+    const duty = await instance(type.id, 2);
     const [first, second] = duty.data.slots;
     await command(
       "duty.assign",
@@ -347,11 +348,11 @@ describe("local composition and pricing of one instance", () => {
       .select()
       .from(dutyTypes)
       .where(eq(dutyTypes.id, type.id));
-    expect(catalog.data.roles).toEqual([{ name: "תורן", count: 2 }]);
+    expect(catalog.data).not.toHaveProperty("roles");
   });
-  it("keeps occupied seats before vacant ones when a catalog quota is applied", async () => {
-    const type = await dutyType([{ name: "תורן", count: 3 }]);
-    const duty = await instance(type.id);
+  it("keeps the instance's own seats and their holders when the catalog is applied", async () => {
+    const type = await dutyType();
+    const duty = await instance(type.id, 3);
     const occupied = duty.data.slots[2]!;
     await command(
       "duty.assign",
@@ -364,7 +365,6 @@ describe("local composition and pricing of one instance", () => {
         id: type.id,
         name: "סוג לבדיקת מופע",
         pricing: { mode: "fixed", base: 4 },
-        roles: [{ name: "תורן", count: 1 }],
       },
       1
     );
@@ -376,7 +376,7 @@ describe("local composition and pricing of one instance", () => {
       duties: { afterSlots: number; checks: { removed: boolean }[] }[];
     };
     expect(impact.duties[0]).toMatchObject({
-      afterSlots: 1,
+      afterSlots: 3,
       checks: [{ removed: false }],
     });
     const change = await command(
@@ -385,16 +385,17 @@ describe("local composition and pricing of one instance", () => {
       2
     );
     const { proposed, seats } = await proposal(change.id);
-    expect(proposed.slots.map((slot) => slot.id)).toEqual([occupied.id]);
-    expect(seats[0]!.soldierId).toBe(member.soldierId);
+    expect(proposed.slots).toEqual(duty.data.slots);
+    expect(seats.find((seat) => seat.slotId === occupied.id)!.soldierId).toBe(
+      member.soldierId
+    );
   });
   it("saves a suggested call-up amount on the type and instance without ever applying it by itself", async () => {
     const type = await command("dutyType.save", {
       name: "סוג עם הזנקה שמורה",
       pricing: { mode: "fixed", base: 4, callUp: 2 },
-      roles: [{ name: "תורן", count: 2 }],
     });
-    const duty = await instance(type.id);
+    const duty = await instance(type.id, 2);
     expect(duty.data.pricing.callUpPoints).toBe("2");
     await command(
       "duty.assign",
@@ -428,7 +429,6 @@ describe("local composition and pricing of one instance", () => {
         id: type.id,
         name: "סוג עם הזנקה שמורה",
         pricing: { mode: "fixed", base: 4, callUp: "" },
-        roles: [{ name: "תורן", count: 2 }],
       },
       1
     );
@@ -466,7 +466,7 @@ describe("local composition and pricing of one instance", () => {
     expect(catalog.data.pricing).not.toHaveProperty("callUpPoints");
   });
   it("rejects stale or competing edits, invalid rules and soldiers", async () => {
-    const type = await dutyType([{ name: "תורן", count: 1 }]);
+    const type = await dutyType();
     const duty = await instance(type.id);
     const change = await command(
       "duty.change.create",

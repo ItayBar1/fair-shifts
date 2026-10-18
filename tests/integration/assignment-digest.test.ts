@@ -163,7 +163,6 @@ beforeEach(async () => {
     await command(manager, "dutyType.save", {
       name: "שמירה סינתטית",
       pricing: { mode: "fixed", base: 4 },
-      roles: [{ name: "תורן", count: 1 }],
     })
   ).id;
 });

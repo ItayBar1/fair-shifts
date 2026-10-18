@@ -122,10 +122,10 @@ async function publishedDuty(
   const type = await command(manager, "dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: options.daily ? "daily" : "fixed", base: 4 },
-    roles: [{ name: "תורן", count: holders.length }],
   });
   const start = Date.now() + (options.startsIn ?? 24 * HOUR);
   const duty = await command(manager, "duty.create", {
+    roles: [{ name: "תורן", count: holders.length }],
     typeId: type.id,
     name: options.name ?? "שמירה סינתטית",
     location: options.location ?? "שער ראשי",

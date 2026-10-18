@@ -54,7 +54,6 @@ import { HeldFilters } from "./held-filters";
 import { AuditLink } from "./audit";
 import { SoldierDeletion } from "./soldier-deletion";
 import {
-  ConditionToggles,
   SoldierConditions,
   WindowsEditor,
   capabilityOptions,
@@ -65,8 +64,9 @@ import {
   newWindow,
   windowsOf,
 } from "./eligibility-conditions";
-import type { Gender, RankClause, Requirements } from "@/domain/types";
+import type { RankClause } from "@/domain/types";
 import { MAX_END_DAYS, defaultHoursRange } from "@/domain/default-hours";
+import { RolesEditor, type RoleItem } from "./instance-composition";
 import {
   defaultHoursOf,
   describeDefaultHours,
@@ -1121,18 +1121,6 @@ function CatalogForm({
   const [rankClauses, setRankClauses] = useState<RankClause[]>(
     Array.isArray(initial?.ranks) ? (initial.ranks as RankClause[]) : []
   );
-  const [roleItems, setRoles] = useState<
-    { id: string; name: string; count: number; requirements: Requirements }[]
-  >(
-    initial
-      ? rows(initial.roles).map((r) => ({
-          id: str(r.id, crypto.randomUUID()),
-          name: str(r.name),
-          count: num(r.count, 1),
-          requirements: obj(r.requirements),
-        }))
-      : [{ id: crypto.randomUUID(), name: "תורן", count: 1, requirements: {} }]
-  );
   const [bonus, setBonus] = useState(false);
   const saved = defaultHoursOf(initial);
   const [hoursInput, setHoursInput] = useState({
@@ -1409,7 +1397,6 @@ function CatalogForm({
               exemptionIds: v.exemptionIds,
               genders: v.genders,
               capabilityIds: v.capabilityIds,
-              roles: roleItems,
             },
             initial?.version
           );
@@ -1422,132 +1409,6 @@ function CatalogForm({
           onChange={setRankClauses}
           label="תנאי דרגה לסוג התורנות"
         />
-        <div className="subsection">
-          <h3>הרכב התורנות</h3>
-          {roleItems.map((role, i) => (
-            <div className="role-editor" key={role.id}>
-              <label className="field">
-                <span>שם תפקיד</span>
-                <input
-                  value={role.name}
-                  required
-                  onChange={(e) =>
-                    setRoles(
-                      roleItems.map((r, index) =>
-                        index === i ? { ...r, name: e.target.value } : r
-                      )
-                    )
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>מקומות</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={120}
-                  required
-                  value={role.count}
-                  onChange={(e) =>
-                    setRoles(
-                      roleItems.map((r, index) =>
-                        index === i
-                          ? { ...r, count: Number(e.target.value) }
-                          : r
-                      )
-                    )
-                  }
-                />
-              </label>
-              <RankRequirements
-                catalog={rows(state.rankCatalog)}
-                value={role.requirements.ranks ?? []}
-                onChange={(ranks) =>
-                  setRoles(
-                    roleItems.map((r, index) =>
-                      index === i
-                        ? { ...r, requirements: { ...r.requirements, ranks } }
-                        : r
-                    )
-                  )
-                }
-                label={`תנאי דרגה לתפקיד ${i + 1}`}
-              />
-              <div className="subsection">
-                <ConditionToggles
-                  legend={`מגדר מותר לתפקיד ${i + 1}`}
-                  hint={genderHint}
-                  options={genders}
-                  value={role.requirements.genders ?? []}
-                  onChange={(value) =>
-                    setRoles(
-                      roleItems.map((r, index) =>
-                        index === i
-                          ? {
-                              ...r,
-                              requirements: {
-                                ...r.requirements,
-                                genders: value as Gender[],
-                              },
-                            }
-                          : r
-                      )
-                    )
-                  }
-                />
-                <ConditionToggles
-                  legend={`כשירויות נדרשות לתפקיד ${i + 1}`}
-                  options={capabilityOptions(state)}
-                  value={role.requirements.capabilityIds ?? []}
-                  onChange={(value) =>
-                    setRoles(
-                      roleItems.map((r, index) =>
-                        index === i
-                          ? {
-                              ...r,
-                              requirements: {
-                                ...r.requirements,
-                                capabilityIds: value,
-                              },
-                            }
-                          : r
-                      )
-                    )
-                  }
-                />
-              </div>
-              {roleItems.length > 1 && (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={() =>
-                    setRoles(roleItems.filter((_, index) => index !== i))
-                  }
-                >
-                  הסרה
-                </button>
-              )}
-            </div>
-          ))}
-          <button
-            type="button"
-            className="text-button"
-            onClick={() =>
-              setRoles([
-                ...roleItems,
-                {
-                  id: crypto.randomUUID(),
-                  name: "",
-                  count: 1,
-                  requirements: {},
-                },
-              ])
-            }
-          >
-            <Plus size={15} />
-            הוספת תפקיד
-          </button>
-        </div>
         <label className="check-field inline">
           <input
             type="checkbox"
@@ -1588,10 +1449,6 @@ export function CatalogView({
                 <span className="task-symbol teal">
                   <CalendarDays size={23} />
                 </span>
-                <Badge>
-                  {rows(type.roles).reduce((n, r) => n + num(r.count, 1), 0)}{" "}
-                  מקומות
-                </Badge>
                 <h2>{str(type.name)}</h2>
                 <p>{str(type.description, "לא נוספו הנחיות")}</p>
                 <div className="price-line">
@@ -1631,7 +1488,7 @@ export function CatalogView({
         <Panel>
           <Empty
             title="מתחילים בהגדרת סוג תורנות"
-            text="מגדירים פעם אחת הרכב, תנאי התאמה וניקוד. כל מופע חדש יתחיל מההגדרות האלה."
+            text="מגדירים פעם אחת תנאי התאמה, ניקוד ומנוחה. מספר המקומות והתפקידים נקבעים בכל מופע."
             action={
               <button className="btn primary" onClick={() => setEditing(true)}>
                 <Plus size={17} />
@@ -1666,6 +1523,9 @@ function NewDutyForm({ state, action }: { state: AppState; action: Action }) {
   const [typeId, setTypeId] = useState("");
   const [date, setDate] = useState("");
   const [times, setTimes] = useState({ start: "", end: "" });
+  // Seats are set on the instance, not in the catalog (decision 232).
+  const [seats, setSeats] = useState("1");
+  const [roles, setRoles] = useState<RoleItem[] | null>(null);
   const typeHours = (id: string) =>
     defaultHoursOf(state.dutyTypes.find((type) => type.id === id));
   const hours = typeHours(typeId);
@@ -1740,6 +1600,64 @@ function NewDutyForm({ state, action }: { state: AppState; action: Action }) {
             </div>
           ),
         },
+        {
+          name: "composition",
+          label: "מקומות ותפקידים",
+          type: "custom",
+          custom: (
+            <div className="subsection">
+              {roles ? (
+                <RolesEditor state={state} roles={roles} onChange={setRoles} />
+              ) : (
+                <label className="field">
+                  <span>
+                    מספר מקומות
+                    <span aria-hidden="true" className="required">
+                      {" "}
+                      *
+                    </span>
+                  </span>
+                  <input
+                    aria-label="מספר מקומות"
+                    type="number"
+                    dir="ltr"
+                    min={1}
+                    max={120}
+                    required
+                    value={seats}
+                    onChange={(e) => setSeats(e.target.value)}
+                  />
+                </label>
+              )}
+              <label className="check-field inline">
+                <input
+                  type="checkbox"
+                  checked={Boolean(roles)}
+                  onChange={(e) => {
+                    if (e.target.checked)
+                      setRoles([
+                        {
+                          key: crypto.randomUUID(),
+                          name: "תורן",
+                          count: Number(seats) || 1,
+                          requirements: {},
+                        },
+                      ]);
+                    else {
+                      setSeats(
+                        String(
+                          roles?.reduce((sum, role) => sum + role.count, 0) || 1
+                        )
+                      );
+                      setRoles(null);
+                    }
+                  }}
+                />
+                חלוקה לתפקידים, עם מכסה ותנאי התאמה לכל תפקיד
+              </label>
+            </div>
+          ),
+        },
         { name: "location", label: "מיקום", required: true },
         {
           name: "instructions",
@@ -1752,8 +1670,16 @@ function NewDutyForm({ state, action }: { state: AppState; action: Action }) {
         action("duty.create", {
           ...v,
           times: undefined,
+          composition: undefined,
           start: times.start,
           end: times.end,
+          roles: roles
+            ? roles.map((role) => ({
+                name: role.name.trim(),
+                count: role.count,
+                requirements: role.requirements,
+              }))
+            : [{ name: "תורן", count: Number(seats) }],
         })
       }
       submitLabel="יצירת טיוטה"

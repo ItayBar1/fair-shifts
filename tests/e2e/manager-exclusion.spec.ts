@@ -90,10 +90,10 @@ async function duty(
   const type = await run(actors.fresh, "dutyType.save", {
     name: `סוג ${randomUUID().slice(0, 6)}`,
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "תורן", count: seats }],
   });
   const start = Math.floor(Date.now() / HOUR) * HOUR + days * DAY;
   const created = await run(actors.fresh, "duty.create", {
+    roles: [{ name: "תורן", count: seats }],
     typeId: type.id,
     name,
     start: new Date(start).toISOString(),

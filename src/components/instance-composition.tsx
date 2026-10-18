@@ -27,7 +27,7 @@ import {
   genders,
 } from "./eligibility-conditions";
 
-type RoleItem = {
+export type RoleItem = {
   key: string;
   name: string;
   count: number;
@@ -110,6 +110,126 @@ export function describeComposition(slots: unknown) {
     .join(", ");
 }
 
+/**
+ * The roles of one instance, each with its seats and its own conditions. The
+ * new instance form and the instance editor share it (decisions 179 and 232).
+ */
+export function RolesEditor({
+  state,
+  roles,
+  onChange,
+}: {
+  state: AppState;
+  roles: RoleItem[];
+  onChange: (roles: RoleItem[]) => void;
+}) {
+  const setRoles = onChange;
+  const updateRole = (index: number, patch: Partial<RoleItem>) =>
+    setRoles(
+      roles.map((role, i) => (i === index ? { ...role, ...patch } : role))
+    );
+  const updateRequirements = (index: number, patch: Requirements) =>
+    updateRole(index, {
+      requirements: { ...roles[index]!.requirements, ...patch },
+    });
+  // An hours exemption applies to every duty, so a seat does not pick it (decision 226).
+  const catalogOptions = (kind: string) =>
+    rows(state.eligibilityCatalog)
+      .filter((item) => item.kind === kind && !rows(item.windows).length)
+      .map((item) => ({ value: item.id, label: str(item.name) }));
+  return (
+    <>
+      {roles.map((role, index) => (
+        <div className="role-editor" key={role.key}>
+          <label className="field">
+            <span>שם תפקיד</span>
+            <input
+              value={role.name}
+              required
+              onChange={(event) =>
+                updateRole(index, { name: event.target.value })
+              }
+            />
+          </label>
+          <label className="field">
+            <span>מכסה</span>
+            <input
+              type="number"
+              dir="ltr"
+              min={1}
+              max={120}
+              required
+              value={role.count}
+              onChange={(event) =>
+                updateRole(index, { count: Number(event.target.value) })
+              }
+            />
+          </label>
+          <RankRequirements
+            catalog={rows(state.rankCatalog)}
+            value={(role.requirements.ranks ?? []) as RankClause[]}
+            onChange={(ranks) => updateRequirements(index, { ranks })}
+            label={`תנאי דרגה לתפקיד ${role.name || index + 1}`}
+          />
+          <div className="subsection">
+            <ConditionToggles
+              legend={`מגדר מותר לתפקיד ${role.name || index + 1}`}
+              hint={genderHint}
+              options={genders}
+              value={role.requirements.genders ?? []}
+              onChange={(value) =>
+                updateRequirements(index, { genders: value as Gender[] })
+              }
+            />
+            <ConditionToggles
+              legend={`כשירויות נדרשות לתפקיד ${role.name || index + 1}`}
+              options={capabilityOptions(state)}
+              value={role.requirements.capabilityIds ?? []}
+              onChange={(value) =>
+                updateRequirements(index, { capabilityIds: value })
+              }
+            />
+            <ConditionToggles
+              legend={`פטורים פוסלים לתפקיד ${role.name || index + 1}`}
+              options={catalogOptions("exemption")}
+              value={role.requirements.blockingExemptionIds ?? []}
+              onChange={(value) =>
+                updateRequirements(index, { blockingExemptionIds: value })
+              }
+            />
+          </div>
+          {roles.length > 1 && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setRoles(roles.filter((_, i) => i !== index))}
+            >
+              הסרת התפקיד
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        className="text-button"
+        onClick={() =>
+          setRoles([
+            ...roles,
+            {
+              key: crypto.randomUUID(),
+              name: "",
+              count: 1,
+              requirements: {},
+            },
+          ])
+        }
+      >
+        <Plus size={15} />
+        הוספת תפקיד
+      </button>
+    </>
+  );
+}
 export function CompositionEditor({
   state,
   action,
@@ -145,23 +265,10 @@ export function CompositionEditor({
       return holding > quota ? [{ name, excess: holding - quota }] : [];
     }
   );
-  const updateRole = (index: number, patch: Partial<RoleItem>) =>
-    setRoles(
-      roles.map((role, i) => (i === index ? { ...role, ...patch } : role))
-    );
-  const updateRequirements = (index: number, patch: Requirements) =>
-    updateRole(index, {
-      requirements: { ...roles[index]!.requirements, ...patch },
-    });
   const updateSurcharge = (index: number, patch: Partial<SurchargeItem>) =>
     setSurcharges(
       surcharges.map((item, i) => (i === index ? { ...item, ...patch } : item))
     );
-  // An hours exemption applies to every duty, so a seat does not pick it (decision 226).
-  const catalogOptions = (kind: string) =>
-    rows(state.eligibilityCatalog)
-      .filter((item) => item.kind === kind && !rows(item.windows).length)
-      .map((item) => ({ value: item.id, label: str(item.name) }));
   return (
     <Form
       fields={[
@@ -257,94 +364,7 @@ export function CompositionEditor({
       </Notice>
       <div className="subsection">
         <h3>הרכב המופע</h3>
-        {roles.map((role, index) => (
-          <div className="role-editor" key={role.key}>
-            <label className="field">
-              <span>שם תפקיד</span>
-              <input
-                value={role.name}
-                required
-                onChange={(event) =>
-                  updateRole(index, { name: event.target.value })
-                }
-              />
-            </label>
-            <label className="field">
-              <span>מכסה</span>
-              <input
-                type="number"
-                dir="ltr"
-                min={1}
-                max={120}
-                required
-                value={role.count}
-                onChange={(event) =>
-                  updateRole(index, { count: Number(event.target.value) })
-                }
-              />
-            </label>
-            <RankRequirements
-              catalog={rows(state.rankCatalog)}
-              value={(role.requirements.ranks ?? []) as RankClause[]}
-              onChange={(ranks) => updateRequirements(index, { ranks })}
-              label={`תנאי דרגה לתפקיד ${role.name || index + 1}`}
-            />
-            <div className="subsection">
-              <ConditionToggles
-                legend={`מגדר מותר לתפקיד ${role.name || index + 1}`}
-                hint={genderHint}
-                options={genders}
-                value={role.requirements.genders ?? []}
-                onChange={(value) =>
-                  updateRequirements(index, { genders: value as Gender[] })
-                }
-              />
-              <ConditionToggles
-                legend={`כשירויות נדרשות לתפקיד ${role.name || index + 1}`}
-                options={capabilityOptions(state)}
-                value={role.requirements.capabilityIds ?? []}
-                onChange={(value) =>
-                  updateRequirements(index, { capabilityIds: value })
-                }
-              />
-              <ConditionToggles
-                legend={`פטורים פוסלים לתפקיד ${role.name || index + 1}`}
-                options={catalogOptions("exemption")}
-                value={role.requirements.blockingExemptionIds ?? []}
-                onChange={(value) =>
-                  updateRequirements(index, { blockingExemptionIds: value })
-                }
-              />
-            </div>
-            {roles.length > 1 && (
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => setRoles(roles.filter((_, i) => i !== index))}
-              >
-                הסרת התפקיד
-              </button>
-            )}
-          </div>
-        ))}
-        <button
-          type="button"
-          className="text-button"
-          onClick={() =>
-            setRoles([
-              ...roles,
-              {
-                key: crypto.randomUUID(),
-                name: "",
-                count: 1,
-                requirements: {},
-              },
-            ])
-          }
-        >
-          <Plus size={15} />
-          הוספת תפקיד
-        </button>
+        <RolesEditor state={state} roles={roles} onChange={setRoles} />
       </div>
       {occupied.length > 0 && (
         <fieldset className="toggle-group">

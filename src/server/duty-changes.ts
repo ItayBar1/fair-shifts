@@ -17,15 +17,15 @@ import {
 import { invariant } from "./errors";
 import { id, text } from "./validation";
 import {
-  assertRequirementReferences,
+  assertRoles,
   optionalPrice,
   parseMoment,
-  requirementsInput,
+  rolesInput,
 } from "./duty-service";
 import { instant, interval } from "../domain/time";
 import { calculatePrice } from "../domain/pricing";
 import { evaluateEligibility } from "../domain/eligibility";
-import { recompose, type RoleQuota, type Seat } from "../domain/composition";
+import { recompose, type Seat } from "../domain/composition";
 import type {
   Assignment,
   Pricing,
@@ -92,31 +92,23 @@ async function openChange(
   return { row, change, live };
 }
 /**
- * The instance with the catalog's current rules. A reduced quota keeps occupied
- * slots before vacant ones; seats that still do not fit are removed and shown
- * in the impact preview before anything is saved.
+ * The instance with the catalog's current rules. The roles and seats stay the
+ * instance's own: the catalog holds none (decision 232).
  */
 function catalogSnapshot(
   source: SavedDuty,
   seats: Seat[],
   catalog: typeof dutyTypes.$inferSelect
 ): { duty: SavedDuty; seats: Seat[] } {
-  const roles = catalog.data.roles as RoleQuota[];
-  const result = recompose(source.slots, seats, roles, {
-    overflow: "drop",
-    newId: randomUUID,
-  });
-  invariant(result.ok, "invalid_composition", "ההרכב מהקטלוג אינו תקין");
   return {
     duty: {
       ...source,
-      slots: result.slots,
       pricing: catalog.data.pricing as Pricing,
       requirements: catalog.data.requirements as Requirements,
       restBeforeMinutes: Number(catalog.data.restBeforeMinutes),
       restAfterMinutes: Number(catalog.data.restAfterMinutes),
     },
-    seats: result.seats,
+    seats,
   };
 }
 export async function createDutyChange(
@@ -296,16 +288,7 @@ export async function saveDutyChangeRules(
   const input = z
     .object({
       id,
-      roles: z
-        .array(
-          z.object({
-            name: text,
-            count: z.number().int().min(1).max(120),
-            requirements: requirementsInput.optional(),
-          })
-        )
-        .min(1)
-        .max(30),
+      roles: rolesInput,
       releaseSlotIds: z.array(id).default([]),
       pricing: pricingInput,
       restBeforeMinutes: minutes,
@@ -313,20 +296,7 @@ export async function saveDutyChangeRules(
     })
     .parse(payload);
   const { row, change } = await openChange(tx, input.id, expectedVersion);
-  invariant(
-    new Set(input.roles.map((role) => role.name)).size === input.roles.length,
-    "duplicate_role",
-    "לכל תפקיד בהרכב נדרש שם ייחודי"
-  );
-  invariant(
-    input.roles.reduce((sum, role) => sum + role.count, 0) <= 120,
-    "too_many_slots",
-    "מספר המקומות במופע חורג מ־120"
-  );
-  await assertRequirementReferences(
-    tx,
-    input.roles.map((role) => role.requirements ?? {})
-  );
+  await assertRoles(tx, input.roles);
   const pricing: Pricing = {
     mode: input.pricing.mode,
     basePoints: input.pricing.basePoints,

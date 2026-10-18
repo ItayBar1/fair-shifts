@@ -102,7 +102,6 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
   const type = await command("dutyType.save", {
     name: "אבט״ש סינתטי",
     pricing: { mode: "fixed", base: 4 },
-    roles: [{ name: "שומר", count: 2 }],
   });
   let start = DateTime.now()
     .setZone("Asia/Jerusalem")
@@ -111,6 +110,7 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
   while (start.offset !== start.plus({ hours: 36 }).offset)
     start = start.plus({ days: 1 });
   const duty = await command("duty.create", {
+    roles: [{ name: "שומר", count: 2 }],
     typeId: type.id,
     name: "אבט״ש לבדיקת הרכב",
     start: start.toISO(),
@@ -204,7 +204,7 @@ test("manager reduces an instance's quota, releases a seat explicitly and change
     .select()
     .from(dutyTypes)
     .where(eq(dutyTypes.id, type.id));
-  expect(catalog.data.roles).toEqual([{ name: "שומר", count: 2 }]);
+  expect(catalog.data).not.toHaveProperty("roles");
   const [published] = await db
     .select()
     .from(duties)

@@ -506,7 +506,7 @@ export const stories: Record<number, Entry> = {
   23: covered([
     ...t(
       I.auth,
-      "applies updated catalog prices and composition only through an explicit proposal"
+      "applies updated catalog prices only through an explicit proposal and keeps the instance's own seats"
     ),
     ...t(
       I.comp,
@@ -548,7 +548,7 @@ export const stories: Record<number, Entry> = {
     ...t(
       I.comp,
       "releases an occupied seat of a published instance only when it is chosen explicitly, and only on update and publish",
-      "keeps occupied seats before vacant ones when a catalog quota is applied"
+      "keeps the instance's own seats and their holders when the catalog is applied"
     ),
     ...t(
       U.composition,
@@ -662,7 +662,7 @@ export const stories: Record<number, Entry> = {
     ...t(
       I.auth,
       "keeps a published duty binding until an atomic versioned update replaces its reservations",
-      "applies updated catalog prices and composition only through an explicit proposal"
+      "applies updated catalog prices only through an explicit proposal and keeps the instance's own seats"
     ),
     ...t(
       E.comp,
@@ -735,7 +735,7 @@ export const stories: Record<number, Entry> = {
   39: covered([
     ...t(
       I.auth,
-      "applies updated catalog prices and composition only through an explicit proposal"
+      "applies updated catalog prices only through an explicit proposal and keeps the instance's own seats"
     ),
     ...t(
       I.comp,
@@ -1442,7 +1442,7 @@ export const scenarios: Record<number, Entry> = {
   19: covered([
     ...t(
       I.auth,
-      "applies updated catalog prices and composition only through an explicit proposal",
+      "applies updated catalog prices only through an explicit proposal and keeps the instance's own seats",
       "edits a draft and explicitly applies catalog changes without publishing or double reserving points"
     ),
     ...t(
@@ -1852,7 +1852,7 @@ export const scenarios: Record<number, Entry> = {
   41: covered([
     ...t(
       I.auth,
-      "applies updated catalog prices and composition only through an explicit proposal",
+      "applies updated catalog prices only through an explicit proposal and keeps the instance's own seats",
       "requires a new collision approval for every pending version and never carries it into the approved version",
       "requires current impact confirmation and keeps a conflicting assignment for treatment"
     ),
@@ -2373,7 +2373,7 @@ export const scenarios: Record<number, Entry> = {
   62: covered([
     ...t(
       I.genders,
-      "stores every gender as an empty list in the type, its roles and the duty made from it",
+      "stores every gender as an empty list in the type and in the roles of a duty made from it",
       "is assignable by hand, and a draw offers them, when every gender is allowed",
       "is still blocked as missing information when two of three genders are allowed",
       "is not blocked by a full list that was saved before the fix",
