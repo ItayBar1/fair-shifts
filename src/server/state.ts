@@ -1,10 +1,24 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { projectAudit, technicalScope, type AuditAccount } from "./audit-log";
 import { db } from "./db";
 import { assertActorCurrent, type Actor } from "./auth/accounts";
 import { MAX_FAILURES } from "./auth/policy";
-import { loadDomain } from "./repository";
-import { soldierContacts, dutyTypes, records, ledger } from "./schema";
+import {
+  domainOf,
+  loadDomain,
+  managerSoldierIds,
+  type Workflow,
+} from "./repository";
+import {
+  assignments,
+  balances,
+  duties,
+  dutyTypes,
+  ledger,
+  records,
+  soldierContacts,
+  soldiers,
+} from "./schema";
 import { operationsState, user } from "./auth-schema";
 import { populationAt, rankAt, serviceSummary } from "../domain/eligibility";
 import { interveningActions } from "./score-decisions";
@@ -49,9 +63,257 @@ async function auditAccountsOf(tx: DbTransaction): Promise<AuditAccount[]> {
     .from(user);
 }
 
+type DomainState = ReturnType<typeof domainOf>;
+type DutyView = DomainState["duties"][number];
+type SeatView = DomainState["assignments"][number];
+
+/** What a soldier sees of a published duty. */
+function soldierDuty(row: DutyView) {
+  return {
+    id: row.id,
+    name: row.name,
+    start: row.start,
+    end: row.end,
+    status: row.status,
+    wasPublished: row.wasPublished,
+    location: row.location,
+    instructions: row.instructions,
+    version: row.version,
+    slots: row.slots.map((slot) => ({ id: slot.id, name: slot.role })),
+  };
+}
+/** What a soldier sees of a seat on a published duty. */
+function soldierAssignment(row: SeatView) {
+  return {
+    id: row.id,
+    dutyId: row.dutyId,
+    slotId: row.slotId,
+    soldierId: row.soldierId,
+    status: row.status,
+    points: row.points,
+    version: row.version,
+    // Who covers which part of a split seat is part of the published schedule.
+    ...(row.performedStart && {
+      performedStart: row.performedStart,
+      performedEnd: row.performedEnd,
+    }),
+    ...(row.performance && {
+      performance: {
+        performerId: row.performance.performerId,
+        start: row.performance.start,
+        end: row.performance.end,
+        points: row.performance.points,
+      },
+    }),
+  };
+}
+/** No reason: a soldier sees no manager's reasons (decision 168). */
+function soldierLedger(row: typeof ledger.$inferSelect) {
+  return {
+    id: row.id,
+    soldierId: row.soldierId,
+    amount: row.amount,
+    before: row.before,
+    after: row.after,
+    effectiveAt: row.effectiveAt,
+    kind: row.kind,
+  };
+}
+function unitRequests(workflows: Workflow[], actor: Actor, managing: boolean) {
+  return [
+    ...projectRequests(
+      workflows.filter(
+        (row) => row.data.type !== "cancellation" && row.data.type !== "swap"
+      ),
+      actor,
+      managing
+    ),
+    ...projectSwaps(workflows, actor, managing),
+    ...projectCancellationRequests(workflows, actor, managing),
+  ];
+}
+/** A notification addressed to an account belongs to it alone; hidden copies leave the inbox. */
+function ownNotifications(workflows: Workflow[], actor: Actor) {
+  return workflows
+    .filter(
+      (row) =>
+        row.kind === "notification" &&
+        !row.data.hiddenAt &&
+        (typeof row.data.accountId === "string"
+          ? row.data.accountId === actor.id
+          : Boolean(actor.soldierId) && row.subjectId === actor.soldierId)
+    )
+    .map((row) => ({ ...row.data, id: row.id, version: row.version }));
+}
+
+/** The records whose notifications are the reader's own: an account's or the soldier's. */
+function ownNotice(actor: Actor) {
+  return and(
+    eq(records.kind, "notification"),
+    or(
+      sql`${records.data}->>'accountId' = ${actor.id}`,
+      actor.soldierId
+        ? and(
+            sql`${records.data}->>'accountId' is null`,
+            eq(records.subjectId, actor.soldierId)
+          )
+        : undefined
+    )
+  );
+}
+/** A duty a soldier may see: published, or cancelled after it was published. */
+const visibleDuty = or(
+  sql`${duties.data}->>'status' = 'published'`,
+  and(
+    sql`${duties.data}->>'status' = 'cancelled'`,
+    sql`${duties.data}->>'wasPublished' = 'true'`
+  )
+);
+const dutyEnd = sql`(${duties.data}->>'end')::timestamptz`;
+
+/** Everything a manager works with; other accounts' notices stay out. */
+async function staffRows(tx: DbTransaction, actor: Actor) {
+  return {
+    state: await loadDomain(tx),
+    contacts: await tx.select().from(soldierContacts),
+    catalog: await tx.select().from(dutyTypes),
+    workflows: await tx
+      .select()
+      .from(records)
+      .where(or(sql`${records.kind} <> 'notification'`, ownNotice(actor))),
+    scoreRows: await tx.select().from(ledger),
+  };
+}
+/**
+ * Only what a soldier's screens show, read by query and not filtered out of
+ * the whole unit afterwards: the duties that ended since `from` or still hold
+ * points, the soldier's own score history, notices and constraints since then,
+ * and the unit's rounds and requests (decision 235).
+ */
+async function soldierRows(tx: DbTransaction, actor: Actor, from: Date) {
+  const holding = tx
+    .select({ dutyId: assignments.dutyId })
+    .from(assignments)
+    .where(inArray(assignments.status, ["reserved", "held"]));
+  const dutyRows = await tx
+    .select()
+    .from(duties)
+    .where(
+      and(visibleDuty, or(gte(dutyEnd, from), inArray(duties.id, holding)))
+    );
+  const dutyIds = dutyRows.map((row) => row.id);
+  const state = domainOf({
+    people: await tx.select().from(soldiers),
+    scoreRows: await tx.select().from(balances),
+    dutyRows,
+    assignmentRows: dutyIds.length
+      ? await tx
+          .select()
+          .from(assignments)
+          .where(inArray(assignments.dutyId, dutyIds))
+      : [],
+    constraintRows: [],
+    managers: await managerSoldierIds(tx),
+  });
+  const workflows = await tx
+    .select()
+    .from(records)
+    .where(
+      or(
+        inArray(records.kind, ["round", "rank_catalog", "request"]),
+        actor.soldierId
+          ? and(
+              eq(records.kind, "constraint"),
+              eq(records.subjectId, actor.soldierId)
+            )
+          : undefined,
+        and(ownNotice(actor), gte(records.createdAt, from))
+      )
+    );
+  const shown = new Set(dutyIds);
+  return {
+    state,
+    contacts: actor.soldierId
+      ? await tx
+          .select()
+          .from(soldierContacts)
+          .where(eq(soldierContacts.soldierId, actor.soldierId))
+      : [],
+    catalog: [],
+    // A request stays while it changed lately or its duty is still shown.
+    workflows: workflows.filter(
+      (row) =>
+        row.kind !== "request" ||
+        row.updatedAt >= from ||
+        shown.has(String(row.data.dutyId))
+    ),
+    scoreRows: actor.soldierId
+      ? await tx
+          .select()
+          .from(ledger)
+          .where(
+            and(
+              eq(ledger.soldierId, actor.soldierId),
+              gte(ledger.effectiveAt, from)
+            )
+          )
+      : [],
+  };
+}
+/** Whether anything of the soldier's lists is older than `from`. */
+async function olderAvailable(tx: DbTransaction, actor: Actor, from: Date) {
+  const found = async (query: Promise<unknown[]>) => (await query).length > 0;
+  return (
+    (actor.soldierId !== undefined &&
+      (await found(
+        tx
+          .select({ id: ledger.id })
+          .from(ledger)
+          .where(
+            and(
+              eq(ledger.soldierId, actor.soldierId),
+              lt(ledger.effectiveAt, from)
+            )
+          )
+          .limit(1)
+      ))) ||
+    (await found(
+      tx
+        .select({ id: duties.id })
+        .from(duties)
+        .where(and(visibleDuty, lt(dutyEnd, from)))
+        .limit(1)
+    )) ||
+    (await found(
+      tx
+        .select({ id: records.id })
+        .from(records)
+        .where(
+          or(
+            and(ownNotice(actor), lt(records.createdAt, from)),
+            and(eq(records.kind, "request"), lt(records.updatedAt, from))
+          )
+        )
+        .limit(1)
+    ))
+  );
+}
+
+/** A soldier's history arrives in slices of this length (decision 235). */
+export const HISTORY_DAYS = 90;
+const HISTORY_MS = HISTORY_DAYS * 86_400_000;
+/**
+ * Every query of one read sees the same version of the unit (decision 235):
+ * a publication between two of them cannot show a duty without its seats.
+ */
+const snapshot = {
+  isolationLevel: "repeatable read",
+  accessMode: "read only",
+} as const;
+
 export async function readState(actor: Actor) {
   return db.transaction(async (tx) => {
-    const current = await assertActorCurrent(actor, tx);
+    const current = await assertActorCurrent(actor, tx, { lock: false });
     const publicActor: {
       id: string;
       name: string;
@@ -108,6 +370,9 @@ export async function readState(actor: Actor) {
       scoreDecisions: [],
       managerReturns: [],
       names: {},
+      // A soldier's lists start here; "load more" reads earlier slices (decision 235).
+      history: undefined as
+        { from: string; olderAvailable: boolean } | undefined,
     };
     if (actor.role === "manager" || actor.role === "technical") {
       const [pending] = (
@@ -228,13 +493,12 @@ export async function readState(actor: Actor) {
         restoreDrill: await readDrillStatus(tx, backupConfig()),
       };
     }
-    const state = await loadDomain(tx);
-    const contacts = await tx.select().from(soldierContacts);
-    const catalog = await tx.select().from(dutyTypes);
-    const workflows = await tx.select().from(records);
-    const scoreRows = await tx.select().from(ledger);
     const managing = actor.role === "manager";
     const now = base.serverNow;
+    const historyFrom = new Date(Date.parse(now) - HISTORY_MS);
+    const { state, contacts, catalog, workflows, scoreRows } = managing
+      ? await staffRows(tx, actor)
+      : await soldierRows(tx, actor, historyFrom);
     // A duty manager takes no part in duties (decision 192). A soldier's lists
     // therefore leave managers out, and only their names stay, for the duties and
     // requests that still mention them. Nothing about the role is sent.
@@ -357,21 +621,7 @@ export async function readState(actor: Actor) {
               ...row,
               slots: row.slots.map((slot) => ({ ...slot, name: slot.role })),
             }
-          : {
-              id: row.id,
-              name: row.name,
-              start: row.start,
-              end: row.end,
-              status: row.status,
-              wasPublished: row.wasPublished,
-              location: row.location,
-              instructions: row.instructions,
-              version: row.version,
-              slots: row.slots.map((slot) => ({
-                id: slot.id,
-                name: slot.role,
-              })),
-            }
+          : soldierDuty(row)
       ),
       assignments: state.assignments
         .filter(
@@ -379,32 +629,7 @@ export async function readState(actor: Actor) {
             visibleIds.has(row.dutyId) &&
             (managing || row.status !== "cancelled")
         )
-        .map((row) =>
-          managing
-            ? row
-            : {
-                id: row.id,
-                dutyId: row.dutyId,
-                slotId: row.slotId,
-                soldierId: row.soldierId,
-                status: row.status,
-                points: row.points,
-                version: row.version,
-                // Who covers which part of a split seat is part of the published schedule.
-                ...(row.performedStart && {
-                  performedStart: row.performedStart,
-                  performedEnd: row.performedEnd,
-                }),
-                ...(row.performance && {
-                  performance: {
-                    performerId: row.performance.performerId,
-                    start: row.performance.start,
-                    end: row.performance.end,
-                    points: row.performance.points,
-                  },
-                }),
-              }
-        ),
+        .map((row) => (managing ? row : soldierAssignment(row))),
       dutyTypes: managing
         ? catalog.map((row) => ({
             ...row.data,
@@ -418,29 +643,8 @@ export async function readState(actor: Actor) {
       // Delivery bookkeeping (who was reached) is operational: managers only.
       roundNotices: managing ? workflow("round_notice") : [],
       constraints: managing ? workflow("constraint") : own("constraint"),
-      requests: [
-        ...projectRequests(
-          workflows.filter(
-            (row) =>
-              row.data.type !== "cancellation" && row.data.type !== "swap"
-          ),
-          actor,
-          managing
-        ),
-        ...projectSwaps(workflows, actor, managing),
-        ...projectCancellationRequests(workflows, actor, managing),
-      ],
-      // A notification addressed to an account belongs to it alone; hidden copies leave the inbox.
-      notifications: workflows
-        .filter(
-          (row) =>
-            row.kind === "notification" &&
-            !row.data.hiddenAt &&
-            (typeof row.data.accountId === "string"
-              ? row.data.accountId === actor.id
-              : Boolean(actor.soldierId) && row.subjectId === actor.soldierId)
-        )
-        .map((row) => ({ ...row.data, id: row.id, version: row.version })),
+      requests: unitRequests(workflows, actor, managing),
+      notifications: ownNotifications(workflows, actor),
       settings: await preferencesState(tx, actor),
       calendar: await calendarSettings(tx, actor),
       notificationDefaults: managing ? unitDefaults(workflows) : undefined,
@@ -448,16 +652,13 @@ export async function readState(actor: Actor) {
         ? scoreRows
         : scoreRows
             .filter((row) => row.soldierId === actor.soldierId)
-            .map((row) => ({
-              id: row.id,
-              soldierId: row.soldierId,
-              amount: row.amount,
-              before: row.before,
-              after: row.after,
-              effectiveAt: row.effectiveAt,
-              kind: row.kind,
-              // No reason: a soldier sees no manager's reasons (decision 168).
-            })),
+            .map(soldierLedger),
+      history: managing
+        ? undefined
+        : {
+            from: historyFrom.toISOString(),
+            olderAvailable: await olderAvailable(tx, actor, historyFrom),
+          },
       audit: managing
         ? projectAudit({
             workflows,
@@ -515,5 +716,87 @@ export async function readState(actor: Actor) {
           })
         : [],
     };
-  });
+  }, snapshot);
+}
+
+/**
+ * An earlier slice of a soldier's history, before `before` (decision 235):
+ * the duties that ended then, with their seats, and the soldier's score
+ * history, notices and closed requests of that time, seen exactly as in the
+ * current state. A manager already has all of it.
+ */
+export async function readHistory(actor: Actor, before: Date) {
+  return db.transaction(async (tx) => {
+    await assertActorCurrent(actor, tx, { lock: false });
+    const from = new Date(before.getTime() - HISTORY_MS);
+    if (actor.role !== "soldier")
+      return {
+        from: from.toISOString(),
+        olderAvailable: false,
+        duties: [],
+        assignments: [],
+        requests: [],
+        notifications: [],
+        ledger: [],
+      };
+    const dutyRows = await tx
+      .select()
+      .from(duties)
+      .where(and(visibleDuty, gte(dutyEnd, from), lt(dutyEnd, before)));
+    const dutyIds = dutyRows.map((row) => row.id);
+    const seats = dutyIds.length
+      ? await tx
+          .select()
+          .from(assignments)
+          .where(inArray(assignments.dutyId, dutyIds))
+      : [];
+    const view = domainOf({
+      people: [],
+      scoreRows: [],
+      dutyRows,
+      assignmentRows: seats,
+      constraintRows: [],
+      managers: new Set(),
+    });
+    const workflows = await tx
+      .select()
+      .from(records)
+      .where(
+        or(
+          and(
+            eq(records.kind, "request"),
+            gte(records.updatedAt, from),
+            lt(records.updatedAt, before)
+          ),
+          and(
+            ownNotice(actor),
+            gte(records.createdAt, from),
+            lt(records.createdAt, before)
+          )
+        )
+      );
+    const scoreRows = actor.soldierId
+      ? await tx
+          .select()
+          .from(ledger)
+          .where(
+            and(
+              eq(ledger.soldierId, actor.soldierId),
+              gte(ledger.effectiveAt, from),
+              lt(ledger.effectiveAt, before)
+            )
+          )
+      : [];
+    return {
+      from: from.toISOString(),
+      olderAvailable: await olderAvailable(tx, actor, from),
+      duties: view.duties.map(soldierDuty),
+      assignments: view.assignments
+        .filter((row) => row.status !== "cancelled")
+        .map(soldierAssignment),
+      requests: unitRequests(workflows, actor, false),
+      notifications: ownNotifications(workflows, actor),
+      ledger: scoreRows.map(soldierLedger),
+    };
+  }, snapshot);
 }

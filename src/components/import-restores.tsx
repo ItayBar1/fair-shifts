@@ -10,7 +10,7 @@ import {
 } from "@/client/types";
 import { importValue } from "@/client/import-values";
 import { AffectedAssignments, PopulationChange } from "./personnel-history";
-import { Badge, Notice } from "./ui";
+import { Badge, Notice, scrollRegion } from "./ui";
 
 export function ImportRestore({
   batch,
@@ -176,7 +176,7 @@ export function ImportRestore({
                 רגיש, ומפנה שיבוצים עתידיים עם התראה לאחראים; השם, המספר האישי
                 והיסטוריית התורנויות והניקוד נשמרים.
               </Notice>
-              <div className="table-scroll">
+              <div className="table-scroll" {...scrollRegion("שורות לשחזור")}>
                 <table>
                   <thead>
                     <tr>
@@ -272,7 +272,7 @@ export function ImportRestore({
                 <h3>
                   {str(row.name)} · שורה {num(row.rowNumber)}
                 </h3>
-                <div className="table-scroll">
+                <div className="table-scroll" {...scrollRegion("השפעת השחזור")}>
                   <table>
                     <thead>
                       <tr>

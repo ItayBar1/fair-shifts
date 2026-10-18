@@ -6,7 +6,15 @@ import { createRecord, updateRecord, type Workflow } from "./repository";
 import { enqueueEmail } from "./operations/email";
 import { staffNotificationRecipients } from "./notification-audience";
 import { reserveDailyBudget } from "./auth/budgets";
-import type { EligibilityReason, Soldier } from "../domain/types";
+import type {
+  Assignment,
+  Duty,
+  EligibilityReason,
+  Soldier,
+} from "../domain/types";
+import { executionPeriod } from "../domain/execution";
+import { instant } from "../domain/time";
+import { invariant } from "./errors";
 
 // Helpers shared by the consent flows that move a published seat: a transfer to another
 // soldier (decisions 163, 178) and a mutual swap of two seats (decision 181).
@@ -22,6 +30,82 @@ export const OPEN_CONSENT: ConsentStatus[] = [
   "awaiting_consent",
   "awaiting_manager",
 ];
+
+/** The rules version a consent was given under; a change since makes it stale. */
+export const dutyRulesVersion = (duty: Duty) =>
+  duty.rulesVersion ?? duty.version;
+
+export const PERFORMANCE_ENDED_MESSAGE =
+  "תקופת הביצוע כבר הסתיימה ולכן ההצעה פגה. תיקון ביצוע נעשה בידי אחראי";
+
+export function performanceEnded(
+  seat: Assignment,
+  duty: Duty,
+  now = Date.now()
+) {
+  return instant(executionPeriod(seat, duty).end).toMillis() <= now;
+}
+
+/**
+ * After the start a replacement can take only what is left of the seat, so eligibility
+ * before a manager sets the handover looks at the rest of the offerer's period (decision 183).
+ */
+export function remainingPeriod(
+  seat: Assignment,
+  duty: Duty,
+  now = Date.now()
+) {
+  const period = executionPeriod(seat, duty);
+  invariant(
+    instant(period.end).toMillis() > now,
+    "performance_ended",
+    PERFORMANCE_ENDED_MESSAGE,
+    409
+  );
+  if (instant(period.start).toMillis() > now) return undefined;
+  return { start: new Date(now).toISOString(), end: period.end };
+}
+
+/**
+ * Closes an offer that can no longer go ahead and tells its two sides. The
+ * returned failure is committed by the command layer before the HTTP error.
+ */
+export async function expireSeatRequest(
+  tx: DbTransaction,
+  row: Workflow,
+  scope: "transfer" | "swap",
+  reason: string,
+  code: string
+) {
+  const data = row.data as {
+    candidates: { status: string }[];
+    fromSoldierId: string;
+    acceptedBy?: string;
+    dutyName: string;
+  };
+  const label = scope === "swap" ? "ההחלפה" : "ההעברה";
+  await updateRecord(tx, row, {
+    ...row.data,
+    status: "expired",
+    candidates: data.candidates.map((item) =>
+      item.status === "pending" ? { ...item, status: "closed" } : item
+    ),
+    closedAt: new Date().toISOString(),
+    closedReason: reason,
+  });
+  for (const soldierId of new Set([data.fromSoldierId, data.acceptedBy]))
+    if (soldierId)
+      await notifySoldier(tx, soldierId, {
+        event: "expired",
+        requestId: row.id,
+        title: `הצעת ${label} פגה`,
+        body: `הצעת ${label} לתורנות ${data.dutyName} נסגרה: ${reason}`,
+        email: false,
+        expiresAt: 0,
+        scope,
+      });
+  return { committedError: { code, message: reason, status: 409 } };
+}
 
 export async function accountOf(tx: DbTransaction, soldierId: string) {
   const [account] = await tx

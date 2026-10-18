@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
@@ -302,22 +303,46 @@ async function problemsOf(page: Page) {
     return found;
   });
 }
+/**
+ * What axe finds against WCAG 2.1 A and AA (decision 238): each rule once per
+ * screen, with the first element it names. Not a legal accessibility review.
+ */
+async function axeViolations(page: Page) {
+  const result = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  return result.violations.map(
+    (violation) =>
+      `axe ${violation.id} (${violation.impact}): ${violation.nodes[0]?.target.join(" ")}`
+  );
+}
 async function sweep(page: Page, key: Key, withDuties: boolean) {
   const paths = [...screens[key]];
   if (withDuties && key !== "technical")
     paths.push({ path: `/duties/${dutyId}`, title: "פרטי תורנות" });
   const failures: string[] = [];
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    for (const screen of paths) {
-      await page.goto(screen.path);
-      await expect(
-        page.getByRole("heading", { name: screen.title, exact: true, level: 1 })
-      ).toBeVisible();
-      for (const problem of await problemsOf(page))
-        failures.push(`${width}px ${screen.path}: ${problem}`);
+  for (const colorScheme of ["light", "dark"] as const)
+    for (const width of [1280, 390]) {
+      await page.emulateMedia({ colorScheme });
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      for (const screen of paths) {
+        await page.goto(screen.path);
+        await expect(
+          page.getByRole("heading", {
+            name: screen.title,
+            exact: true,
+            level: 1,
+          })
+        ).toBeVisible();
+        const where = `${colorScheme} ${width}px ${screen.path}`;
+        // The layout checks are the same in both schemes; contrast is not.
+        if (colorScheme === "light")
+          for (const problem of await problemsOf(page))
+            failures.push(`${where}: ${problem}`);
+        for (const problem of await axeViolations(page))
+          failures.push(`${where}: ${problem}`);
+      }
     }
-  }
   expect(failures).toEqual([]);
 }
 
@@ -326,7 +351,7 @@ for (const withDuties of [false, true])
     const open = sharedSessions(withDuties);
     for (const key of Object.keys(people) as Key[])
       test(`every screen of the ${key} is Hebrew, named and fits a phone`, async () => {
-        test.setTimeout(180_000);
+        test.setTimeout(480_000);
         await sweep(await open(key), key, withDuties);
       });
   });

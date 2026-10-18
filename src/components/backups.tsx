@@ -10,7 +10,7 @@ import {
 } from "@/client/types";
 import { failureLabels, type BackupFailureCode } from "@/domain/backup";
 import { backupFreshness, formatBytes } from "@/client/backups";
-import { Badge, Panel, Empty, Notice, QuickAction } from "./ui";
+import { Badge, Panel, Empty, Notice, QuickAction, scrollRegion } from "./ui";
 
 const runStatus: Record<string, [string, string]> = {
   pending: ["ממתין", "warning"],
@@ -129,7 +129,7 @@ export function BackupsView({
       </Panel>
       <Panel title="ריצות אחרונות">
         {runs.length ? (
-          <div className="table-scroll">
+          <div className="table-scroll" {...scrollRegion("ריצות אחרונות")}>
             <table>
               <thead>
                 <tr>

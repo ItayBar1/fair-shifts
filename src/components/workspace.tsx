@@ -28,6 +28,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { type AppState, type Action, str, obj } from "@/client/types";
+import {
+  fetchOlder,
+  historyOf,
+  withHistory,
+  type HistorySlice,
+} from "@/client/history";
+import { OlderHistoryContext } from "./load-older";
 import { unreadCount } from "@/client/notifications";
 import { Notice, Empty, Modal, PageTitle } from "./ui";
 import { CalendarView, DutyDetail, Dashboard } from "./views";
@@ -199,7 +206,11 @@ export function Workspace({
   calendarMine?: boolean;
 }) {
   const router = useRouter();
-  const [state, setState] = useState<AppState | null>(null);
+  const [loaded, setState] = useState<AppState | null>(null);
+  // Earlier slices of a soldier's history, read on request (decision 235).
+  const [older, setOlder] = useState<HistorySlice[]>([]);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -294,7 +305,7 @@ export function Workspace({
         <p>טוענים את תמונת היחידה…</p>
       </main>
     );
-  if (!state)
+  if (!loaded)
     return (
       <main className="loading-screen">
         <Notice tone="danger">{error || "לא ניתן לטעון את המערכת"}</Notice>
@@ -307,6 +318,23 @@ export function Workspace({
         <Link href="/login">חזרה לכניסה</Link>
       </main>
     );
+  const state = withHistory(loaded, older);
+  const historyWindow = historyOf(state);
+  const loadOlder = () => {
+    if (!historyWindow || olderLoading) return;
+    setOlderLoading(true);
+    setOlderError("");
+    fetchOlder(historyWindow.from)
+      .then((slice) => setOlder((current) => [...current, slice]))
+      .catch((e: Error) => setOlderError(e.message))
+      .finally(() => setOlderLoading(false));
+  };
+  const olderHistory = historyWindow && {
+    ...historyWindow,
+    loading: olderLoading,
+    error: olderError,
+    loadOlder,
+  };
   const technical = state.actor.role === "technical";
   const manager = state.actor.role === "manager";
   const soldier = !technical && !manager;
@@ -617,7 +645,11 @@ export function Workspace({
               </Link>
             )}
           </div>
-          <PageTitle.Provider value={pageTitle}>{content()}</PageTitle.Provider>
+          <PageTitle.Provider value={pageTitle}>
+            <OlderHistoryContext.Provider value={olderHistory}>
+              {content()}
+            </OlderHistoryContext.Provider>
+          </PageTitle.Provider>
           {/* Shown above the bottom edge, wherever the page is scrolled. */}
           <div className="toast-stack">
             {error && (

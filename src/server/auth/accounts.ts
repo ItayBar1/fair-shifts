@@ -64,12 +64,18 @@ export async function accountAvailable(
     process.env.RESTORE_MODE !== "true" && maintenance?.data.blocked !== true
   );
 }
-export async function assertActorCurrent(actor: Actor, tx: DbTransaction) {
-  const [row] = await tx
-    .select()
-    .from(user)
-    .where(eq(user.id, actor.id))
-    .for("update");
+/**
+ * The signed-in account as it is now. An action locks the row, so a role or
+ * session change waits for it; a read takes no lock, since it runs in a
+ * read-only snapshot (decision 235).
+ */
+export async function assertActorCurrent(
+  actor: Actor,
+  tx: DbTransaction,
+  { lock = true }: { lock?: boolean } = {}
+) {
+  const query = tx.select().from(user).where(eq(user.id, actor.id));
+  const [row] = lock ? await query.for("update") : await query;
   invariant(
     row &&
       row.securityEpoch === actor.securityEpoch &&

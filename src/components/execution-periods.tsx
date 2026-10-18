@@ -15,7 +15,7 @@ import {
 } from "@/client/types";
 import { asInstant, requirementsOf } from "@/client/soldier-picker";
 import { deletedSeats, suggestDeletedSplit } from "@/client/deleted-seats";
-import { Badge, Modal, Notice, Panel } from "./ui";
+import { Badge, Modal, Notice, Panel, scrollRegion } from "./ui";
 import { SoldierPicker } from "./soldier-picker";
 
 // Execution periods of a seat in a duty that started (decision 183).
@@ -154,7 +154,10 @@ export function ExecutionPeriods({
         );
       })}
       {history.length > 0 && (
-        <div className="table-scroll">
+        <div
+          className="table-scroll"
+          {...scrollRegion("היסטוריית תקופות ביצוע")}
+        >
           <table>
             <caption>היסטוריית תקופות ביצוע</caption>
             <thead>
@@ -546,7 +549,10 @@ function SeatEditor({
             </div>
           ) : (
             <>
-              <div className="table-scroll">
+              <div
+                className="table-scroll"
+                {...scrollRegion("השפעה לפני שמירה")}
+              >
                 <table>
                   <caption>השפעה לפני שמירה</caption>
                   <thead>

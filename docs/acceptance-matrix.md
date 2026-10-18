@@ -4,7 +4,7 @@
 
 **איך קוראים.** ״מכוסה״: לכל סעיף בסיפור או בתרחיש יש בדיקה אוטומטית. ״חלקי״ ו״פתוח״: השורה ״חוסר״ אומרת מה אין לו בדיקה, ובפתוח גם איזה כרטיס יסגור זאת. בדיקה נקראת לפי הקובץ וחלק משמה, כך שבדיקה שנמחקה או ששמה שונה שוברת את הבדיקה של המפה. תוצאות מול ספק, שרת ופיילוט מופיעות בנפרד בשורה ״ספקים, שרת ופיילוט״: ״נבדק״ מתועד ב[מצב הפרויקט](../config/memory/project-state.md), ״טרם נבדק״ עדיין לא נעשה. מעבר בדיקה אוטומטית אינו הוכחה שקיימת הפעלה בשרת או בפיילוט.
 
-סיפורים: 65 במפה: 65 מכוסים, 0 חלקיים, 0 פתוחים. תרחישי קבלה: 64 במפה: 64 מכוסים, 0 חלקיים, 0 פתוחים.
+סיפורים: 65 במפה: 65 מכוסים, 0 חלקיים, 0 פתוחים. תרחישי קבלה: 68 במפה: 68 מכוסים, 0 חלקיים, 0 פתוחים.
 
 ## מה עדיין פתוח
 
@@ -836,6 +836,32 @@
 - ספקים, שרת ופיילוט:
   - טרם נבדק: החלפת כתובת החשבון הטכני ב־staging לחשבון הייעודי, ומשלוח קוד אמיתי לשתי הכתובות (#90)
 
+### 65. תוצאה שמורה אחרי שינוי תפקיד, ותוכן מיילים — הרשאות; פרטיות; מקביליות — מכוסה
+
+- [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `matches the server's own access map, which guards stored results (decision 233)`; `answers a demoted manager's old key with 403, like a new request, and never runs it again`; `still replays a result to someone whose role did not change`
+- [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `clears every finished message's content after 30 days and leaves a pending one alone`; `keeps the content of a message younger than 30 days`; `sends the queued message's key, and counts the provider's duplicate answer as sent`; `uses the queue row's id as the key, the same on every attempt`
+- [contact-requests.test.ts](../tests/integration/contact-requests.test.ts): `removes the request from the digest mail 30 days after it, sent or not (decision 234)`
+
+### 66. היסטוריה של 90 יום אצל החייל — מסכים; פרטיות; עברית ונייד — מכוסה
+
+- [state-history.test.ts](../tests/integration/state-history.test.ts): `shows the last 90 days, and says that more is available`; `reads the earlier slice with the same view, and then says there is no more`; `keeps a seat that still holds points, however long ago its duty ended`; `gives a manager everything, with no window and nothing to load`; `reads only the soldier's own contact details`; `refuses an account whose session changed, as the state does`
+- [history-merge.test.ts](../tests/unit/history-merge.test.ts): `adds older rows under the fresh ones, the fresh copy winning, and moves the window back`
+- [history-window.spec.ts](../tests/e2e/history-window.spec.ts): `a soldier sees 90 days, loads earlier notices on request, and an earlier month by going to it`
+
+### 67. רישום סוגי הרשומות ומחיקה שלמה — מחיקה; תקינות — מכוסה
+
+- [record-kinds.test.ts](../tests/unit/record-kinds.test.ts): `gives every kind a schema and a deletion policy with its reason`; `accepts what the code writes and keeps fields the schema does not name`; `refuses a missing or mistyped field, naming fields and never values`; `stops the action with a server error when a write does not fit`
+- [erasure.test.ts](../tests/unit/erasure.test.ts): `classifies every kind the server writes`
+- [soldier-deletion.test.ts](../tests/integration/soldier-deletion.test.ts): `deletes a former manager who asked to change the email address`
+
+### 68. ניטור חיצוני ונגישות אוטומטית — תפעול; נגישות — מכוסה
+
+- [external-ping.test.ts](../tests/unit/external-ping.test.ts): `pings the worker address at most every five minutes, with nothing in it`; `is off without an address, and a failed ping only returns false`
+- [deployment-config.test.ts](../tests/unit/deployment-config.test.ts): `keeps the external monitor's ping addresses with the worker, over https only (decision 236)`
+- [screens-sweep.spec.ts](../tests/e2e/screens-sweep.spec.ts): `is Hebrew, named and fits a phone`
+- ספקים, שרת ופיילוט:
+  - טרם נבדק: שירות זמינות ודופק עובד חיצוניים מוגדרים ושולחים התראה (הכרעה 236)
+
 ## תפקידים ומצבים
 
 חייל, שני האחראים והמנהל הטכני, בכל אחד מהמצבים: מותר, אסור, מצב ריק, טעינה, שגיאה וגרסה שהשתנתה. הבדיקות ב־`tests/integration/role-matrix.test.ts` (שרת) וב־`tests/e2e/screens-sweep.spec.ts` (דפדפן) רצות לכל תפקיד בנפרד.
@@ -987,4 +1013,5 @@
 - טרם נבדק: גיבוי לפני מיגרציה כשמיגרציה משנה את המסד, בשרת (#36)
 - טרם נבדק: תורנויות ביומן Google של חייל אמיתי (#92)
 - טרם נבדק: פיילוט עם שני האחראים ונתוני אמת (#39)
+- טרם נבדק: שירות זמינות ודופק עובד חיצוניים מוגדרים ושולחים התראה (הכרעה 236)
 - טרם נבדק: קורא מסך אמיתי (הבדיקות האוטומטיות אינן אישור נגישות)

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const requestPaths = new Set([
   "/api/v1/actions",
   "/api/v1/state",
+  "/api/v1/state/history",
   "/api/v1/my-assignments",
   "/api/v1/imports",
   "/api/v1/imports/template",

@@ -277,7 +277,8 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+[role="region"][tabindex]:focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
@@ -307,6 +308,17 @@ small {
 }
 .muted {
   color: var(--text-2);
+}
+/* "Load more" under a soldier's lists (decision 235). */
+.load-older {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-block: 12px;
+}
+.load-older p {
+  margin: 0;
 }
 .grow {
   flex: 1;

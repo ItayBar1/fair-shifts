@@ -12,7 +12,15 @@ import {
   displayDate,
   personName,
 } from "@/client/types";
-import { Badge, Empty, Form, Modal, Panel, type Field } from "./ui";
+import {
+  Badge,
+  Empty,
+  Form,
+  Modal,
+  Panel,
+  type Field,
+  scrollRegion,
+} from "./ui";
 import { performanceOf } from "./performance-corrections";
 import { AuditLink } from "./audit";
 
@@ -162,7 +170,7 @@ export function ScoreDecisions({
         <Empty title="אין תיקוני יתרה שממתינים להכרעה" />
       )}
       {decided.length > 0 && (
-        <div className="table-scroll">
+        <div className="table-scroll" {...scrollRegion("הכרעות שנסגרו")}>
           <table>
             <caption>הכרעות שנסגרו</caption>
             <thead>

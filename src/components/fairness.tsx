@@ -36,7 +36,16 @@ import {
 } from "@/client/fairness";
 import { effectiveDiffers } from "@/domain/time";
 import { AuditLink, ledgerSource } from "./audit";
-import { Badge, Empty, Modal, Notice, Panel, populations } from "./ui";
+import { LoadOlder } from "./load-older";
+import {
+  Badge,
+  Empty,
+  Modal,
+  Notice,
+  Panel,
+  populations,
+  scrollRegion,
+} from "./ui";
 import { HeldFilters } from "./held-filters";
 import { holds, noHeldFilter } from "@/client/soldier-filters";
 
@@ -420,7 +429,7 @@ function LedgerTable({
   );
   if (!entries.length) return <Empty title="אין פעולות ניקוד" />;
   return (
-    <div className="table-scroll">
+    <div className="table-scroll" {...scrollRegion("יומן הניקוד")}>
       <table className="ledger-table stack-on-phone">
         <thead>
           <tr>
@@ -630,6 +639,7 @@ function SoldierScore({
           soldierColumn={false}
           sourceColumn={manager}
         />
+        <LoadOlder what="פעולות" />
       </section>
     </div>
   );
@@ -887,7 +897,7 @@ export function FairnessView({
         }
       >
         {filtered.length || outside.length ? (
-          <div className="table-scroll">
+          <div className="table-scroll" {...scrollRegion("טבלת הצדק")}>
             <table className={`fairness-table ${manager ? "selectable" : ""}`}>
               <thead>
                 <tr>

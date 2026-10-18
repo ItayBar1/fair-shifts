@@ -1,7 +1,7 @@
 "use client";
 import type { ReactNode } from "react";
 import { displayDate, num, obj, rows, str } from "@/client/types";
-import { Badge, Empty, Notice, Panel } from "./ui";
+import { Badge, Empty, Notice, Panel, scrollRegion } from "./ui";
 
 const statusLabels: Record<string, [string, string]> = {
   ok: ["תקין", "success"],
@@ -136,7 +136,7 @@ export function MailPanel({ mail }: { mail: Record<string, unknown> }) {
         subtitle="הודעת האתר והפעולה עצמה נשמרו גם כשהמייל נכשל."
       >
         {failures.length ? (
-          <div className="table-scroll">
+          <div className="table-scroll" {...scrollRegion("כשלים אחרונים")}>
             <table>
               <thead>
                 <tr>
