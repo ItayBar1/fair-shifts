@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { assertMayRun, type ActionType } from "./action-access";
 import { updateOwnContact } from "./my-profile";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -153,6 +154,9 @@ export async function executeAction(actor: Actor, value: unknown) {
         )
       );
     if (previous) {
+      // A stored result answers only someone who may run the action now: a
+      // role changed since gets the refusal a new request would (decision 233).
+      assertMayRun(command.type, actor);
       invariant(
         previous.payloadHash === hash,
         "idempotency_conflict",
@@ -171,7 +175,8 @@ export async function executeAction(actor: Actor, value: unknown) {
     }
     const { payload, expectedVersion } = command;
     let result: unknown;
-    switch (command.type) {
+    // Typed against the access map, so a new case needs its line there.
+    switch (command.type as ActionType) {
       case "import.restore.preview":
         result = await previewImportRestore(
           tx,

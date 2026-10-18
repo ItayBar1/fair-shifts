@@ -40,7 +40,7 @@ import {
 import { soldier, testIdNumber, testProfile, testNames } from "../fixtures";
 import { executeAction } from "../../src/server/actions";
 import { readState } from "../../src/server/state";
-import { settleDue } from "../../src/server/scoring";
+import { postScore, settleDue } from "../../src/server/scoring";
 import { loadDomain } from "../../src/server/repository";
 import { populationAt, rankAt } from "../../src/domain/eligibility";
 import { refreshRankReminders } from "../../src/server/ranks";
@@ -6798,6 +6798,155 @@ describe("past performance corrections", () => {
     expect(notices).toHaveLength(2);
     expect(notices[0]).toMatchObject({
       title: "תיקון ביצוע ממתין להכרעת ניקוד",
+    });
+  });
+
+  describe("a correction that keeps the points and moves the end (audit finding A4)", () => {
+    /** A normalization of the soldier alone, effective at the given time. */
+    async function normalizeAt(soldierId: string, at: Date) {
+      await unitTransaction((tx) =>
+        postScore(tx, {
+          soldierId,
+          sourceKey: `normalization:${randomUUID()}`,
+          kind: "normalization",
+          actorId: manager.id,
+          reason: "נרמול סינתטי",
+          absolute: 2,
+          effectiveAt: at,
+          data: { barrier: true },
+        })
+      );
+    }
+    const pending = async () =>
+      (await db.select().from(records)).filter(
+        (row) => row.kind === "score_decision" && row.data.status === "pending"
+      );
+
+    it("waits for a manager when the end moves forward past a normalization", async () => {
+      const soldier = await member();
+      const { assignment, start } = await credited(soldier.soldierId);
+      await normalizeAt(soldier.soldierId, new Date(Date.now() - 3_600_000));
+      const input = {
+        assignmentId: assignment.id,
+        start,
+        end: new Date(Date.now() - 60_000).toISOString(),
+        reason: "הסיום תוקן; השווי קבוע",
+      };
+      const preview = await run(
+        "performance.correction.preview",
+        input,
+        assignment.version
+      );
+      expect(preview.effects).toMatchObject([
+        {
+          soldierId: soldier.soldierId,
+          historyBefore: 4,
+          historyAfter: 4,
+          status: "decision_required",
+          rawDelta: 0,
+          barriers: [{ kind: "normalization" }],
+        },
+      ]);
+      const applied = await run(
+        "performance.correction.apply",
+        { ...input, token: preview.token },
+        assignment.version
+      );
+      expect(applied.outcomes).toMatchObject([{ status: "decision_required" }]);
+      expect(await pending()).toHaveLength(1);
+      // The history moved; the balance waits for the decision.
+      expect(await balance(soldier.soldierId)).toBe(2);
+    });
+
+    it("waits for a manager when the end moves back before a normalization", async () => {
+      const soldier = await member();
+      const { assignment, start, end } = await credited(soldier.soldierId);
+      await normalizeAt(
+        soldier.soldierId,
+        new Date(new Date(end).getTime() - 6 * 3_600_000)
+      );
+      const input = {
+        assignmentId: assignment.id,
+        start,
+        end: new Date(new Date(end).getTime() - 12 * 3_600_000).toISOString(),
+        reason: "הסיום הוקדם",
+      };
+      const preview = await run(
+        "performance.correction.preview",
+        input,
+        assignment.version
+      );
+      expect(preview.effects).toMatchObject([
+        { status: "decision_required", rawDelta: 0 },
+      ]);
+    });
+
+    it("changes nothing in the balance when the end moves on one side of the normalization", async () => {
+      const soldier = await member();
+      const { assignment, start, end } = await credited(soldier.soldierId);
+      await normalizeAt(soldier.soldierId, new Date(Date.now() - 3_600_000));
+      const input = {
+        assignmentId: assignment.id,
+        start,
+        end: new Date(new Date(end).getTime() - 3_600_000).toISOString(),
+        reason: "הסיום הוקדם בשעה",
+      };
+      const preview = await run(
+        "performance.correction.preview",
+        input,
+        assignment.version
+      );
+      expect(preview.effects).toEqual([]);
+      const applied = await run(
+        "performance.correction.apply",
+        { ...input, token: preview.token },
+        assignment.version
+      );
+      expect(applied.outcomes).toEqual([]);
+      expect(await pending()).toHaveLength(0);
+      expect(await balance(soldier.soldierId)).toBe(2);
+    });
+
+    it("adds a further correction to the open decision instead of opening a second", async () => {
+      const soldier = await member();
+      const { assignment, start } = await credited(soldier.soldierId);
+      await normalizeAt(soldier.soldierId, new Date(Date.now() - 3_600_000));
+      const first = {
+        assignmentId: assignment.id,
+        start,
+        end: new Date(Date.now() - 60_000).toISOString(),
+        reason: "הסיום תוקן",
+      };
+      const preview = await run(
+        "performance.correction.preview",
+        first,
+        assignment.version
+      );
+      const applied = await run(
+        "performance.correction.apply",
+        { ...first, token: preview.token },
+        assignment.version
+      );
+      // On the same side as before, but a decision is already open.
+      const second = {
+        ...first,
+        end: new Date(Date.now() - 120_000).toISOString(),
+        reason: "תיקון נוסף",
+      };
+      const again = await run(
+        "performance.correction.preview",
+        second,
+        applied.version
+      );
+      expect(again.effects).toMatchObject([{ status: "decision_required" }]);
+      await run(
+        "performance.correction.apply",
+        { ...second, token: again.token },
+        applied.version
+      );
+      const decisions = await pending();
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0]!.data.correctionIds).toHaveLength(2);
     });
   });
 

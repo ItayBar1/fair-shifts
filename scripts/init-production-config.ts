@@ -93,6 +93,10 @@ const content = {
     "GOOGLE_DRIVE_REFRESH_TOKEN=",
     "GOOGLE_DRIVE_FOLDER_ID=",
     "AGE_RECIPIENT=",
+    "# External monitor (decision 236): https ping addresses for the worker and for verified",
+    "# backups, given to the worker only. Empty = off. See docs/operations.md.",
+    "HEALTHCHECK_PING_URL=",
+    "HEALTHCHECK_BACKUP_URL=",
     "RESTORE_MODE=false",
   ],
   "tunnel.env": [

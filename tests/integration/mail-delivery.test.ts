@@ -18,8 +18,11 @@ import { createRecord } from "../../src/server/repository";
 import { readState } from "../../src/server/state";
 import {
   MailDeliveryError,
+  brevoTransportWith,
   deliverNextEmail,
   enqueueEmail,
+  expireMailContent,
+  MAIL_CONTENT_RETENTION_MS,
   quotaDay,
   readMailStatus,
   type MailMessage,
@@ -500,6 +503,161 @@ describe("relevance and content", () => {
     expect(JSON.stringify(view)).not.toContain("תוכן סינתטי");
     const soldierView = await readState(member);
     expect("mail" in soldierView).toBe(false);
+  });
+});
+
+describe("the provider's idempotency key (decision 234)", () => {
+  const message = {
+    to: "someone@mail.invalid",
+    subject: "נושא",
+    text: "תוכן",
+    eventKey: "event-1",
+    idempotencyKey: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+  };
+  const withBrevo = async (run: () => Promise<void>) => {
+    const saved = [process.env.BREVO_API_KEY, process.env.BREVO_SENDER_EMAIL];
+    process.env.BREVO_API_KEY = "synthetic-key";
+    process.env.BREVO_SENDER_EMAIL = "sender@mail.invalid";
+    try {
+      await run();
+    } finally {
+      process.env.BREVO_API_KEY = saved[0];
+      process.env.BREVO_SENDER_EMAIL = saved[1];
+      if (saved[0] === undefined) delete process.env.BREVO_API_KEY;
+      if (saved[1] === undefined) delete process.env.BREVO_SENDER_EMAIL;
+    }
+  };
+  it("sends the queued message's key, and counts the provider's duplicate answer as sent", async () => {
+    await withBrevo(async () => {
+      const bodies: Record<string, unknown>[] = [];
+      let accepted = false;
+      // The provider takes the first request; its answer is lost on the way back.
+      const transport = brevoTransportWith((async (_url, init) => {
+        bodies.push(JSON.parse(String(init!.body)));
+        if (!accepted) {
+          accepted = true;
+          throw new Error("timeout");
+        }
+        return Response.json(
+          { code: "duplicate_parameter", message: "duplicate" },
+          { status: 400 }
+        );
+      }) as typeof fetch);
+      await expect(transport(message)).rejects.toThrow();
+      expect(await transport(message)).toBe(
+        `duplicate:${message.idempotencyKey}`
+      );
+      for (const body of bodies)
+        expect(body.headers).toMatchObject({
+          idempotencyKey: message.idempotencyKey,
+          "X-Mailin-custom": "event-1",
+        });
+    });
+  });
+  it("still fails another rejection permanently", async () => {
+    await withBrevo(async () => {
+      const transport = brevoTransportWith((async () =>
+        Response.json(
+          { code: "invalid_parameter" },
+          { status: 400 }
+        )) as typeof fetch);
+      await expect(transport(message)).rejects.toMatchObject({
+        category: "permanent",
+      });
+    });
+  });
+  it("uses the queue row's id as the key, the same on every attempt", async () => {
+    const key = await queue({ expiresInMs: 20 * 3600_000 });
+    const keys: string[] = [];
+    await deliverNextEmail(async (sent) => {
+      keys.push(sent.idempotencyKey);
+      throw new MailDeliveryError("transient");
+    }, later(1000));
+    const waiting = await row(key);
+    await deliverNextEmail(async (sent) => {
+      keys.push(sent.idempotencyKey);
+      return "provider-1";
+    }, waiting.nextAttemptAt);
+    expect(keys).toEqual([waiting.id, waiting.id]);
+    expect((await row(key)).status).toBe("sent");
+  });
+});
+
+describe("content retention (decision 234)", () => {
+  it("clears every finished message's content after 30 days and leaves a pending one alone", async () => {
+    const now = new Date();
+    for (const [key, kind] of [
+      ["retention:sent", "departure"],
+      ["retention:pending", "departure"],
+    ] as const)
+      await db.transaction((tx) =>
+        enqueueEmail(tx, {
+          recipientAccountId: member.id,
+          eventKey: key,
+          kind,
+          title: "שיבוץ חדש: שמירה",
+          body: "פרטי השיבוץ",
+          href: "/duties",
+          destination: memberEmail,
+          expiresAt: new Date(now.getTime() + 86_400_000),
+        })
+      );
+    await db
+      .update(emailOutbox)
+      .set({ status: "sent", providerId: "provider-1" })
+      .where(eq(emailOutbox.eventKey, "retention:sent"));
+    const created = (await db.select().from(emailOutbox))[0]!.createdAt;
+    const later = new Date(
+      created.getTime() + MAIL_CONTENT_RETENTION_MS + 1000
+    );
+    await db.transaction((tx) => expireMailContent(tx, later));
+    // Repeating it changes nothing.
+    await db.transaction((tx) => expireMailContent(tx, later));
+    const rows = await db.select().from(emailOutbox);
+    const sent = rows.find((row) => row.eventKey === "retention:sent")!;
+    const pending = rows.find((row) => row.eventKey === "retention:pending")!;
+    expect(sent).toMatchObject({
+      status: "sent",
+      kind: "departure",
+      providerId: "provider-1",
+      recipientAccountId: member.id,
+      title: "",
+      body: "",
+      href: null,
+      destination: null,
+      encryptedSecret: null,
+    });
+    expect(pending).toMatchObject({
+      status: "pending",
+      title: "שיבוץ חדש: שמירה",
+      body: "פרטי השיבוץ",
+      destination: memberEmail,
+    });
+  });
+
+  it("keeps the content of a message younger than 30 days", async () => {
+    await db.transaction((tx) =>
+      enqueueEmail(tx, {
+        recipientAccountId: member.id,
+        eventKey: "retention:young",
+        kind: "departure",
+        title: "שיבוץ חדש",
+        body: "פרטים",
+        expiresAt: new Date(Date.now() + 86_400_000),
+      })
+    );
+    await db.update(emailOutbox).set({ status: "failed" });
+    const [row] = await db.select().from(emailOutbox);
+    await db.transaction((tx) =>
+      expireMailContent(
+        tx,
+        new Date(row!.createdAt.getTime() + MAIL_CONTENT_RETENTION_MS - 1000)
+      )
+    );
+    expect((await db.select().from(emailOutbox))[0]).toMatchObject({
+      title: "שיבוץ חדש",
+      body: "פרטים",
+    });
   });
 });
 

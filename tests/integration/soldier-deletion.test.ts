@@ -30,6 +30,7 @@ import { readState } from "../../src/server/state";
 import { settleDue } from "../../src/server/scoring";
 import { eraseSoldier } from "../../src/server/soldier-deletion";
 import { ERASED_NOTE, ERASED_REASON } from "../../src/domain/erasure";
+import type { RecordKind } from "../../src/domain/record-kinds";
 import { soldier, testIdNumber, testProfile, testNames } from "../fixtures";
 
 if (
@@ -186,7 +187,7 @@ async function remove(
     key
   );
 }
-async function recordsOf(person: Actor, kind: string) {
+async function recordsOf(person: Actor, kind: RecordKind) {
   return db
     .select()
     .from(records)
@@ -513,6 +514,35 @@ describe("deleting a user", () => {
       .where(eq(records.id, settled));
     expect(done.data).toMatchObject({ outcome: "kept", reason: "היתרה נשארת" });
   });
+  it("deletes a former manager who asked to change the email address", async () => {
+    // Audit finding A2: the kind was classified for deletion but not handled.
+    await command(secondManager, "manager.email.request", {
+      email: "next-address@example.invalid",
+      reason: "כתובת חדשה",
+    });
+    const tech = await createInvitedAccount({
+      name: "טכני למחיקה",
+      role: "technical",
+      email: "deletion-technical@example.invalid",
+    });
+    await command(
+      { id: tech.id, name: tech.name, role: "technical", securityEpoch: 1 },
+      "account.role",
+      { id: secondManager.id, role: "soldier" },
+      1
+    );
+    const former: Actor = {
+      ...secondManager,
+      role: "soldier",
+      securityEpoch: 2,
+    };
+    expect(await recordsOf(former, "manager_email_change")).toHaveLength(1);
+    await expect(remove(manager, former)).resolves.toMatchObject({
+      id: former.soldierId,
+    });
+    expect(await recordsOf(former, "manager_email_change")).toHaveLength(0);
+    expect((await soldierRow(former)).deletedAt).not.toBeNull();
+  });
   it("closes a pending cancellation request of a vacated seat", async () => {
     await publishedDuty([member, other], 2);
     const seat = (await seatsOf(member))[0];
@@ -822,7 +852,7 @@ describe("every active copy of the sensitive data", () => {
       "email_change",
       "import_restore_profile_revision",
       "settings",
-    ])
+    ] as const)
       expect(await recordsOf(member, kind), kind).toHaveLength(0);
     const notices = await db
       .select()

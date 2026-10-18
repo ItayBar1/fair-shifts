@@ -11,6 +11,7 @@ import {
   applyScoreOperation,
   barrierLabel,
   correctionBarriers,
+  crossedBarriers,
   correctionDecision,
   correctionEffect,
   dueCredits,
@@ -399,6 +400,26 @@ describe("past performance corrections", () => {
         (item) => item.id
       )
     ).toEqual(["same", "late"]);
+  });
+  it("finds only the barriers that a moved end crosses, in either direction", () => {
+    const events = [
+      event("normalized", "2026-09-20T10:00:00+03:00", true),
+      event("later", "2026-09-28T10:00:00+03:00", true),
+      event("plain", "2026-09-21T10:00:00+03:00", false),
+    ];
+    const ids = (a: string, b: string) =>
+      crossedBarriers("a", a, b, events).map((item) => item.id);
+    // Moved forward or back across the normalization.
+    expect(ids("2026-09-18T10:00:00Z", "2026-09-22T10:00:00Z")).toEqual([
+      "normalized",
+    ]);
+    expect(ids("2026-09-22T10:00:00Z", "2026-09-18T10:00:00Z")).toEqual([
+      "normalized",
+    ]);
+    // Moved on one side of it, or not moved.
+    expect(ids("2026-09-16T10:00:00Z", "2026-09-18T10:00:00Z")).toEqual([]);
+    expect(ids("2026-09-22T10:00:00Z", "2026-09-24T10:00:00Z")).toEqual([]);
+    expect(ids("2026-09-18T10:00:00Z", "2026-09-18T10:00:00Z")).toEqual([]);
   });
   it("applies the difference once with a zero floor when nothing intervenes", () => {
     expect(

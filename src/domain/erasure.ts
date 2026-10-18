@@ -1,4 +1,9 @@
 import type { Soldier } from "./types";
+import {
+  recordKinds,
+  type ErasurePolicy,
+  type RecordKind,
+} from "./record-kinds";
 
 /**
  * Rules for deleting a soldier (decision 192). They are pure: the server finds
@@ -17,95 +22,16 @@ export const ERASED_REASON = "הנימוק הוסר במחיקת משתמש";
 /** Replaces the text of a closed request or a notice that quoted a reason. */
 export const ERASED_NOTE = "הפירוט הוסר במחיקת משתמש";
 
-export type ErasureAction = "keep" | "delete" | "scrub";
-export type ErasurePolicy = { action: ErasureAction; why: string };
+export type { ErasureAction, ErasurePolicy } from "./record-kinds";
 
 /**
- * The registry of every record kind and what deletion does to it. A new kind
- * must be listed here (a unit test enforces it), so no new copy of personal
- * data escapes the deletion route.
+ * What deletion does to each record kind, from the registry of kinds
+ * (decision 237). A kind is declared there with its policy, so no new copy of
+ * personal data escapes the deletion route.
  */
-export const recordPolicies: Record<string, ErasurePolicy> = {
-  audit: {
-    action: "keep",
-    why: "מעטפה: מי, מה ומתי. הסיבה למחיקה נשמרת בה בהחרגה מפורשת",
-  },
-  audit_detail: { action: "delete", why: "הפירוט האישי של אירוע ביומן" },
-  assignment_approval: {
-    action: "scrub",
-    why: "נימוק האישור החריג נמחק; האישור עצמו נשאר",
-  },
-  constraint: { action: "scrub", why: "נימוקי האילוץ וההחלטה נמחקים" },
-  constraint_revision: { action: "scrub", why: "נימוקי האילוץ וההחלטה נמחקים" },
-  deletion_log_entry: {
-    action: "keep",
-    why: "תור היומן העצמאי: מזהה פנימי ומועד בלבד, בלי שם או פרטי קשר",
-  },
-  departure: {
-    action: "keep",
-    why: "מועד שחרור והודעת עזיבה, בלי פרטים אישיים",
-  },
-  duty_change: { action: "keep", why: "היסטוריית תורנות; הסיבה היא של האחראי" },
-  duty_revision: { action: "keep", why: "היסטוריית תורנות" },
-  eligibility_catalog: { action: "keep", why: "קטלוג ליחידה, לא נתוני חייל" },
-  email_change: { action: "delete", why: "כתובות מייל וקוד אימות" },
-  execution_change: { action: "keep", why: "היסטוריית ביצוע וניקוד" },
-  import: { action: "keep", why: "מספרים מצטברים של האצווה" },
-  import_restore_preview: { action: "keep", why: "טביעות בלבד" },
-  import_restore_profile_revision: {
-    action: "delete",
-    why: "תמונת פרופיל מלאה לפני שחזור, כולל תנאי התאמה",
-  },
-  import_row: {
-    action: "scrub",
-    why: "נשארים מספר שורה, שם, מספר זיהוי ותוצאה בלי פרטי קשר או שינויים",
-  },
-  lottery_attempt: {
-    action: "scrub",
-    why: "ציון וסטטוס נשארים; סיבות הפסילה ונימוק ההחלטה נמחקים",
-  },
-  lottery_exclusion: { action: "scrub", why: "נימוק הדחייה נמחק" },
-  notification: {
-    action: "scrub",
-    why: "הודעות שנשלחו לחשבון נמחקות; הודעות על בקשות שלו מאבדות את הנימוק",
-  },
-  manager_return: {
-    action: "keep",
-    why: "פריט החלטה ביתרה של אחראי שחזר: מזהים ויתרה בלבד. פריט פתוח נסגר במחיקה",
-  },
-  notification_defaults: { action: "keep", why: "ברירות מחדל ליחידה" },
-  performance_correction: { action: "keep", why: "היסטוריית ביצוע וניקוד" },
-  personnel_change: {
-    action: "delete",
-    why: "פטורים, כשירויות, אי־פעילות ותנאי התאמה שנרשמו",
-  },
-  planning_run: { action: "keep", why: "מזהים של תורנויות ומקומות בלבד" },
-  rank_catalog: { action: "keep", why: "קטלוג ליחידה" },
-  rank_deadline: { action: "keep", why: "מועד פז״ם; דרגה נשמרת" },
-  rank_history_revision: { action: "keep", why: "היסטוריית דרגה נשמרת" },
-  rank_reminder: { action: "delete", why: "תזכורת מערכת לחייל שנמחק" },
-  rank_rule: { action: "keep", why: "כלל ליחידה" },
-  rank_rule_revision: { action: "keep", why: "כלל ליחידה" },
-  rank_track: { action: "keep", why: "מסלול דרגות ליחידה" },
-  request: {
-    action: "scrub",
-    why: "נימוקי בקשה, החלטה ואישור חריג נמחקים; הסטטוס נשאר",
-  },
-  round: { action: "keep", why: "סבב ליחידה" },
-  round_notice: { action: "keep", why: "מי קיבל הודעה, בלי תוכן" },
-  score_decision: { action: "keep", why: "היסטוריית ניקוד" },
-  score_preview: { action: "keep", why: "תצוגה מקדימה זמנית" },
-  seat_execution: { action: "keep", why: "היסטוריית ביצוע" },
-  settings: { action: "delete", why: "העדפות אישיות של חשבון שנמחק" },
-  technical_email_change: {
-    action: "keep",
-    why: "בקשה להחלפת כתובת של החשבון הטכני, שאינו חייל ואינו נמחק; אחרי הטיפול נשארים סטטוס וסיבה בלבד",
-  },
-  manager_email_change: {
-    action: "delete",
-    why: "כתובות וקודי אימות של אחראי שנמחק",
-  },
-};
+export const recordPolicies = Object.fromEntries(
+  Object.entries(recordKinds).map(([name, entry]) => [name, entry.erasure])
+) as { [K in RecordKind]: ErasurePolicy };
 
 const object = (value: unknown): Json | undefined =>
   value && typeof value === "object" && !Array.isArray(value)

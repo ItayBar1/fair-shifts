@@ -14,6 +14,8 @@ import {
 import { soldiers, records, soldierContacts } from "../schema";
 import { invariant } from "../errors";
 import { closeWindowsOf } from "../assignment-mail-delivery";
+import { expireActorResults } from "../command-results";
+import { recordData } from "../record-data";
 import { purgeCalendarLink, type CalendarCleanup } from "../calendar/link";
 import { canAccessAfterService } from "../../domain/eligibility";
 import {
@@ -124,7 +126,7 @@ async function audit(
   await tx.insert(records).values({
     id: randomUUID(),
     kind: "audit",
-    data: { actorId, targetId, action },
+    data: recordData("audit", { actorId, targetId, action }),
   });
 }
 export async function revokeAccess(tx: DbTransaction, targetId: string) {
@@ -179,6 +181,7 @@ export async function setRole(
       })
       .where(eq(user.id, targetId));
     await revokeAccess(cx, targetId);
+    if (target.role !== role) await expireActorResults(cx, targetId);
     await audit(cx, actor.id, targetId, `role:${role}`);
   };
   return tx ? work(tx) : db.transaction(work);
@@ -408,13 +411,13 @@ export async function recoverTechnicalAccess(email: string, reason: string) {
     await tx.insert(records).values({
       id: randomUUID(),
       kind: "audit",
-      data: {
+      data: recordData("audit", {
         actorId: "server-operator",
         actorName: "מפעיל השרת",
         targetId: target.id,
         action: "technical.server-recovery",
         reason: input.reason,
-      },
+      }),
     });
     return issueRecoveryCodes(target.id, tx);
   });

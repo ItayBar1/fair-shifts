@@ -2,7 +2,7 @@ import { rm, writeFile } from "node:fs/promises";
 import { PgBoss } from "pg-boss";
 import { pool, unitTransaction } from "./server/db";
 import { settleDue } from "./server/scoring";
-import { deliverNextEmail } from "./server/operations/email";
+import { deliverNextEmail, expireMailContent } from "./server/operations/email";
 import { expireCommandResults } from "./server/command-results";
 import { operationsState, authRateLimit } from "./server/auth-schema";
 import { eq, lt } from "drizzle-orm";
@@ -14,6 +14,7 @@ import { backupConfig, runBackupCycle } from "./server/operations/backup";
 import { refreshDrillAlert } from "./server/operations/restore";
 import { refreshContactDigest } from "./server/contact-requests";
 import { refreshDutyReminders } from "./server/duty-reminders";
+import { externalPings } from "./server/operations/external-ping";
 import { listenForMail, singleFlight } from "./server/operations/mail-signal";
 import { calendarSyncEnabled } from "./server/calendar/config";
 import { runCalendarSync } from "./server/calendar/sync";
@@ -57,6 +58,7 @@ const workerBackup = () => {
     time: config.time,
   };
 };
+const pings = externalPings();
 await boss.createQueue("unit-maintenance", { retryLimit: 5, retryDelay: 15 });
 await boss.schedule("unit-maintenance", "* * * * *");
 await boss.work("unit-maintenance", async () => {
@@ -76,6 +78,7 @@ await boss.work("unit-maintenance", async () => {
     }
     const credited = await settleDue(tx);
     await expireCommandResults(tx, now);
+    await expireMailContent(tx, now);
     await refreshRankReminders(tx);
     await refreshRoundNotices(tx, now);
     await announceDepartures(tx, now);
@@ -110,6 +113,8 @@ await boss.work("unit-maintenance", async () => {
     });
   });
   await writeFile(heartbeatFile, new Date().toISOString());
+  // Only a cycle that got this far tells the outside monitor it is alive (decision 236).
+  await pings.worker();
   await drainMail();
   await drainLog();
 });
@@ -125,6 +130,7 @@ await boss.work("backup", async () => {
   const result = await runBackupCycle();
   if (result.status === "failed" || result.status === "retry")
     console.error("Backup run failed", result.code);
+  if (result.status === "verified") await pings.backup();
 });
 // The calendar sync (decision 195) has a queue of its own, so a slow Google never
 // delays the minute's maintenance; the link table, not the queue, says what is due.

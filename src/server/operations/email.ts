@@ -102,6 +102,8 @@ export type MailMessage = {
   subject: string;
   text: string;
   eventKey: string;
+  /** Stable per queued message, so a retry after an unknown outcome is one mail (decision 234). */
+  idempotencyKey: string;
 };
 export type MailTransport = (message: MailMessage) => Promise<string>;
 /** A transport reports only a category; provider text may contain addresses or secrets. */
@@ -111,29 +113,52 @@ export class MailDeliveryError extends Error {
     this.name = "MailDeliveryError";
   }
 }
-export const brevoTransport: MailTransport = async (message) => {
-  if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL)
-    throw new MailDeliveryError("configuration");
-  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    signal: AbortSignal.timeout(15_000),
-    headers: {
-      "api-key": process.env.BREVO_API_KEY,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      sender: { email: process.env.BREVO_SENDER_EMAIL, name: "תורנות הוגנת" },
-      to: [{ email: message.to }],
-      subject: message.subject,
-      textContent: message.text,
-      headers: { "X-Mailin-custom": message.eventKey },
-    }),
-  });
-  if (!response.ok)
-    throw new MailDeliveryError(classifyProviderStatus(response.status));
-  const result = (await response.json()) as { messageId: string };
-  return result.messageId;
-};
+/**
+ * Brevo's transactional API. The idempotency key makes Brevo refuse a repeat
+ * of an accepted message within its window (30 minutes, checked 18.10.2026):
+ * a retry after a lost answer is then recorded as sent, not mailed twice.
+ */
+export function brevoTransportWith(fetcher: typeof fetch): MailTransport {
+  return async (message) => {
+    if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL)
+      throw new MailDeliveryError("configuration");
+    const response = await fetcher("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        "api-key": process.env.BREVO_API_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        sender: {
+          email: process.env.BREVO_SENDER_EMAIL,
+          name: "תורנות הוגנת",
+        },
+        to: [{ email: message.to }],
+        subject: message.subject,
+        textContent: message.text,
+        headers: {
+          "X-Mailin-custom": message.eventKey,
+          idempotencyKey: message.idempotencyKey,
+        },
+      }),
+    });
+    if (!response.ok) {
+      if (response.status === 400) {
+        const answer = (await response.json().catch(() => ({}))) as {
+          code?: unknown;
+        };
+        if (answer.code === "duplicate_parameter")
+          return `duplicate:${message.idempotencyKey}`;
+      }
+      throw new MailDeliveryError(classifyProviderStatus(response.status));
+    }
+    const result = (await response.json()) as { messageId: string };
+    return result.messageId;
+  };
+}
+export const brevoTransport: MailTransport = (message) =>
+  brevoTransportWith(fetch)(message);
 
 type Executor = typeof db | DbTransaction;
 const MAIL_STATE_KEY = "mail";
@@ -163,6 +188,41 @@ async function writeMailState(tx: Executor, data: MailState, now: Date) {
     });
 }
 const cleared = { encryptedSecret: null, destination: null, leaseUntil: null };
+
+export const MAIL_CONTENT_RETENTION_MS = 30 * 86_400_000;
+/**
+ * A message's content is kept 30 days, whatever its kind (decision 234): then
+ * a finished message keeps only what diagnosing delivery needs. A message
+ * still pending or sending is never touched; its window closes long before.
+ */
+export async function expireMailContent(tx: DbTransaction, now = new Date()) {
+  await tx
+    .update(emailOutbox)
+    .set({
+      title: "",
+      body: "",
+      href: null,
+      destination: null,
+      encryptedSecret: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        notInArray(emailOutbox.status, ["pending", "sending"]),
+        lte(
+          emailOutbox.createdAt,
+          new Date(now.getTime() - MAIL_CONTENT_RETENTION_MS)
+        ),
+        or(
+          ne(emailOutbox.body, ""),
+          ne(emailOutbox.title, ""),
+          sql`${emailOutbox.href} is not null`,
+          sql`${emailOutbox.destination} is not null`,
+          sql`${emailOutbox.encryptedSecret} is not null`
+        )
+      )
+    );
+}
 
 /** Messages whose window closed are failed or skipped once, so a later day never sends them. */
 async function closeExpired(tx: DbTransaction, now: Date) {
@@ -493,6 +553,7 @@ export async function deliverNextEmail(
           process.env.BETTER_AUTH_URL ?? "http://localhost:3000"
         ),
         eventKey: claimed.eventKey,
+        idempotencyKey: claimed.id,
       });
       await tx
         .update(emailOutbox)

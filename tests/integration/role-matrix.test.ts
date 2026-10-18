@@ -6,6 +6,7 @@ import { db, pool } from "../../src/server/db";
 import { user } from "../../src/server/auth-schema";
 import {
   balances,
+  commandResults,
   duties,
   soldierContacts,
   soldiers,
@@ -15,6 +16,7 @@ import {
   type Actor,
 } from "../../src/server/auth/accounts";
 import { executeAction } from "../../src/server/actions";
+import { actionAccess } from "../../src/server/action-access";
 import { errorResponse } from "../../src/server/http";
 import { readState } from "../../src/server/state";
 import { GET as readStateRoute } from "../../src/app/api/v1/state/route";
@@ -249,10 +251,89 @@ beforeEach(async () => {
 });
 afterAll(async () => pool.end());
 
+describe("stored results after a role change (decision 233)", () => {
+  const signedInAgain = async (person: Actor): Promise<Actor> => {
+    const row = await accountOf(person);
+    return {
+      id: row!.id,
+      name: row!.name,
+      role: row!.role as Role,
+      soldierId: row!.soldierId ?? undefined,
+      securityEpoch: row!.securityEpoch,
+    };
+  };
+  it("answers a demoted manager's old key with 403, like a new request, and never runs it again", async () => {
+    const [person] = await db
+      .select()
+      .from(soldiers)
+      .where(eq(soldiers.id, alon.soldierId!));
+    const batch = await send(manager, "import.preview", {
+      filename: "role-replay.xlsx",
+      rows: [
+        {
+          rowNumber: 2,
+          values: { idNumber: person!.idNumber, phone: "050-3333333" },
+        },
+      ],
+    });
+    const payload = { id: batch.id };
+    const key = randomUUID();
+    const original = await send(manager, "import.get", payload, undefined, key);
+    expect(JSON.stringify(original)).toContain("רחוב הבדיקה 7");
+
+    await send(
+      technical,
+      "account.role",
+      { id: manager.id, role: "soldier" },
+      manager.securityEpoch
+    );
+    const demoted = await signedInAgain(manager);
+    expect(await statusOf(send(demoted, "import.get", payload))).toMatchObject({
+      status: 403,
+    });
+    expect(
+      await statusOf(send(demoted, "import.get", payload, undefined, key))
+    ).toEqual({ status: 403, code: "forbidden" });
+    // The stored content ended with the role; the key and its hash stay.
+    const stored = await db
+      .select()
+      .from(commandResults)
+      .where(eq(commandResults.requestKey, key));
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.contentExpiredAt).not.toBeNull();
+    expect(JSON.stringify(stored[0]!.result)).not.toContain("רחוב הבדיקה 7");
+
+    // Made a manager again, the same key replays the expiry, not the action.
+    const before = await accountOf(manager);
+    await send(
+      technical,
+      "account.role",
+      { id: manager.id, role: "manager" },
+      before!.securityEpoch
+    );
+    const again = await signedInAgain(manager);
+    const replay = await send(again, "import.get", payload, undefined, key);
+    expect(replay).toHaveProperty("expiredAt");
+    expect(JSON.stringify(replay)).not.toContain("רחוב הבדיקה 7");
+  });
+
+  it("still replays a result to someone whose role did not change", async () => {
+    const key = randomUUID();
+    const payload = { name: "סוג לבדיקה", pricing: { mode: "fixed", base: 2 } };
+    const first = await send(manager, "dutyType.save", payload, undefined, key);
+    expect(
+      await send(manager, "dutyType.save", payload, undefined, key)
+    ).toEqual(first);
+  });
+});
+
 describe("who may issue each command", () => {
   it("classifies every command the server knows, and no other", () => {
     expect(commands.length).toBeGreaterThan(75);
     expect(Object.keys(access).sort()).toEqual([...commands].sort());
+  });
+  it("matches the server's own access map, which guards stored results (decision 233)", () => {
+    expect(actionAccess).toEqual(access);
   });
   it("refuses a role that the command is not for with 403, before reading the payload", async () => {
     const refused: string[] = [];

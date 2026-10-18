@@ -1146,11 +1146,10 @@ export async function commitExecution(
     plan.current.find((segment) => segment.soldierId)?.soldierId ??
     plan.proposed.find((segment) => segment.soldierId)?.soldierId ??
     undefined;
-  await tx.insert(records).values({
-    id: executionId,
-    kind: "execution_change",
-    subjectId: subject,
-    data: {
+  await createRecord(
+    tx,
+    "execution_change",
+    {
       dutyId: duty.id,
       slotId: slot.id,
       dutyName: duty.name,
@@ -1190,7 +1189,9 @@ export async function commitExecution(
       actorName: actor.name,
       recordedAt: nowIso,
     },
-  });
+    subject,
+    { id: executionId }
+  );
   const [bumped] = await tx
     .update(duties)
     .set({

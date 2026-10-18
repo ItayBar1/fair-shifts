@@ -43,6 +43,25 @@ describe("deployment configuration check", () => {
       "SERVICE_ROLE: allowed values are app, worker or operations"
     );
   });
+  it("keeps the external monitor's ping addresses with the worker, over https only (decision 236)", () => {
+    const address = "https://monitor.example.invalid/ping/synthetic";
+    expect(
+      errorsFor({
+        SERVICE_ROLE: "worker",
+        HEALTHCHECK_PING_URL: address,
+        HEALTHCHECK_BACKUP_URL: address,
+      }).filter((error) => error.startsWith("HEALTHCHECK_"))
+    ).toEqual([]);
+    for (const name of ["HEALTHCHECK_PING_URL", "HEALTHCHECK_BACKUP_URL"]) {
+      expect(errorsFor({ SERVICE_ROLE: "app", [name]: address })).toContain(
+        `${name}: must not be available to the site`
+      );
+      for (const wrong of ["http://monitor.example.invalid/ping", "not a url"])
+        expect(errorsFor({ SERVICE_ROLE: "worker", [name]: wrong })).toContain(
+          `${name}: an https URL is required`
+        );
+    }
+  });
   it("requires public verification keys and a matching worker-only signing key with acknowledged offline recovery", () => {
     const first = generateKeyPairSync("ed25519"),
       other = generateKeyPairSync("ed25519");

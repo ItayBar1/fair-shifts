@@ -227,16 +227,36 @@ export function driveStorage(
     return response;
   }
 
-  async function list(query: string) {
-    const params = new URLSearchParams({
-      q: `${query} and trashed = false`,
-      fields: `files(${FILE_FIELDS})`,
-      spaces: "drive",
-    });
-    const response = await call(`${DRIVE}/files?${params}`);
-    if (response.status === 404) return [];
-    return ((await response.json()) as { files: DriveFile[] }).files;
+  /** Every page of a search, so a long history is never cut at one page. */
+  async function list<File extends DriveFile = DriveFile>(
+    query: string,
+    options: { fields?: string; orderBy?: string } = {}
+  ) {
+    const files: File[] = [];
+    let pageToken: string | undefined;
+    do {
+      const params = new URLSearchParams({
+        q: `${query} and trashed = false`,
+        fields: `nextPageToken,files(${options.fields ?? FILE_FIELDS})`,
+        pageSize: "1000",
+        spaces: "drive",
+        ...(options.orderBy && { orderBy: options.orderBy }),
+        ...(pageToken && { pageToken }),
+      });
+      const response = await call(`${DRIVE}/files?${params}`);
+      if (response.status === 404) return files;
+      const page = (await response.json()) as {
+        files: File[];
+        nextPageToken?: string;
+      };
+      files.push(...page.files);
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+    return files;
   }
+  /** A search within this installation's folder (audit finding A5). */
+  const inFolder = async (query: string) =>
+    list(`'${await folderId()}' in parents and ${query}`);
 
   async function folderId() {
     if (folder) return folder;
@@ -317,36 +337,33 @@ export function driveStorage(
     },
     async findRun(runId) {
       return (
-        await list(
+        await inFolder(
           `appProperties has { key='${RUN_MARK}' and value='${runId}' }`
         )
       ).map(stored);
     },
     async findKind(kind) {
       return (
-        await list(
+        await inFolder(
           `appProperties has { key='${KIND_MARK}' and value='${kind}' }`
         )
       ).map(stored);
     },
     async listBackups() {
       const parent = await folderId();
-      const params = new URLSearchParams({
-        q: `'${parent}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
-        fields: `files(${FILE_FIELDS},name,createdTime,appProperties)`,
-        orderBy: "createdTime desc",
-        pageSize: "1000",
-        spaces: "drive",
-      });
-      const response = await call(`${DRIVE}/files?${params}`);
-      if (response.status === 404) return [];
-      const { files } = (await response.json()) as {
-        files: (DriveFile & {
+      const files = await list<
+        DriveFile & {
           name?: string;
           createdTime?: string;
           appProperties?: Record<string, string>;
-        })[];
-      };
+        }
+      >(
+        `'${parent}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
+        {
+          fields: `${FILE_FIELDS},name,createdTime,appProperties`,
+          orderBy: "createdTime desc",
+        }
+      );
       // The deletion log and other kinds carry a kind mark; a backup does not.
       return files
         .filter(

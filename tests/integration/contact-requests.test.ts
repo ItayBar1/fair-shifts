@@ -10,6 +10,11 @@ import {
   submitContactRequest,
 } from "../../src/server/contact-requests";
 import { errorResponse } from "../../src/server/http";
+import {
+  MAIL_CONTENT_RETENTION_MS,
+  deliverNextEmail,
+  expireMailContent,
+} from "../../src/server/operations/email";
 
 let technicalId: string;
 beforeEach(async () => {
@@ -133,5 +138,44 @@ describe("the public contact form (decision 228)", () => {
     expect(await db.select().from(contactRequests)).toHaveLength(1);
     await digest(new Date(morning(1, 20).getTime() + KEEP_DAYS * 86_400_000));
     expect(await db.select().from(contactRequests)).toHaveLength(0);
+  });
+
+  it("removes the request from the digest mail 30 days after it, sent or not (decision 234)", async () => {
+    // The next 09:00 UTC, so the mail is still within its delivery window.
+    const sentAt = new Date();
+    sentAt.setUTCHours(9, 0, 0, 0);
+    if (sentAt.getTime() <= Date.now())
+      sentAt.setUTCDate(sentAt.getUTCDate() + 1);
+    await submitContactRequest(form(valid), sentAt);
+    await digest(sentAt);
+    const sent = await deliverNextEmail(async (message) => {
+      expect(message.text).toContain(valid.message);
+      return "synthetic-provider-id";
+    }, sentAt);
+    expect(sent).toMatchObject({ status: "sent" });
+    const [mail] = await technicalMail();
+    const expiry = mail!.createdAt.getTime() + MAIL_CONTENT_RETENTION_MS;
+    await db.transaction((tx) =>
+      expireMailContent(tx, new Date(expiry - 60_000))
+    );
+    expect((await technicalMail())[0]!.body).toContain(valid.message);
+
+    // The stored time has microseconds; a second later is past it for sure.
+    await db.transaction((tx) =>
+      expireMailContent(tx, new Date(expiry + 1000))
+    );
+    const [kept] = await technicalMail();
+    // A delivery record stays for diagnosis; nothing the person sent does.
+    expect(kept).toMatchObject({
+      kind: "contact-digest",
+      status: "sent",
+      providerId: "synthetic-provider-id",
+      title: "",
+      body: "",
+      href: null,
+      destination: null,
+    });
+    for (const value of [valid.message, valid.contact, valid.name])
+      expect(JSON.stringify(kept)).not.toContain(value);
   });
 });

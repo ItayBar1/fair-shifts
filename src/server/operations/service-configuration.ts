@@ -120,6 +120,9 @@ export function splitServiceConfiguration(
         "BREVO_API_KEY",
         "BREVO_SENDER_EMAIL",
         "WORKER_HEARTBEAT_FILE",
+        // The external monitor's ping addresses work as credentials (decision 236).
+        "HEALTHCHECK_PING_URL",
+        "HEALTHCHECK_BACKUP_URL",
       ]),
       MAIL_TRANSPORT: source.MAIL_TRANSPORT || "disabled",
       SERVICE_ROLE: "worker",
