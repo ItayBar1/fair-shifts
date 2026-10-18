@@ -230,3 +230,44 @@ test("a new duty type starts at one point and one call-up point, either can chan
   await expect(dialog.getByLabel("ניקוד בסיס")).toHaveValue("3");
   await expect(dialog.getByLabel("סכום הזנקה שמור (רשות)")).toHaveValue("");
 });
+
+// Decision 231: rest is entered in hours and stored in minutes.
+test("rest before and after a duty type is entered in hours, saved in minutes and shown in hours", async ({
+  browser,
+}) => {
+  const page = await signedIn(browser);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/manage/catalog");
+  await page
+    .getByRole("button", { name: "סוג תורנות חדש", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("מנוחה לפני (שעות)")).toHaveValue("0:00");
+  await dialog.getByLabel("שם סוג התורנות").fill("שמירת לילה עם מנוחה");
+  await dialog.getByLabel("מנוחה לפני (שעות)").fill("12 שעות");
+  await dialog.getByLabel("מנוחה אחרי (שעות)").fill("0:30");
+  await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
+  // Text that is not hours is refused before anything is saved.
+  await expect(dialog.getByText("מנוחה לפני: יש להזין שעות")).toBeVisible();
+  await dialog.getByLabel("מנוחה לפני (שעות)").fill("12");
+  await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const [type] = await db
+    .select()
+    .from(dutyTypes)
+    .where(eq(dutyTypes.name, "שמירת לילה עם מנוחה"));
+  expect(type.data).toMatchObject({
+    restBeforeMinutes: 720,
+    restAfterMinutes: 30,
+  });
+  const card = page.locator("section.panel", {
+    has: page.getByRole("heading", {
+      name: "שמירת לילה עם מנוחה",
+      exact: true,
+    }),
+  });
+  await expect(card).toContainText("מנוחה: 12 שעות לפני · 30 דקות אחרי");
+  await card.getByRole("button", { name: "פרטים ועריכה", exact: true }).click();
+  await expect(dialog.getByLabel("מנוחה לפני (שעות)")).toHaveValue("12:00");
+  await expect(dialog.getByLabel("מנוחה אחרי (שעות)")).toHaveValue("0:30");
+});

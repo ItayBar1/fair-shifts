@@ -11,6 +11,11 @@ import {
   rows,
   str,
 } from "@/client/types";
+import {
+  readRestHours,
+  restHint,
+  restHoursInput,
+} from "@/client/rest-duration";
 import type { Gender, RankClause, Requirements } from "@/domain/types";
 import { Form, Notice } from "./ui";
 import { RankRequirements } from "./rank-requirements";
@@ -190,22 +195,24 @@ export function CompositionEditor({
           hint: "מוצע כשמסמנים הזנקה במקום; אינו חל בלי סימון",
         },
         {
-          name: "restBeforeMinutes",
-          label: "מנוחה לפני (דקות)",
-          type: "number",
-          min: 0,
-          value: num(proposed.restBeforeMinutes),
+          name: "restBefore",
+          label: "מנוחה לפני (שעות)",
+          value: restHoursInput(num(proposed.restBeforeMinutes)),
+          hint: restHint,
         },
         {
-          name: "restAfterMinutes",
-          label: "מנוחה אחרי (דקות)",
-          type: "number",
-          min: 0,
-          value: num(proposed.restAfterMinutes),
+          name: "restAfter",
+          label: "מנוחה אחרי (שעות)",
+          value: restHoursInput(num(proposed.restAfterMinutes)),
+          hint: restHint,
         },
       ]}
       submitLabel="שמירת ההרכב והתמחור בהצעה"
       onSubmit={async (values) => {
+        const restBefore = readRestHours(str(values.restBefore), "מנוחה לפני");
+        const restAfter = readRestHours(str(values.restAfter), "מנוחה אחרי");
+        if (restBefore.error) throw new Error(restBefore.error);
+        if (restAfter.error) throw new Error(restAfter.error);
         await action(
           "duty.change.rules",
           {
@@ -236,8 +243,8 @@ export function CompositionEditor({
                 frequency: item.frequency,
               })),
             },
-            restBeforeMinutes: num(values.restBeforeMinutes),
-            restAfterMinutes: num(values.restAfterMinutes),
+            restBeforeMinutes: restBefore.minutes,
+            restAfterMinutes: restAfter.minutes,
           },
           change.version
         );

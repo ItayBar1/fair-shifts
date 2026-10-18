@@ -73,6 +73,12 @@ import {
   readDefaultHours,
   relevantHoursExemptions,
 } from "@/client/default-hours";
+import {
+  describeRest,
+  readRestHours,
+  restHint,
+  restHoursInput,
+} from "@/client/rest-duration";
 /** The phone format the server accepts (decision 222). */
 export const phoneHint = "נייד ישראלי שמתחיל ב־05, או מספר בינלאומי שמתחיל ב־+";
 /** Saving a second soldier with the same first and last name is allowed after this. */
@@ -1191,18 +1197,16 @@ function CatalogForm({
       hint: "מוצע לאחראי כשהוא מסמן הזנקה; אפשר לשנות, או לרוקן כדי לא לשמור סכום",
     },
     {
-      name: "restBeforeMinutes",
-      label: "מנוחה לפני (דקות)",
-      type: "number",
-      min: 0,
-      value: num(initial?.restBeforeMinutes),
+      name: "restBefore",
+      label: "מנוחה לפני (שעות)",
+      value: restHoursInput(num(initial?.restBeforeMinutes)),
+      hint: restHint,
     },
     {
-      name: "restAfterMinutes",
-      label: "מנוחה אחרי (דקות)",
-      type: "number",
-      min: 0,
-      value: num(initial?.restAfterMinutes),
+      name: "restAfter",
+      label: "מנוחה אחרי (שעות)",
+      value: restHoursInput(num(initial?.restAfterMinutes)),
+      hint: restHint,
     },
     {
       name: "defaultStart",
@@ -1366,6 +1370,10 @@ function CatalogForm({
             str(v.defaultEndDays)
           );
           if (defaultHours.error) throw new Error(defaultHours.error);
+          const restBefore = readRestHours(str(v.restBefore), "מנוחה לפני");
+          const restAfter = readRestHours(str(v.restAfter), "מנוחה אחרי");
+          if (restBefore.error) throw new Error(restBefore.error);
+          if (restAfter.error) throw new Error(restAfter.error);
           const supplements = bonus
             ? [
                 ...rows(pricing.supplements),
@@ -1395,8 +1403,8 @@ function CatalogForm({
                 callUp: v.callUp,
                 supplements,
               },
-              restBeforeMinutes: v.restBeforeMinutes,
-              restAfterMinutes: v.restAfterMinutes,
+              restBeforeMinutes: restBefore.minutes,
+              restAfterMinutes: restAfter.minutes,
               defaultHours: defaultHours.hours,
               exemptionIds: v.exemptionIds,
               genders: v.genders,
@@ -1605,8 +1613,8 @@ export function CatalogView({
                 )}
                 <div className="meta-line">
                   <Clock3 size={15} />
-                  מנוחה: {num(type.restBeforeMinutes)} דקות לפני ·{" "}
-                  {num(type.restAfterMinutes)} אחרי
+                  מנוחה: {describeRest(num(type.restBeforeMinutes))} לפני ·{" "}
+                  {describeRest(num(type.restAfterMinutes))} אחרי
                 </div>
                 <button
                   className="btn secondary full-width"
