@@ -525,7 +525,9 @@ export const stories: Record<number, Entry> = {
     ),
     ...t(
       E.defaultHours,
-      "sets default hours on a duty type, lists the hours exemptions they exceed and prefills a new instance"
+      "sets default hours on a duty type, lists the hours exemptions they exceed and prefills a new instance",
+      // Decision 230.
+      "a new duty type starts at one point and one call-up point, either can change and the call-up can be cleared"
     ),
   ]),
   24: covered([

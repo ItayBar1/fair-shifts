@@ -181,3 +181,52 @@ test("sets default hours on a duty type, lists the hours exemptions they exceed 
     )
   ).toBe(true);
 });
+
+// Decision 230: a new type starts at one point and one call-up point.
+test("a new duty type starts at one point and one call-up point, either can change and the call-up can be cleared", async ({
+  browser,
+}) => {
+  const page = await signedIn(browser);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const stored = async (name: string) =>
+    (await db.select().from(dutyTypes).where(eq(dutyTypes.name, name)))[0];
+  const create = async (name: string, change?: () => Promise<void>) => {
+    await page.goto("/manage/catalog");
+    await page
+      .getByRole("button", { name: "סוג תורנות חדש", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("ניקוד בסיס")).toHaveValue("1");
+    await expect(dialog.getByLabel("סכום הזנקה שמור (רשות)")).toHaveValue("1");
+    await dialog.getByLabel("שם סוג התורנות").fill(name);
+    await change?.();
+    await dialog.getByRole("button", { name: "שמירה", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    return stored(name);
+  };
+
+  const kept = await create("סוג עם ברירות המחדל");
+  expect(kept.data.pricing).toMatchObject({
+    basePoints: "1",
+    callUpPoints: "1",
+  });
+  const changed = await create("סוג בלי הזנקה", async () => {
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("ניקוד בסיס").fill("3");
+    await dialog.getByLabel("סכום הזנקה שמור (רשות)").fill("");
+  });
+  expect(changed.data.pricing).toMatchObject({ basePoints: "3" });
+  expect(changed.data.pricing).not.toHaveProperty("callUpPoints");
+
+  // Editing a type shows what it saved, not the defaults of a new one.
+  await page.goto("/manage/catalog");
+  await page
+    .locator("section.panel", {
+      has: page.getByRole("heading", { name: "סוג בלי הזנקה", exact: true }),
+    })
+    .getByRole("button", { name: "פרטים ועריכה", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("ניקוד בסיס")).toHaveValue("3");
+  await expect(dialog.getByLabel("סכום הזנקה שמור (רשות)")).toHaveValue("");
+});

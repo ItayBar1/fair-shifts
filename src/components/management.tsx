@@ -1178,7 +1178,8 @@ function CatalogForm({
       required: true,
       min: 0,
       step: "0.01",
-      value: num(pricing.base ?? pricing.amount),
+      // A new type starts at one point a duty and one a call-up (decision 230).
+      value: initial ? num(pricing.base ?? pricing.amount) : 1,
     },
     {
       name: "callUp",
@@ -1186,8 +1187,8 @@ function CatalogForm({
       type: "number",
       min: 0,
       step: "0.01",
-      value: str(pricing.callUp),
-      hint: "מוצע לאחראי כשהוא מסמן הזנקה; אפשר לאשר או להזין סכום אחר",
+      value: initial ? str(pricing.callUp) : "1",
+      hint: "מוצע לאחראי כשהוא מסמן הזנקה; אפשר לשנות, או לרוקן כדי לא לשמור סכום",
     },
     {
       name: "restBeforeMinutes",
