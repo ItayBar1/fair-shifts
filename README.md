@@ -60,16 +60,16 @@ sh scripts/docker.sh --profile test down
 ## בדיקות
 
 ```sh
-# טיפוסים, lint, כללי המאגר, בדיקות יחידה, PostgreSQL אמיתי ובניית production
+# Typecheck, lint, repository rules, unit, PostgreSQL and production build
 sh scripts/docker.sh --profile test run --build --rm tests
 
-# Playwright מול build של production, כולל רוחב נייד
+# Playwright against a production build, including mobile viewports
 sh scripts/docker.sh --profile test run --build --rm e2e
 
-# תצורת production עם סודות סינתטיים: בריאות, restart, הרשאות תמונה, גיבוי ושחזור
+# Production configuration with synthetic secrets: health, restart, backup and restore
 sh scripts/production-smoke.sh
 
-# שער שרשרת האספקה: pnpm audit ו־Trivy על התלויות ועל כל התמונות
+# Supply chain gate: pnpm audit and Trivy across dependencies and images
 sh scripts/security-scan.sh
 ```
 
@@ -80,13 +80,13 @@ sh scripts/security-scan.sh
 אחרי `sh scripts/docker.sh build tools`:
 
 ```sh
-# מיגרציה חדשה מהסכמה (src/server/schema.ts)
+# Generate a migration from src/server/schema.ts
 sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tools pnpm db:generate
 
-# סנכרון האפיון ל־HTML
+# Render the product specification as HTML
 sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tools pnpm docs:render
 
-# מפת הקבלה, מתוך tests/acceptance/acceptance-map.ts
+# Render the acceptance map from tests/acceptance/acceptance-map.ts
 sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tools pnpm docs:matrix
 ```
 
@@ -94,7 +94,9 @@ sh scripts/docker.sh run --rm --no-deps -v "$PWD:/app" -v /app/node_modules tool
 
 ## פריסה ותפעול
 
-production רץ על שרת Ubuntu עם Docker Compose (`compose.production.yaml`): מסד, אתר, עובד ו־cloudflared, בלי פורטים פתוחים. טיימר systemd בשרת פורס כל commit ב־main אחרי שריצת ה־CI שלו עברה, עם גיבוי מאומת לפני שינוי מסד וחזרה אוטומטית כשאין שינוי מסד. גיבוי יומי מוצפן נשמר ב־Google Drive, ותרגיל שחזור מבודד רץ כל רבעון.
+production רץ על שרת Ubuntu עם Docker Compose (`compose.production.yaml`): מסד, אתר, עובד ו־cloudflared, בלי פורטים פתוחים. טיימר systemd בשרת פורס כל commit ב־main אחרי שריצת ה־CI שלו עברה, עם גיבוי מאומת לפני שינוי מסד וחזרה אוטומטית כשאין שינוי מסד. גיבוי יומי מוצפן נשמר ב־Google Drive. נדרש לבצע תרגיל שחזור מבודד בכל רבעון; העובד מציג תזכורת, והתרגיל מופעל בידי המפעיל.
+
+[ביקורת production מ־18.10.2026](docs/production-audit-2026-10-18.md) מרכזת תקלות פתוחות, הוכחות סינתטיות והמלצות ארכיטקטורה. יש לקרוא אותה לצד תוצאות הבדיקות לפני שינוי בתחומים האלה.
 
 כל ההוראות, כולל הקמה ראשונה, סודות, שחזור, יומן המחיקות וטיפול בתקלות, ב[מדריך ההפעלה](docs/operations.md). כל פלט שנקרא בשרת כתוב באנגלית.
 

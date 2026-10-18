@@ -45,10 +45,10 @@
 **Google — לקוח הכניסה בפרויקט `fairshifts-backup`:**
 
 1. **Branding → Authorized domains:** מוסיפים את הדומיין. אם Google מבקש אימות בעלות, מאמתים ב־Search Console עם רשומת TXT ב־Cloudflare.
-2. **Clients → fair-shifts-staging:** מוסיפים מקור `https://fairshifts.app` וכתובת חזרה `https://fairshifts.app/api/auth/callback/google`. משאירים את כתובות ה־staging עד אחרי ההחלפה. אפשר לשנות את שם הלקוח ל־`fair-shifts`. המזהה והסוד לא משתנים.
+2. **Clients → fair-shifts:** המקור הוא `https://fairshifts.app` וכתובת החזרה `https://fairshifts.app/api/auth/callback/google`. כתובות ה־staging הוסרו ב־16.10.2026. בהחלפת מזהה או סוד מעדכנים גם את האתר וגם את העובד לפי [מדריך ההפעלה](operations.md).
 3. **Data Access:** בודקים שמופיעים `openid`, ‏`email`, ‏`profile` ו־`calendar.app.created` בלבד, ושכולם מסומנים non-sensitive.
 
-**Google Drive — גיבוי:** לפי החלטת המשתמש (16.10.2026), production שומרת באותה תיקייה של staging, ולא בתיקייה נפרדת. לפני ההחלפה המשתמש מוחק מהתיקייה את הגיבויים הישנים של staging, כך שבתיקייה יישמרו רק גיבויי production. `GOOGLE_DRIVE_FOLDER_ID`, לקוח Drive, אסימון הרענון ו־`AGE_RECIPIENT` נשארים. המפתח הפרטי של age נשאר מחוץ לשרת.
+**Google Drive — גיבוי:** לפי החלטת המשתמש (16.10.2026), production משתמשת בתיקייה ובחיבור ששימשו את staging. ניקוי גיבויי staging היה חלק מהמעבר; אין זו הוראה למחוק כעת גיבויים מהתיקייה הפעילה. המפתח הפרטי של age נשאר מחוץ לשרת. `GOOGLE_DRIVE_FOLDER_ID` ריק גורם לקוד לאתר תיקייה מסומנת קיימת, ורק אם אינה קיימת ליצור אחת. אימות גיבוי ושחזור מתועד במצב ההפעלה; לא בוצעה בביקורת זו בדיקה חיה נוספת של תוכן התיקייה.
 
 **Cloudflare Tunnel:** משתמשים באותו Tunnel. בלשונית **Routes** מוסיפים **Published application** עבור `fairshifts.app` לשירות `http://app:3000`. ה־route הישן נשאר עד אחרי ההחלפה.
 
@@ -75,6 +75,6 @@
 
 ## 7. אחרי ההחלפה
 
-- מסירים את כתובות ה־staging מלקוח Google ואת ה־route הישן מה־Tunnel.
+- כתובות ה־staging כבר הוסרו מלקוח Google. הסרת ה־route הישן מה־Tunnel נשארת חלק מניקוי הסביבה העצורה, באישור המשתמש.
 - `config-staging` ונפח המסד של `fair-shifts-production-alpine` נשמרים עצורים לפחות שבוע. מחיקה (`down --volumes` לפרויקט הישן בלבד, ומחיקת התיקייה) רק באישור המשתמש.
 - כל מיזוג ל־main נפרס על production, ולכן נדרש Review לכל PR (הכרעה 221).
