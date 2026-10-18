@@ -21,6 +21,10 @@
   - סריקת המסכים עם axe והבדיקה החדשה `history-window`.
   - `docs:render` ו־`docs:matrix`.
 - **בענן:** dockerd הופעל ידנית. ה־override הזמני של Compose (CA של ה־proxy ורשת host) נשמר מחוץ למאגר, ונטען דרך `COMPOSE_FILE=compose.yaml:<override>` כדי ששער ה־commit יבנה מתיקיית ה־snapshot שלו. Vitest אינו רץ על המארח, כי `node_modules` נבנה ל־Alpine.
+- **סקירת Codex על PR #192 (שלושה ממצאי P2, כולם אומתו ותוקנו):**
+  - הדפדפן קורא מחדש בכל רענון את פרוסות ההיסטוריה שנטענו, כדי שהודעה ישנה שסומנה או הוסתרה לא תחזור מעותק מיושן.
+  - ניקוי המיילים חל גם על מייל שנשאר ממתין כשהמשלוח כבוי, ואינו דורס את `updatedAt` שמצב המייל נשען עליו.
+  - עודכנו הכרעה 234, האפיון והמסמכים. רצו ב־Docker typecheck, prettier, ו־35 בדיקות (`history-merge`, `mail-delivery`, `contact-requests`, `state-history`), ואחריהן שער Husky המלא ב־commit.
 - **לא נבדק:** Brevo חי, שירותי הניטור, קורא מסך אמיתי ו־production.
 - **ההמשך:** PR, אישור המפתח השני והגדרת הניטור אחרי המיזוג. לפרק בשינוי הבא בהם: `fairness.tsx`, `import-restores.ts`, `duty-changes.ts`.
 

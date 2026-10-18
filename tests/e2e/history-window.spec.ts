@@ -121,7 +121,7 @@ async function login(page: Page) {
   await expect(page.getByRole("heading", { name: signedInHome })).toBeVisible();
 }
 
-test("a soldier sees 90 days, loads earlier notices on request, and an earlier month by going to it", async ({
+test("a soldier sees 90 days, loads earlier notices on request, sees changes to them, and an earlier month by going to it", async ({
   page,
 }) => {
   await login(page);
@@ -133,6 +133,15 @@ test("a soldier sees 90 days, loads earlier notices on request, and an earlier m
   // The fresh state that reloads every 30 seconds keeps what was loaded.
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByText("הודעה מלפני חצי שנה")).toBeVisible();
+  // A change to an older notice shows at once; the slice is read again.
+  const old = page.locator("article", { hasText: "הודעה מלפני חצי שנה" });
+  await old.getByRole("button", { name: "סימון כנקראה" }).click();
+  await expect(old.getByRole("button", { name: "סימון כנקראה" })).toHaveCount(
+    0
+  );
+  await old.getByRole("button", { name: "הסתרה" }).click();
+  await expect(page.getByText("הודעה מלפני חצי שנה")).toHaveCount(0);
+  await expect(page.getByText("הודעה מהשבוע")).toBeVisible();
 
   // The board reads the month it is moved to, before the window.
   await page.goto("/calendar");

@@ -2489,7 +2489,7 @@ export const scenarios: Record<number, Entry> = {
     ),
     ...t(
       I.mail,
-      "clears every finished message's content after 30 days and leaves a pending one alone",
+      "clears every message's content after 30 days, keeps when delivery last changed, and never sends a cleared one",
       "keeps the content of a message younger than 30 days",
       "sends the queued message's key, and counts the provider's duplicate answer as sent",
       "uses the queue row's id as the key, the same on every attempt"
@@ -2515,7 +2515,7 @@ export const scenarios: Record<number, Entry> = {
     ),
     ...t(
       E.history,
-      "a soldier sees 90 days, loads earlier notices on request, and an earlier month by going to it"
+      "a soldier sees 90 days, loads earlier notices on request, sees changes to them, and an earlier month by going to it"
     ),
   ]),
   67: covered([

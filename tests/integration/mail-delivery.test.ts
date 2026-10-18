@@ -584,11 +584,12 @@ describe("the provider's idempotency key (decision 234)", () => {
 });
 
 describe("content retention (decision 234)", () => {
-  it("clears every finished message's content after 30 days and leaves a pending one alone", async () => {
+  it("clears every message's content after 30 days, keeps when delivery last changed, and never sends a cleared one", async () => {
     const now = new Date();
     for (const [key, kind] of [
       ["retention:sent", "departure"],
       ["retention:pending", "departure"],
+      ["retention:leased", "departure"],
     ] as const)
       await db.transaction((tx) =>
         enqueueEmail(tx, {
@@ -610,12 +611,27 @@ describe("content retention (decision 234)", () => {
     const later = new Date(
       created.getTime() + MAIL_CONTENT_RETENTION_MS + 1000
     );
+    // A sender holding a live lease is left alone.
+    await db
+      .update(emailOutbox)
+      .set({
+        status: "sending",
+        leaseUntil: new Date(later.getTime() + 60_000),
+      })
+      .where(eq(emailOutbox.eventKey, "retention:leased"));
+    const before = await db.select().from(emailOutbox);
     await db.transaction((tx) => expireMailContent(tx, later));
     // Repeating it changes nothing.
     await db.transaction((tx) => expireMailContent(tx, later));
     const rows = await db.select().from(emailOutbox);
     const sent = rows.find((row) => row.eventKey === "retention:sent")!;
     const pending = rows.find((row) => row.eventKey === "retention:pending")!;
+    const leased = rows.find((row) => row.eventKey === "retention:leased")!;
+    // The mail status reads updatedAt as when delivery last changed.
+    for (const row of rows)
+      expect(row.updatedAt).toEqual(
+        before.find((old) => old.id === row.id)!.updatedAt
+      );
     expect(sent).toMatchObject({
       status: "sent",
       kind: "departure",
@@ -627,12 +643,33 @@ describe("content retention (decision 234)", () => {
       destination: null,
       encryptedSecret: null,
     });
+    // Left pending where sending is switched off, it loses its content too.
     expect(pending).toMatchObject({
       status: "pending",
+      title: "",
+      body: "",
+      href: null,
+      destination: null,
+    });
+    expect(leased).toMatchObject({
+      status: "sending",
       title: "שיבוץ חדש: שמירה",
       body: "פרטי השיבוץ",
       destination: memberEmail,
     });
+    // Once sending is switched on, its closed window closes it before a claim.
+    const delivered: string[] = [];
+    await deliverNextEmail(async (message) => {
+      delivered.push(message.idempotencyKey);
+      return "provider-2";
+    }, later);
+    expect(delivered).toEqual([]);
+    const [closed] = await db
+      .select()
+      .from(emailOutbox)
+      .where(eq(emailOutbox.eventKey, "retention:pending"));
+    expect(closed!.status).not.toBe("pending");
+    expect(closed!.providerId).toBeNull();
   });
 
   it("keeps the content of a message younger than 30 days", async () => {

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   CalendarCheck2,
@@ -31,6 +31,7 @@ import { type AppState, type Action, str, obj } from "@/client/types";
 import {
   fetchOlder,
   historyOf,
+  refreshOlder,
   withHistory,
   type HistorySlice,
 } from "@/client/history";
@@ -237,13 +238,25 @@ export function Workspace({
     const timer = window.setTimeout(() => setSuccess(""), 5000);
     return () => window.clearTimeout(timer);
   }, [success, toastHeld]);
+  const olderCount = useRef(0);
+  useEffect(() => {
+    olderCount.current = older.length;
+  }, [older]);
   const reload = useCallback(async () => {
     const data = await fetchState();
     if (!data) {
       router.push("/login");
       return;
     }
+    // Slices already read are read again with the state, so a change made
+    // since never comes back from a stale copy; if that fails they are dropped.
+    const count = olderCount.current;
+    const slices = count
+      ? await refreshOlder(data, count).catch(() => [])
+      : undefined;
     setState(data);
+    // A slice loaded meanwhile is kept; the next reload reads it again.
+    if (slices && olderCount.current === count) setOlder(slices);
   }, [router]);
   useEffect(() => {
     let active = true;

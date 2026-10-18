@@ -3,7 +3,8 @@ import { type AppState, type Row, rows } from "./types";
 /**
  * A soldier's lists start 90 days back; earlier slices are read on request
  * (decision 235). The state reloads every 30 seconds, so slices already read
- * are kept apart and laid under each fresh state, the fresh copy winning.
+ * are kept apart, read again with each fresh state and laid under it, the
+ * fresh copy winning.
  */
 export type HistorySlice = {
   from: string;
@@ -48,6 +49,26 @@ export function withHistory(state: AppState, slices: HistorySlice[]): AppState {
   const last = slices[slices.length - 1]!;
   merged.history = { from: last.from, olderAvailable: last.olderAvailable };
   return merged;
+}
+
+/**
+ * Reads again the `count` slices before a fresh state's window. A row changed
+ * since (a notice read or hidden, a request answered) then never comes back
+ * from a stale slice, and rows that left the window meanwhile fall into the
+ * first one.
+ */
+export async function refreshOlder(
+  state: AppState,
+  count: number
+): Promise<HistorySlice[]> {
+  const slices: HistorySlice[] = [];
+  let before = historyOf(state)?.from;
+  while (before && slices.length < count) {
+    const slice = await fetchOlder(before);
+    slices.push(slice);
+    before = slice.olderAvailable ? slice.from : undefined;
+  }
+  return slices;
 }
 
 /** Reads the slice before `before`; throws with the server's message. */

@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { withHistory, type HistorySlice } from "../../src/client/history";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  refreshOlder,
+  withHistory,
+  type HistorySlice,
+} from "../../src/client/history";
 import type { AppState } from "../../src/client/types";
 
 const state = {
@@ -43,6 +47,44 @@ describe("earlier history slices in the browser (decision 235)", () => {
     expect(merged.history).toEqual({
       from: "2026-01-21T00:00:00.000Z",
       olderAvailable: false,
+    });
+  });
+  describe("reading the loaded slices again with a fresh state", () => {
+    afterEach(() => vi.unstubAllGlobals());
+    it("reads as many slices as were loaded, each before the last, from the fresh window", async () => {
+      const asked: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        const before = new URL(url, "http://local").searchParams.get("before")!;
+        asked.push(before);
+        const from = `before-${before}`;
+        return new Response(JSON.stringify(slice(from, true, [before])), {
+          status: 200,
+        });
+      });
+      const slices = await refreshOlder(state, 2);
+      expect(asked).toEqual([
+        "2026-07-20T00:00:00.000Z",
+        "before-2026-07-20T00:00:00.000Z",
+      ]);
+      expect(slices).toHaveLength(2);
+    });
+    it("stops when nothing earlier is left, and reads nothing without a window", async () => {
+      const fetcher = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify(slice("2026-04-21T00:00:00.000Z", false, ["d0"])),
+            {
+              status: 200,
+            }
+          )
+      );
+      vi.stubGlobal("fetch", fetcher);
+      expect(await refreshOlder(state, 3)).toHaveLength(1);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(
+        await refreshOlder({ ...state, history: undefined } as AppState, 2)
+      ).toEqual([]);
+      expect(fetcher).toHaveBeenCalledTimes(1);
     });
   });
 });

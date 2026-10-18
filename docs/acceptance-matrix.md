@@ -839,14 +839,14 @@
 ### 65. תוצאה שמורה אחרי שינוי תפקיד, ותוכן מיילים — הרשאות; פרטיות; מקביליות — מכוסה
 
 - [role-matrix.test.ts](../tests/integration/role-matrix.test.ts): `matches the server's own access map, which guards stored results (decision 233)`; `answers a demoted manager's old key with 403, like a new request, and never runs it again`; `still replays a result to someone whose role did not change`
-- [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `clears every finished message's content after 30 days and leaves a pending one alone`; `keeps the content of a message younger than 30 days`; `sends the queued message's key, and counts the provider's duplicate answer as sent`; `uses the queue row's id as the key, the same on every attempt`
+- [mail-delivery.test.ts](../tests/integration/mail-delivery.test.ts): `clears every message's content after 30 days, keeps when delivery last changed, and never sends a cleared one`; `keeps the content of a message younger than 30 days`; `sends the queued message's key, and counts the provider's duplicate answer as sent`; `uses the queue row's id as the key, the same on every attempt`
 - [contact-requests.test.ts](../tests/integration/contact-requests.test.ts): `removes the request from the digest mail 30 days after it, sent or not (decision 234)`
 
 ### 66. היסטוריה של 90 יום אצל החייל — מסכים; פרטיות; עברית ונייד — מכוסה
 
 - [state-history.test.ts](../tests/integration/state-history.test.ts): `shows the last 90 days, and says that more is available`; `reads the earlier slice with the same view, and then says there is no more`; `keeps a seat that still holds points, however long ago its duty ended`; `gives a manager everything, with no window and nothing to load`; `reads only the soldier's own contact details`; `refuses an account whose session changed, as the state does`
 - [history-merge.test.ts](../tests/unit/history-merge.test.ts): `adds older rows under the fresh ones, the fresh copy winning, and moves the window back`
-- [history-window.spec.ts](../tests/e2e/history-window.spec.ts): `a soldier sees 90 days, loads earlier notices on request, and an earlier month by going to it`
+- [history-window.spec.ts](../tests/e2e/history-window.spec.ts): `a soldier sees 90 days, loads earlier notices on request, sees changes to them, and an earlier month by going to it`
 
 ### 67. רישום סוגי הרשומות ומחיקה שלמה — מחיקה; תקינות — מכוסה
 

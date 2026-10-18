@@ -5,12 +5,14 @@ import {
   and,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNull,
   like,
   lte,
   ne,
+  not,
   notInArray,
   or,
   sql,
@@ -191,9 +193,12 @@ const cleared = { encryptedSecret: null, destination: null, leaseUntil: null };
 
 export const MAIL_CONTENT_RETENTION_MS = 30 * 86_400_000;
 /**
- * A message's content is kept 30 days, whatever its kind (decision 234): then
- * a finished message keeps only what diagnosing delivery needs. A message
- * still pending or sending is never touched; its window closes long before.
+ * A message's content is kept 30 days, whatever its kind and status (decision
+ * 234): then it keeps only what diagnosing delivery needs. One still pending,
+ * where sending is switched off, is cleared too; its delivery window closed
+ * long before, so it is closed before any claim and never sent empty. Only a
+ * message under a live lease is left to its sender. `updatedAt` stays, since
+ * the mail status reads it as when delivery last changed.
  */
 export async function expireMailContent(tx: DbTransaction, now = new Date()) {
   await tx
@@ -204,11 +209,15 @@ export async function expireMailContent(tx: DbTransaction, now = new Date()) {
       href: null,
       destination: null,
       encryptedSecret: null,
-      updatedAt: now,
     })
     .where(
       and(
-        notInArray(emailOutbox.status, ["pending", "sending"]),
+        not(
+          and(
+            eq(emailOutbox.status, "sending"),
+            gt(emailOutbox.leaseUntil, now)
+          )!
+        ),
         lte(
           emailOutbox.createdAt,
           new Date(now.getTime() - MAIL_CONTENT_RETENTION_MS)
