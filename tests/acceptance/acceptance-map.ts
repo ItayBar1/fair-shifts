@@ -36,6 +36,7 @@ const U = {
   calendarSync: "tests/unit/calendar-sync.test.ts",
   calFilters: "tests/unit/calendar-filters.test.ts",
   composition: "tests/unit/composition.test.ts",
+  defaultHours: "tests/unit/default-hours.test.ts",
   digest: "tests/unit/assignment-digest.test.ts",
   deletionLog: "tests/unit/deletion-log.test.ts",
   domain: "tests/unit/domain.test.ts",
@@ -72,6 +73,7 @@ const I = {
   genders: "tests/integration/all-genders.test.ts",
   capabilityValidity: "tests/integration/capability-validity.test.ts",
   hoursExemptions: "tests/integration/hours-exemptions.test.ts",
+  defaultHours: "tests/integration/duty-type-default-hours.test.ts",
   digest: "tests/integration/assignment-digest.test.ts",
   inactive: "tests/integration/inactivity-normalization.test.ts",
   publish: "tests/integration/publish-drafts.test.ts",
@@ -119,6 +121,7 @@ const E = {
   digest: "tests/e2e/assignment-digest.spec.ts",
   reminders: "tests/e2e/duty-reminders.spec.ts",
   conditions: "tests/e2e/eligibility-conditions.spec.ts",
+  defaultHours: "tests/e2e/default-hours.spec.ts",
   exec: "tests/e2e/execution-periods.spec.ts",
   fairness: "tests/e2e/unified-fairness.spec.ts",
   first: "tests/e2e/first-duty.spec.ts",
@@ -508,6 +511,21 @@ export const stories: Record<number, Entry> = {
     ...t(
       I.comp,
       "edits a draft's roles and daily pricing, prices each seat once and leaves the catalog and other instances alone"
+    ),
+    // Default hours of a type (decision 229).
+    ...t(
+      U.defaultHours,
+      "fills local start and end from a start date across a month, a year and the night of a clock change",
+      "finds the start weekdays on which the hours fall outside an hours exemption"
+    ),
+    ...t(
+      I.defaultHours,
+      "saves and clears default hours, rejects invalid ones and sends them to managers only",
+      "checks an instance created from the default hours against each soldier's hours exemption"
+    ),
+    ...t(
+      E.defaultHours,
+      "sets default hours on a duty type, lists the hours exemptions they exceed and prefills a new instance"
     ),
   ]),
   24: covered([

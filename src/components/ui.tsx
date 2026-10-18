@@ -268,7 +268,7 @@ export type Field = {
   group?: string;
   /** A locked field is shown and keeps its value but is not part of the submitted values. */
   disabled?: boolean;
-  /** Tells the caller what a text, number or date field now holds. */
+  /** Tells the caller what a text, number, date or single select field now holds. */
   onChange?: (value: string) => void;
   /**
    * What a `custom` field shows instead of an input. It renders its own controls
@@ -329,6 +329,10 @@ function FieldList({ fields }: { fields: Field[] }) {
                           : String(field.value ?? "")
                       }
                       required={field.required}
+                      onChange={(e) =>
+                        field.type === "select" &&
+                        field.onChange?.(e.target.value)
+                      }
                     >
                       {field.type !== "multiselect" && !field.value && (
                         <option value="">בחירה…</option>
