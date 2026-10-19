@@ -14,6 +14,8 @@ import {
 import { soldiers, records, soldierContacts } from "../schema";
 import { invariant } from "../errors";
 import { closeWindowsOf } from "../assignment-mail-delivery";
+import { expireActorResults } from "../command-results";
+import { recordData } from "../record-data";
 import { purgeCalendarLink, type CalendarCleanup } from "../calendar/link";
 import { canAccessAfterService } from "../../domain/eligibility";
 import {
@@ -62,12 +64,18 @@ export async function accountAvailable(
     process.env.RESTORE_MODE !== "true" && maintenance?.data.blocked !== true
   );
 }
-export async function assertActorCurrent(actor: Actor, tx: DbTransaction) {
-  const [row] = await tx
-    .select()
-    .from(user)
-    .where(eq(user.id, actor.id))
-    .for("update");
+/**
+ * The signed-in account as it is now. An action locks the row, so a role or
+ * session change waits for it; a read takes no lock, since it runs in a
+ * read-only snapshot (decision 235).
+ */
+export async function assertActorCurrent(
+  actor: Actor,
+  tx: DbTransaction,
+  { lock = true }: { lock?: boolean } = {}
+) {
+  const query = tx.select().from(user).where(eq(user.id, actor.id));
+  const [row] = lock ? await query.for("update") : await query;
   invariant(
     row &&
       row.securityEpoch === actor.securityEpoch &&
@@ -124,7 +132,7 @@ async function audit(
   await tx.insert(records).values({
     id: randomUUID(),
     kind: "audit",
-    data: { actorId, targetId, action },
+    data: recordData("audit", { actorId, targetId, action }),
   });
 }
 export async function revokeAccess(tx: DbTransaction, targetId: string) {
@@ -179,6 +187,7 @@ export async function setRole(
       })
       .where(eq(user.id, targetId));
     await revokeAccess(cx, targetId);
+    if (target.role !== role) await expireActorResults(cx, targetId);
     await audit(cx, actor.id, targetId, `role:${role}`);
   };
   return tx ? work(tx) : db.transaction(work);
@@ -408,13 +417,13 @@ export async function recoverTechnicalAccess(email: string, reason: string) {
     await tx.insert(records).values({
       id: randomUUID(),
       kind: "audit",
-      data: {
+      data: recordData("audit", {
         actorId: "server-operator",
         actorName: "מפעיל השרת",
         targetId: target.id,
         action: "technical.server-recovery",
         reason: input.reason,
-      },
+      }),
     });
     return issueRecoveryCodes(target.id, tx);
   });

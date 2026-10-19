@@ -43,7 +43,8 @@ function writtenKinds() {
 
 describe("registry of record kinds (decision 192)", () => {
   it("classifies every kind the server writes", () => {
-    const missing = [...writtenKinds()].filter((kind) => !recordPolicies[kind]);
+    const known: Record<string, unknown> = recordPolicies;
+    const missing = [...writtenKinds()].filter((kind) => !known[kind]);
     expect(missing).toEqual([]);
   });
   it("has no entry for a kind nobody writes", () => {

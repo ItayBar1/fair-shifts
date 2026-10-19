@@ -8,7 +8,7 @@ import {
   str,
   type Row,
 } from "@/client/types";
-import { Badge, Empty, Panel } from "./ui";
+import { Badge, Empty, Panel, scrollRegion } from "./ui";
 
 /** The path that shows the audit entries reachable from a soldier, duty, decision or other record. */
 export const auditHref = (id: unknown) => `/manage/audit/${str(id)}`;
@@ -112,7 +112,7 @@ function Entry({ state, entry }: { state: AppState; entry: Row }) {
         ))}
       </dl>
       {changes.length > 0 && (
-        <div className="table-scroll">
+        <div className="table-scroll" {...scrollRegion("פירוט השינויים")}>
           <table className="audit-changes">
             <thead>
               <tr>

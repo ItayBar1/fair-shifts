@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   CalendarCheck2,
@@ -28,6 +28,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { type AppState, type Action, str, obj } from "@/client/types";
+import {
+  fetchOlder,
+  historyOf,
+  refreshOlder,
+  withHistory,
+  type HistorySlice,
+} from "@/client/history";
+import { OlderHistoryContext } from "./load-older";
 import { unreadCount } from "@/client/notifications";
 import { Notice, Empty, Modal, PageTitle } from "./ui";
 import { CalendarView, DutyDetail, Dashboard } from "./views";
@@ -199,7 +207,11 @@ export function Workspace({
   calendarMine?: boolean;
 }) {
   const router = useRouter();
-  const [state, setState] = useState<AppState | null>(null);
+  const [loaded, setState] = useState<AppState | null>(null);
+  // Earlier slices of a soldier's history, read on request (decision 235).
+  const [older, setOlder] = useState<HistorySlice[]>([]);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -226,13 +238,25 @@ export function Workspace({
     const timer = window.setTimeout(() => setSuccess(""), 5000);
     return () => window.clearTimeout(timer);
   }, [success, toastHeld]);
+  const olderCount = useRef(0);
+  useEffect(() => {
+    olderCount.current = older.length;
+  }, [older]);
   const reload = useCallback(async () => {
     const data = await fetchState();
     if (!data) {
       router.push("/login");
       return;
     }
+    // Slices already read are read again with the state, so a change made
+    // since never comes back from a stale copy; if that fails they are dropped.
+    const count = olderCount.current;
+    const slices = count
+      ? await refreshOlder(data, count).catch(() => [])
+      : undefined;
     setState(data);
+    // A slice loaded meanwhile is kept; the next reload reads it again.
+    if (slices && olderCount.current === count) setOlder(slices);
   }, [router]);
   useEffect(() => {
     let active = true;
@@ -294,7 +318,7 @@ export function Workspace({
         <p>טוענים את תמונת היחידה…</p>
       </main>
     );
-  if (!state)
+  if (!loaded)
     return (
       <main className="loading-screen">
         <Notice tone="danger">{error || "לא ניתן לטעון את המערכת"}</Notice>
@@ -307,6 +331,23 @@ export function Workspace({
         <Link href="/login">חזרה לכניסה</Link>
       </main>
     );
+  const state = withHistory(loaded, older);
+  const historyWindow = historyOf(state);
+  const loadOlder = () => {
+    if (!historyWindow || olderLoading) return;
+    setOlderLoading(true);
+    setOlderError("");
+    fetchOlder(historyWindow.from)
+      .then((slice) => setOlder((current) => [...current, slice]))
+      .catch((e: Error) => setOlderError(e.message))
+      .finally(() => setOlderLoading(false));
+  };
+  const olderHistory = historyWindow && {
+    ...historyWindow,
+    loading: olderLoading,
+    error: olderError,
+    loadOlder,
+  };
   const technical = state.actor.role === "technical";
   const manager = state.actor.role === "manager";
   const soldier = !technical && !manager;
@@ -617,7 +658,11 @@ export function Workspace({
               </Link>
             )}
           </div>
-          <PageTitle.Provider value={pageTitle}>{content()}</PageTitle.Provider>
+          <PageTitle.Provider value={pageTitle}>
+            <OlderHistoryContext.Provider value={olderHistory}>
+              {content()}
+            </OlderHistoryContext.Provider>
+          </PageTitle.Provider>
           {/* Shown above the bottom edge, wherever the page is scrolled. */}
           <div className="toast-stack">
             {error && (

@@ -5,6 +5,7 @@ import type { DbTransaction } from "./db";
 import { assignments, duties, dutySlots, dutyTypes, records } from "./schema";
 import {
   audit,
+  createRecord,
   currentVersion,
   loadDomain,
   manager,
@@ -571,12 +572,12 @@ export async function assignDuty(
     points: points.points,
   });
   if (approvals.length)
-    await tx.insert(records).values({
-      id: randomUUID(),
-      kind: "assignment_approval",
-      subjectId: person.id,
-      data: { assignmentId, approvals },
-    });
+    await createRecord(
+      tx,
+      "assignment_approval",
+      { assignmentId, approvals },
+      person.id
+    );
   return { id: assignmentId };
 }
 /**

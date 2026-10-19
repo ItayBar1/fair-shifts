@@ -599,3 +599,9 @@ export const populations = [
   { value: "career", label: "קבע / קצינים" },
   { value: "academic", label: "קמ״א" },
 ];
+/**
+ * A region that scrolls sideways, such as a wide table on a phone: the
+ * keyboard can reach it to scroll, and a screen reader names it (decision 238).
+ */
+export const scrollRegion = (label: string) =>
+  ({ role: "region", "aria-label": label, tabIndex: 0 }) as const;

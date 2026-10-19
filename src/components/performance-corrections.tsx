@@ -12,7 +12,16 @@ import {
   displayDate,
   personName,
 } from "@/client/types";
-import { Badge, Empty, Form, Modal, Notice, Panel, type Field } from "./ui";
+import {
+  Badge,
+  Empty,
+  Form,
+  Modal,
+  Notice,
+  Panel,
+  type Field,
+  scrollRegion,
+} from "./ui";
 
 const local = (value: unknown) =>
   DateTime.fromISO(str(value))
@@ -82,7 +91,7 @@ export function PerformanceCorrections({
         <Empty title="אין ביצוע שנזקף לתיקון" />
       )}
       {corrections.length > 0 && (
-        <div className="table-scroll">
+        <div className="table-scroll" {...scrollRegion("היסטוריית תיקונים")}>
           <table>
             <caption>היסטוריית תיקונים</caption>
             <thead>

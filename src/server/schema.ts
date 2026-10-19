@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { RecordKind } from "../domain/record-kinds";
 import {
   pgTable,
   bigserial,
@@ -202,7 +203,8 @@ export const records = pgTable(
   "records",
   {
     id: uuid("id").primaryKey(),
-    kind: text("kind").notNull(),
+    // Only kinds of the registry (decision 237); a type, with no database change.
+    kind: text("kind").$type<RecordKind>().notNull(),
     subjectId: uuid("subject_id").references(() => soldiers.id),
     data: jsonb("data").$type<Record<string, unknown>>().notNull(),
     version: integer("version").notNull().default(1),

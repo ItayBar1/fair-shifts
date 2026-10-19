@@ -12,7 +12,7 @@ import {
   displayDate,
 } from "@/client/types";
 import { runDrafts } from "@/client/publish-drafts";
-import { ActionDialog, Form, Notice, Panel, Empty } from "./ui";
+import { ActionDialog, Form, Notice, Panel, Empty, scrollRegion } from "./ui";
 import { callUpFields, callUpValue } from "./call-up";
 export function LotteryButton({
   state,
@@ -215,7 +215,7 @@ export function LotteryHistory({
                 הסיכוי שווה לכל מי שנכלל ברצועה: ניקוד לשיבוץ קטן מהמינימום ועוד
                 שווי המקום.
               </p>
-              <div className="table-scroll">
+              <div className="table-scroll" {...scrollRegion("הסבר המועמדים")}>
                 <table>
                   <thead>
                     <tr>

@@ -143,6 +143,26 @@ export async function expireCommandResults(
     );
 }
 
+/**
+ * A role change ends what the account's stored results may show (decision
+ * 233). The key and request hash stay, so a replay never runs the action again.
+ */
+export async function expireActorResults(
+  tx: DbTransaction,
+  actorId: string,
+  now = new Date()
+) {
+  await tx
+    .update(commandResults)
+    .set({ result: { expiredAt: now.toISOString() }, contentExpiredAt: now })
+    .where(
+      and(
+        eq(commandResults.actorId, actorId),
+        isNull(commandResults.contentExpiredAt)
+      )
+    );
+}
+
 export async function eraseLinkedCommandResults(
   tx: DbTransaction,
   soldierId: string,

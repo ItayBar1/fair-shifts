@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "./db";
 import { emailOutbox, user } from "./auth-schema";
 import { assignmentMailEvent, assignmentMailWindow, records } from "./schema";
-import { createRecord } from "./repository";
+import { createRecord, recordData } from "./repository";
 import { enqueueEmail } from "./operations/email";
 import { dutyFacts, windowEvents } from "./assignment-mail-delivery";
 import { DELIVERY_WINDOW_MS } from "../domain/mail-delivery";
@@ -146,7 +146,7 @@ async function refreshNotice(
   await tx
     .update(records)
     .set({
-      data: sql`(${records.data} - 'readAt' - 'hiddenAt' - 'dutyId' - 'dutyVersion') || ${JSON.stringify(data)}::jsonb`,
+      data: sql`(${records.data} - 'readAt' - 'hiddenAt' - 'dutyId' - 'dutyVersion') || ${JSON.stringify(recordData("notification", data))}::jsonb`,
       version: sql`${records.version} + 1`,
       updatedAt: now,
     })

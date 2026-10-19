@@ -5,6 +5,9 @@ import { records, soldiers, balances, duties, assignments } from "./schema";
 import { user } from "./auth-schema";
 import { AppError, invariant } from "./errors";
 import type { Constraint } from "../domain/types";
+import type { RecordKind } from "../domain/record-kinds";
+import { recordData } from "./record-data";
+export { recordData } from "./record-data";
 import type { Actor } from "./auth/accounts";
 import { cancelObsoleteSeatRequestMail } from "./seat-mail-relevance";
 export type { Actor } from "./auth/accounts";
@@ -34,7 +37,11 @@ export function currentVersion(actual: number, expected?: number) {
     409
   );
 }
-export async function findRecord(tx: DbTransaction, kind: string, id: string) {
+export async function findRecord(
+  tx: DbTransaction,
+  kind: RecordKind,
+  id: string
+) {
   const [record] = await tx
     .select()
     .from(records)
@@ -44,13 +51,19 @@ export async function findRecord(tx: DbTransaction, kind: string, id: string) {
 }
 export async function createRecord(
   tx: DbTransaction,
-  kind: string,
+  kind: RecordKind,
   data: Record<string, unknown>,
-  subjectId?: string
+  subjectId?: string | null,
+  options: { id?: string } = {}
 ) {
   const [record] = await tx
     .insert(records)
-    .values({ id: randomUUID(), kind, data, subjectId })
+    .values({
+      id: options.id ?? randomUUID(),
+      kind,
+      data: recordData(kind, data),
+      subjectId,
+    })
     .returning();
   return record;
 }
@@ -59,6 +72,7 @@ export async function updateRecord(
   record: Workflow,
   data: Record<string, unknown>
 ) {
+  recordData(record.kind, data);
   const [result] = await tx
     .update(records)
     .set({ data, version: record.version + 1, updatedAt: new Date() })
@@ -111,18 +125,30 @@ export async function audit(
     subjectId
   );
 }
+type DomainRows = {
+  people: (typeof soldiers.$inferSelect)[];
+  scoreRows: (typeof balances.$inferSelect)[];
+  dutyRows: (typeof duties.$inferSelect)[];
+  assignmentRows: (typeof assignments.$inferSelect)[];
+  constraintRows: Workflow[];
+  managers: Set<string | null>;
+};
 export async function loadDomain(tx: DbTransaction) {
-  const people = await tx.select().from(soldiers);
-  const scoreRows = await tx.select().from(balances);
-  const dutyRows = await tx.select().from(duties);
-  const assignmentRows = await tx.select().from(assignments);
-  const constraintRows = await tx
-    .select()
-    .from(records)
-    .where(eq(records.kind, "constraint"));
-  const scores = new Map(scoreRows.map((row) => [row.soldierId, row.current]));
-  // The role at this moment decides: a duty manager is never assigned (decision 192).
-  const managers = new Set(
+  return domainOf({
+    people: await tx.select().from(soldiers),
+    scoreRows: await tx.select().from(balances),
+    dutyRows: await tx.select().from(duties),
+    assignmentRows: await tx.select().from(assignments),
+    constraintRows: await tx
+      .select()
+      .from(records)
+      .where(eq(records.kind, "constraint")),
+    managers: await managerSoldierIds(tx),
+  });
+}
+/** The role at this moment decides: a duty manager is never assigned (decision 192). */
+export async function managerSoldierIds(tx: DbTransaction) {
+  return new Set(
     (
       await tx
         .select({ soldierId: user.soldierId })
@@ -130,6 +156,12 @@ export async function loadDomain(tx: DbTransaction) {
         .where(and(eq(user.role, "manager"), isNull(user.deletedAt)))
     ).map((row) => row.soldierId)
   );
+}
+/** The domain view of rows already read, all of them or a part (decision 235). */
+export function domainOf(rows: DomainRows) {
+  const { people, scoreRows, dutyRows, assignmentRows, constraintRows } = rows;
+  const scores = new Map(scoreRows.map((row) => [row.soldierId, row.current]));
+  const managers = rows.managers;
   return {
     soldiers: people.map((row) => ({
       ...row.data,

@@ -10,7 +10,7 @@ import {
   num,
   displayDate,
 } from "@/client/types";
-import { Empty, Notice, Panel, Status } from "./ui";
+import { Empty, Notice, Panel, Status, scrollRegion } from "./ui";
 import { importValue } from "@/client/import-values";
 import { ImportRestore } from "./import-restores";
 import { AffectedAssignments, PopulationChange } from "./personnel-history";
@@ -27,7 +27,7 @@ function ImportFormat() {
         בלבד, בלי נוסחאות. שגיאה אחת דוחה את כל הקובץ, והתצוגה המקדימה מפרטת
         שורה, שדה ותיקון.
       </p>
-      <div className="table-scroll">
+      <div className="table-scroll" {...scrollRegion("מבנה הקובץ")}>
         <table>
           <thead>
             <tr>
@@ -226,7 +226,7 @@ export function ImportsView({
       {error && <Notice tone="danger">{error}</Notice>}
       {problems.length > 0 && (
         <Panel title="שגיאות בקובץ">
-          <div className="table-scroll">
+          <div className="table-scroll" {...scrollRegion("שגיאות בקובץ")}>
             <table>
               <thead>
                 <tr>
@@ -291,7 +291,10 @@ export function ImportsView({
                   </Notice>
                 )}
                 {rows(row.changes).length ? (
-                  <div className="table-scroll">
+                  <div
+                    className="table-scroll"
+                    {...scrollRegion("השינויים בשורה")}
+                  >
                     <table>
                       <thead>
                         <tr>

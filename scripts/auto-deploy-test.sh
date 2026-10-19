@@ -22,7 +22,10 @@ cat >"$work/bin/curl" <<'EOF'
 #!/bin/sh
 for argument; do url=$argument; done
 echo "$url" >>"$STUB/curl-calls"
+echo "$*" >>"$STUB/curl-arguments"
 [ ! -e "$STUB/offline" ] || exit 22
+# A server that never answers: curl gives up at --max-time with exit 28.
+[ ! -e "$STUB/silent" ] || exit 28
 sha=$(printf '%s' "$url" | sed -n 's/.*head_sha=\([0-9a-f]*\).*/\1/p')
 case "$(cat "$STUB/ci/$sha" 2>/dev/null || true)" in
   "") echo '{"total_count": 0, "workflow_runs": []}' ;;
@@ -147,6 +150,29 @@ tick
 expect_status 0 "GitHub לא זמין"
 expect_no_deploy "GitHub לא זמין"
 rm "$work/offline"
+
+step 'GitHub שאינו עונה: הבקשה מוגבלת בזמן והסבב מסתיים בלי פריסה'
+: >"$work/curl-arguments"
+touch "$work/silent"
+tick
+expect_status 0 "GitHub לא עונה"
+expect_no_deploy "GitHub לא עונה"
+grep -q -- "--max-time" "$work/curl-arguments" ||
+  fail "GitHub לא עונה: הבקשה בלי הגבלת זמן"
+rm "$work/silent"
+
+step 'מקור Git שאינו עונה: המשיכה מוגבלת בזמן והנעילה משתחררת'
+origin_url=$(git -C "$work/host" config remote.origin.url)
+git -C "$work/host" config protocol.ext.allow always
+git -C "$work/host" config remote.origin.url "ext::sh -c sleep% 5"
+export FAIR_SHIFTS_FETCH_TIMEOUT=1
+tick
+unset FAIR_SHIFTS_FETCH_TIMEOUT
+git -C "$work/host" config remote.origin.url "$origin_url"
+git -C "$work/host" config --unset protocol.ext.allow
+expect_status 0 "Git לא עונה"
+expect_no_deploy "Git לא עונה"
+expect_output "cannot fetch" "Git לא עונה"
 
 step 'בדיקות שעברו: פריסה ובדיקת בריאות'
 tick

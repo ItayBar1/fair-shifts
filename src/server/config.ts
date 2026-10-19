@@ -115,9 +115,20 @@ export function validateDeploymentConfig(env: Env): string[] {
       "DELETION_LOG_PRIVATE_KEY",
       "DELETION_LOG_PRIVATE_KEY_FILE",
       "DELETION_LOG_KEY_ID",
+      "HEALTHCHECK_PING_URL",
+      "HEALTHCHECK_BACKUP_URL",
     ])
       if (value(name))
         errors.push(`${name}: must not be available to the site`);
+  for (const name of ["HEALTHCHECK_PING_URL", "HEALTHCHECK_BACKUP_URL"]) {
+    const address = value(name);
+    if (!address) continue;
+    let secure = false;
+    try {
+      secure = new URL(address).protocol === "https:";
+    } catch {}
+    if (!secure) errors.push(`${name}: an https URL is required`);
+  }
   if (transport && !["disabled", "brevo"].includes(transport))
     errors.push("MAIL_TRANSPORT: allowed values are disabled or brevo");
   if (transport === "brevo" && serviceRole !== "app") {

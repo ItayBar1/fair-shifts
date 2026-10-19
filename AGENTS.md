@@ -13,7 +13,7 @@
    - מבנה הקוד וזרימת הבקשות: [ארכיטקטורה](docs/architecture.md).
    - כללי מוצר: [האפיון](docs/duty-management-prd.md), [יומן ההכרעות](docs/open-decisions.md) ו[מפת הכיסוי](docs/requirements-coverage.md) בנושא הרלוונטי.
    - אימות, הרשאות, סודות או קלט: [אבטחה](docs/security.md).
-   - תקלות ידועות והוכחות לאחר העלייה: [ביקורת production מ־18.10.2026](docs/production-audit-2026-10-18.md). בדוק אם תוקנו מאז לפני עבודה עליהן; בדיקות ירוקות אינן סוגרות ממצא בלי רגרסיה מתאימה.
+   - ביקורת production מ־18.10.2026 ותיקוניה: [הדוח](docs/production-audit-2026-10-18.md). כל ממצא מסומן שם עם הרגרסיה שלו; ממצא חדש נסגר רק עם רגרסיה מתאימה, לא בבדיקות ירוקות בלבד.
    - שרת, פריסה, גיבוי ושחזור: [מדריך ההפעלה](docs/operations.md) ו[העלאה לפרודקשן](docs/production-launch.md).
    - דרגות, ספק המייל או גיבוי: [מחקר](docs/research-notes.md). הפרד עובדות חיצוניות מהחלטות מוצר.
 
@@ -21,18 +21,18 @@
 
 ## מפת המאגר בקצרה
 
-| נתיב                                                 | מה יש בו                                                                                                     |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `src/server/actions.ts`                              | מפצל כל הפעולות (`type` → מטפל), בתוך `unitTransaction` עם idempotency                                       |
-| `src/server/state.ts`                                | `readState`: מה כל תפקיד מקבל. כל שדה חדש שנשלח לחייל עובר כאן                                               |
-| `src/server/validation.ts`                           | סכמות Zod למעטפה ולפעולות                                                                                    |
-| `src/server/schema.ts`, `auth-schema.ts`, `drizzle/` | סכמת המסד והמיגרציות                                                                                         |
-| `src/server/<תחום>.ts`                               | שירותי תחום: `duty-service`, `planning`, `scoring`, `swaps`, `transfers`, `imports`, `personnel`, `ranks`... |
-| `src/domain/`                                        | כללים טהורים בלי מסד (כשירות, ניקוד, הגרלה, זמן ישראל, `erasure.ts`)                                         |
-| `src/components/`                                    | מסכי React; `workspace.tsx` הוא המעטפת והניווט                                                               |
-| `src/worker.ts`                                      | עבודה ברקע: תחזוקה כל דקה, מייל, גיבוי, יומן, סנכרון יומן                                                    |
-| `scripts/`                                           | כלי שרת ותפעול (פלט באנגלית), Docker, Husky, יצירת מסמכים                                                    |
-| `tests/`                                             | `unit`, `integration` (PostgreSQL), `e2e` (Playwright), `acceptance` (מפת הקבלה)                             |
+| נתיב                                                 | מה יש בו                                                                                                        |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/server/actions.ts`                              | מפצל כל הפעולות (`type` → מטפל), בתוך `unitTransaction` עם idempotency. מי רשאי לכל פעולה: `action-access.ts`   |
+| `src/server/state.ts`                                | `readState` ו־`readHistory`: מה כל תפקיד מקבל, בטעינה נפרדת לכל תפקיד ובחלון של 90 יום לחייל (הכרעה 235)        |
+| `src/server/validation.ts`                           | סכמות Zod למעטפה ולפעולות                                                                                       |
+| `src/server/schema.ts`, `auth-schema.ts`, `drizzle/` | סכמת המסד והמיגרציות                                                                                            |
+| `src/server/<תחום>`                                  | שירותי תחום: `duty-service`, `planning`, `scoring`, `swaps/`, `transfers/`, `execution/`, `imports`, `ranks`... |
+| `src/domain/`                                        | כללים טהורים בלי מסד (כשירות, ניקוד, הגרלה, זמן ישראל, `erasure.ts`, ורישום סוגי הרשומות `record-kinds.ts`)     |
+| `src/components/`                                    | מסכי React; `workspace.tsx` הוא המעטפת והניווט; `management/` ו־`views/` מחולקים לפי מסך                        |
+| `src/worker.ts`                                      | עבודה ברקע: תחזוקה כל דקה, מייל, גיבוי, יומן, סנכרון יומן                                                       |
+| `scripts/`                                           | כלי שרת ותפעול (פלט באנגלית), Docker, Husky, יצירת מסמכים                                                       |
+| `tests/`                                             | `unit`, `integration` (PostgreSQL), `e2e` (Playwright), `acceptance` (מפת הקבלה)                                |
 
 ## מקורות אמת ושינויים
 
@@ -79,14 +79,15 @@ TypeScript, Next.js לאתר ולשרת, עובד Node.js ו־PostgreSQL, ביי
 
 בדיקות שמירה במאגר נכשלות אם שוכחים אחד מאלה:
 
-- **פעולה חדשה** (`case` ב־`actions.ts`): להוסיף אותה למפת `access` ב־`tests/integration/role-matrix.test.ts` ול־`diagnosticActionTypes` ב־`src/server/diagnostics.ts`. בדיקת התפקיד (`manager(actor)` וכדומה) רצה לפני פענוח ה־payload, כי הבדיקה שולחת `{}` ומצפה ל־403 לתפקיד שגוי ול־4xx (לא 5xx) לנכון.
-- **סוג רשומה חדש** ב־`records`: לרשום ב־`src/domain/erasure.ts`, לממש את המדיניות גם ב־`src/server/soldier-deletion.ts`, ולבדוק מחיקה ושחזור בפועל. רישום במדיניות בלבד אינו מבטיח שהמטפל תומך בסוג. `tests/unit/erasure.test.ts` מוצא סוגים רק לפי מחרוזת מילולית ב־`createRecord(tx, "kind", ...)`, לא לפי קבוע.
+- **פעולה חדשה** (`case` ב־`actions.ts`): להוסיף אותה ל־`actionAccess` ב־`src/server/action-access.ts` (בלי זה ה־switch אינו מתקמפל), למפת `access` ב־`tests/integration/role-matrix.test.ts` (הבדיקה משווה בין השתיים) ול־`diagnosticActionTypes` ב־`src/server/diagnostics.ts`. תוצאה שמורה מוחזרת רק למי שרשאי לפעולה עכשיו (הכרעה 233). בדיקת התפקיד (`manager(actor)` וכדומה) רצה לפני פענוח ה־payload, כי הבדיקה שולחת `{}` ומצפה ל־403 לתפקיד שגוי ול־4xx (לא 5xx) לנכון.
+- **סוג רשומה חדש** ב־`records`: לרשום ב־`src/domain/record-kinds.ts` עם סכמת הנתונים ומדיניות המחיקה (הכרעה 237). סוג שאינו רשום אינו מתקמפל, וסוג שנמחק או מנוקה בלי מטפל ב־`erasers` שב־`src/server/soldier-deletion.ts` אינו מתקמפל. כל כתיבה נבדקת מול הסכמה, ושדה חדש שהקוד קורא צריך להופיע בה. לבדוק מחיקה ושחזור בפועל. `tests/unit/erasure.test.ts` מוצא סוגים רק לפי מחרוזת מילולית ב־`createRecord(tx, "kind", ...)`, לא לפי קבוע.
 - **שינוי הרשאה או מידע רגיש בתוצאת פעולה:** לבדוק גם replay עם אותו `idempotencyKey` אחרי שינוי תפקיד וכניסה חדשה. שלילת session אינה מחליפה בדיקת הרשאה לתוצאה שמורה; אין למחוק מפתח באופן שיאפשר להפעיל שוב פעולה שכבר בוצעה.
 - **טבלה חדשה:** `tests/integration/restore.test.ts` משחזר ממסד ישן וחייב למחוק גם אותה, אחרת כל הבדיקות שאחריו נכשלות. במיגרציה בדוק שתאריך ה־journal מאוחר מזה של הקודמת.
 - **סיפור או תרחיש חדש באפיון:** רשומה ב־`tests/acceptance/acceptance-map.ts` (שמות הבדיקות חייבים להתקיים מילה במילה), ואז `pnpm docs:matrix` ו־`pnpm docs:render`.
 - **מסך חדש:** להוסיף ל־`screens` ב־`tests/e2e/screens-sweep.spec.ts`, עם שורת `closed` לתפקידים שאסור להם.
 - **בדיקה שמשנה יתרות:** אל תכלול בה את האחראי. היתרה שלו מוקפאת, והשרת מחזיר `manager_balance_frozen`.
-- **מידע חדש שנשלח לדפדפן:** לבדוק ב־`readState` מה מגיע לחייל. אסור שיגיעו אליו פרטי קשר, פטורים או נימוקים של אחרים.
+- **מידע חדש שנשלח לדפדפן:** לבדוק ב־`readState` מה מגיע לחייל. אסור שיגיעו אליו פרטי קשר, פטורים או נימוקים של אחרים. החייל מקבל רק מה ש־`soldierRows` טוען, וההיסטוריה הקודמת מ־`readHistory`; רשימה חדשה שגדלה עם הזמן צריכה חלון גם שם (הכרעה 235).
+- **קובץ גדול:** מודול לכל גבול התנהגות. קובץ שגדל מעבר לכ־600 שורות מפרקים בשינוי הבא בו לתיקייה עם `index.ts` שמחזיק את ה־API הציבורי, בלי שינוי התנהגות (הכרעה 239).
 - **הכרעה וגרסת אפיון:** מספרים מתנגשים בין ענפים מקבילים. בדוק את ראש `docs/open-decisions.md` אחרי `git fetch` לפני שבוחרים, ושוב לפני ה־PR. אין להחליף מספר הכרעה בחיפוש גלובלי (`202` מתאים גם ל־`2026`).
 
 ## מלכודות ידועות
@@ -95,6 +96,7 @@ TypeScript, Next.js לאתר ולשרת, עובד Node.js ו־PostgreSQL, ביי
 - ל־`backup_run.next_attempt_at` יש דיוק של מיקרו־שניות מהמסד: בבדיקה הרץ את `runBackupCycle` עם זמן כמה שניות קדימה.
 - `.gitignore` כולל `coverage/`, ולכן תיקייה בשם הזה תוסתר בשקט.
 - Pool של `pg` בלי מאזין `error` מפיל את התהליך כשמסד נמחק `WITH (FORCE)`.
+- שגיאת `invalid_record` (500) פירושה שכתיבה לא תאמה את סכמת הסוג ב־`record-kinds.ts`. השורה `Record data rejected` ביומן השרת מציינת את השדות. מתקנים את הקוד או את הסכמה, ולא מחלישים את הבדיקה.
 - ב־macOS: `sed -i` דורש סיומת ריקה; עריכה עברית ארוכה מסקריפט Python נכתבת לקובץ עם כותרת `# -*- coding: utf-8 -*-` ומורצת עם `PYTHONUTF8=1`.
 - Docker Desktop עשוי להיות כבוי: `open -a Docker` וחכה ל־`docker info`. בסוף העבודה סגור את הסביבות: `sh scripts/docker.sh -p <name> --profile test --profile tools down -v --remove-orphans --rmi local`.
 - git stash משותף לכל ה־worktrees. אל תשאיר עבודה רק ב־stash או בעץ לא שמור; העדף commit זמני.

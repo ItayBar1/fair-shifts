@@ -22,6 +22,8 @@ describe("service configuration separation", () => {
       DELETION_LOG_KEY_ID: "private-id",
       BACKUP_STORAGE: "drive",
       MAIL_TRANSPORT: "brevo",
+      HEALTHCHECK_PING_URL: "https://monitor.example.invalid/worker",
+      HEALTHCHECK_BACKUP_URL: "https://monitor.example.invalid/backup",
     };
     const output = splitServiceConfiguration(source, {
       POSTGRES_PASSWORD: "cluster-secret",
@@ -30,6 +32,15 @@ describe("service configuration separation", () => {
       worker = parseConfiguration(output["worker.env"].join("\n")),
       ops = parseConfiguration(output["operations.env"].join("\n"));
     expect(site.GOOGLE_CLIENT_SECRET).toBe("login-secret");
+    // The external monitor's addresses go to the worker alone (decision 236).
+    expect(worker.HEALTHCHECK_PING_URL).toBe(
+      "https://monitor.example.invalid/worker"
+    );
+    expect(worker.HEALTHCHECK_BACKUP_URL).toBe(
+      "https://monitor.example.invalid/backup"
+    );
+    for (const config of [site, ops])
+      expect(config.HEALTHCHECK_PING_URL).toBeUndefined();
     for (const config of [site, ops])
       expect(config.BREVO_API_KEY).toBeUndefined();
     for (const key of [

@@ -109,6 +109,26 @@ export function correctionBarriers(
 }
 
 /**
+ * Barriers between two ends of the same performance. A correction that keeps
+ * the points but moves the end across one of them changes what the balance
+ * means, so it waits for a manager; a move on one side of it does not.
+ */
+export function crossedBarriers(
+  soldierId: string,
+  oneEnd: string,
+  otherEnd: string,
+  events: LedgerEvent[]
+): LedgerEvent[] {
+  const [earlier, later] = [oneEnd, otherEnd].sort(
+    (a, b) => instant(a).toMillis() - instant(b).toMillis()
+  );
+  const until = instant(later!).toMillis();
+  return correctionBarriers(soldierId, earlier!, events).filter(
+    (event) => instant(event.effectiveAt).toMillis() < until
+  );
+}
+
+/**
  * The balance reflects `reflected` points of this performance. Without a barrier or an open decision
  * the difference to the corrected history is applied once with a zero floor; otherwise it waits for a manager.
  */

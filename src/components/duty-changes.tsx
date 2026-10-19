@@ -15,7 +15,15 @@ import {
   displayDate,
 } from "@/client/types";
 import { asInstant, requirementsOf } from "@/client/soldier-picker";
-import { ActionDialog, Form, Modal, Notice, Panel, type Field } from "./ui";
+import {
+  ActionDialog,
+  Form,
+  Modal,
+  Notice,
+  Panel,
+  type Field,
+  scrollRegion,
+} from "./ui";
 import { callUpFields, callUpValue } from "./call-up";
 import { SoldierPicker } from "./soldier-picker";
 import {
@@ -400,7 +408,7 @@ function ChangeEditor({
             הגרסה הקיימת מחייבת עד לאישור הסופי. חריגים מהגרסה הקודמת אינם
             מועברים אוטומטית.
           </Notice>
-          <div className="table-scroll">
+          <div className="table-scroll" {...scrollRegion("השוואה לפני שמירה")}>
             <table>
               <thead>
                 <tr>
@@ -469,7 +477,10 @@ function ChangeEditor({
             </table>
           </div>
           <h3>פירוט הניקוד לכל מקום</h3>
-          <div className="table-scroll">
+          <div
+            className="table-scroll"
+            {...scrollRegion("פירוט הניקוד לכל מקום")}
+          >
             <table>
               <thead>
                 <tr>

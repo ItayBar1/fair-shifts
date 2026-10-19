@@ -46,7 +46,15 @@ if ! git diff --quiet HEAD; then
   exit 1
 fi
 
-git fetch -q origin main
+# Network calls have a time limit, so a connection that never answers ends the
+# run and frees the lock for the next tick (audit finding A7). Nothing after
+# this point that changes the server is limited: a migration is never cut off.
+# The lock's descriptor is closed for the fetch, so a helper process that
+# outlives a timed-out git cannot hold the lock.
+if ! timeout "${FAIR_SHIFTS_FETCH_TIMEOUT:-120}" git fetch -q origin main 9>&-; then
+  log "cannot fetch main from the origin; retrying next minute"
+  exit 0
+fi
 target=$(git rev-parse origin/main)
 deployed=$(cat "$state/deployed" 2>/dev/null || git rev-parse HEAD)
 [ "$target" != "$deployed" ] || exit 0
@@ -55,7 +63,8 @@ deployed=$(cat "$state/deployed" 2>/dev/null || git rev-parse HEAD)
 
 # The CI run of the push to main for this exact commit, not a pull request run.
 # The repository is public, so the API needs no token.
-if ! response=$(curl -fsS -H "Accept: application/vnd.github+json" \
+if ! response=$(curl -fsS --connect-timeout 10 --max-time 30 \
+  -H "Accept: application/vnd.github+json" \
   "$api/repos/$repository/actions/workflows/$workflow/runs?head_sha=$target&branch=main&event=push&per_page=1"); then
   log "cannot read the check status from GitHub; retrying next minute"
   exit 0

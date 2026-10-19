@@ -34,6 +34,7 @@ import { MailHealthRow, MailPanel } from "./mail-operations";
 import { BackupsView, BackupFreshnessBadge } from "./backups";
 import { CalendarSettings } from "./calendar-settings";
 import { genders } from "./eligibility-conditions";
+import { LoadOlder } from "./load-older";
 import { duplicateNameField, phoneHint } from "./management";
 type Props = { state: AppState; action: Action };
 export { ConstraintsView } from "./constraints";
@@ -43,6 +44,7 @@ export function RequestsView({ state, action }: Props) {
       <CancellationRequests state={state} action={action} />
       <TransferRequests state={state} action={action} />
       <SwapRequests state={state} action={action} />
+      <LoadOlder what="בקשות שנסגרו" />
     </>
   );
 }
@@ -85,6 +87,7 @@ export function NotificationsView({ state, action }: Props) {
       ) : (
         <Empty title="אין הודעות להצגה" />
       )}
+      <LoadOlder what="הודעות" />
     </Panel>
   );
 }

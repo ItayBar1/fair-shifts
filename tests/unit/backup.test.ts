@@ -270,7 +270,30 @@ describe("Google Drive adapter", () => {
     expect(query).toContain(
       "appProperties has { key='fairShiftsRun' and value='run-1' }"
     );
+    // Another installation's files under the same client stay out (audit finding A5).
+    expect(query).toContain("'folder-1' in parents");
     expect(query).toContain("trashed = false");
+  });
+  it("reads every page of a search", async () => {
+    const calls: Call[] = [];
+    const storage = fakeDrive((call) => {
+      const page = new URL(call.url).searchParams.get("pageToken");
+      return Response.json(
+        page === "second"
+          ? { files: [{ id: "f2", size: "2", sha256Checksum: "b" }] }
+          : {
+              files: [{ id: "f1", size: "1", sha256Checksum: "a" }],
+              nextPageToken: "second",
+            }
+      );
+    }, calls);
+    expect(await storage.findKind("deletion-log")).toEqual([
+      { id: "f1", size: 1, sha256: "a" },
+      { id: "f2", size: 2, sha256: "b" },
+    ]);
+    expect(calls.filter((call) => call.url.includes("/files?"))).toHaveLength(
+      2
+    );
   });
   it("lists the encrypted dumps newest first without the database, leaving the deletion log and foreign files out (ticket #35)", async () => {
     const calls: Call[] = [];
@@ -389,6 +412,7 @@ describe("Google Drive adapter", () => {
     expect(query).toContain(
       "appProperties has { key='fairShiftsKind' and value='deletion-log' }"
     );
+    expect(query).toContain("'folder-1' in parents");
     expect(query).toContain("trashed = false");
   });
   it("reads a file's content and treats a missing file as gone", async () => {

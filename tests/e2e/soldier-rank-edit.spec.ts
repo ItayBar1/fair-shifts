@@ -49,13 +49,13 @@ test.beforeEach(async () => {
   await db.insert(records).values([
     {
       id: initialRankId,
-      kind: "rank_catalog",
+      kind: "rank_catalog" as const,
       data: { name: "סמל", tracks: [{ track: "חוגרים", order: 2 }] },
     },
     {
       // One rank in two tracks (decision 223): the soldier holds it in one.
       id: nextRankId,
-      kind: "rank_catalog",
+      kind: "rank_catalog" as const,
       data: {
         name: "סמ״ר",
         tracks: [
@@ -66,7 +66,7 @@ test.beforeEach(async () => {
     },
     ...["חוגרים", "נגדים"].map((name) => ({
       id: randomUUID(),
-      kind: "rank_track",
+      kind: "rank_track" as const,
       data: { name, source: "נתוני בדיקה" },
     })),
   ]);

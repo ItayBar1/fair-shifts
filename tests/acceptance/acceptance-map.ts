@@ -56,6 +56,10 @@ const U = {
   rounds: "tests/unit/round-notices.test.ts",
   service: "tests/unit/service-lifecycle.test.ts",
   erasure: "tests/unit/erasure.test.ts",
+  records: "tests/unit/record-kinds.test.ts",
+  history: "tests/unit/history-merge.test.ts",
+  pings: "tests/unit/external-ping.test.ts",
+  config: "tests/unit/deployment-config.test.ts",
   weekend: "tests/unit/weekend-surcharge.test.ts",
 } as const;
 const I = {
@@ -104,6 +108,8 @@ const I = {
   swaps: "tests/integration/swaps.test.ts",
   techEmail: "tests/integration/technical-email.test.ts",
   techIntake: "tests/integration/technical-user-create.test.ts",
+  contact: "tests/integration/contact-requests.test.ts",
+  history: "tests/integration/state-history.test.ts",
 } as const;
 const E = {
   soldierRank: "tests/e2e/soldier-rank-edit.spec.ts",
@@ -140,6 +146,7 @@ const E = {
   transfer: "tests/e2e/transfer-approval.spec.ts",
   techEmail: "tests/e2e/technical-email-change.spec.ts",
   sweep: "tests/e2e/screens-sweep.spec.ts",
+  history: "tests/e2e/history-window.spec.ts",
 } as const;
 
 /** The tests of one file, named by fragments of their titles. */
@@ -193,6 +200,11 @@ const stagingTechnicalIntake: External = {
   state: "pending",
   ref: "#114",
 };
+const externalMonitor: External = {
+  what: "שירות זמינות ודופק עובד חיצוניים מוגדרים ושולחים התראה (הכרעה 236)",
+  state: "pending",
+};
+
 const pilot: External = {
   what: "פיילוט עם שני האחראים ונתוני אמת",
   state: "pending",
@@ -2468,6 +2480,77 @@ export const scenarios: Record<number, Entry> = {
     ],
     [stagingTechnicalAddress]
   ),
+  65: covered([
+    ...t(
+      I.roles,
+      "matches the server's own access map, which guards stored results (decision 233)",
+      "answers a demoted manager's old key with 403, like a new request, and never runs it again",
+      "still replays a result to someone whose role did not change"
+    ),
+    ...t(
+      I.mail,
+      "clears every message's content after 30 days, keeps when delivery last changed, and never sends a cleared one",
+      "keeps the content of a message younger than 30 days",
+      "sends the queued message's key, and counts the provider's duplicate answer as sent",
+      "uses the queue row's id as the key, the same on every attempt"
+    ),
+    ...t(
+      I.contact,
+      "removes the request from the digest mail 30 days after it, sent or not (decision 234)"
+    ),
+  ]),
+  66: covered([
+    ...t(
+      I.history,
+      "shows the last 90 days, and says that more is available",
+      "reads the earlier slice with the same view, and then says there is no more",
+      "keeps a seat that still holds points, however long ago its duty ended",
+      "gives a manager everything, with no window and nothing to load",
+      "reads only the soldier's own contact details",
+      "refuses an account whose session changed, as the state does"
+    ),
+    ...t(
+      U.history,
+      "adds older rows under the fresh ones, the fresh copy winning, and moves the window back"
+    ),
+    ...t(
+      E.history,
+      "a soldier sees 90 days, loads earlier notices on request, sees changes to them, and an earlier month by going to it"
+    ),
+  ]),
+  67: covered([
+    ...t(
+      U.records,
+      "gives every kind a schema and a deletion policy with its reason",
+      "accepts what the code writes and keeps fields the schema does not name",
+      "refuses a missing or mistyped field, naming fields and never values",
+      "stops the action with a server error when a write does not fit"
+    ),
+    ...t(U.erasure, "classifies every kind the server writes"),
+    ...t(
+      I.soldierDel,
+      "deletes a former manager who asked to change the email address"
+    ),
+  ]),
+  68: covered(
+    [
+      ...t(
+        U.pings,
+        "pings the worker address at most every five minutes, with nothing in it",
+        "is off without an address, and a failed ping only returns false"
+      ),
+      ...t(
+        U.config,
+        "keeps the external monitor's ping addresses with the worker, over https only (decision 236)"
+      ),
+      ...t(
+        E.sweep,
+        // One title per role, built from a template; axe runs in each (decision 238).
+        "is Hebrew, named and fits a phone"
+      ),
+    ],
+    [externalMonitor]
+  ),
 };
 
 export type RoleKey = "soldier" | "manager" | "otherManager" | "technical";
@@ -2815,6 +2898,7 @@ export const external: External[] = [
     ref: "#92",
   },
   pilot,
+  externalMonitor,
   {
     what: "קורא מסך אמיתי (הבדיקות האוטומטיות אינן אישור נגישות)",
     state: "pending",

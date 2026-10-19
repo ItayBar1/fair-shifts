@@ -32,6 +32,7 @@ import type { Performance } from "../domain/types";
 import {
   correctionBarriers,
   correctionEffect,
+  crossedBarriers,
   type LedgerEvent,
 } from "../domain/scoring";
 
@@ -167,15 +168,22 @@ async function plan(
   const effects = involved.flatMap((soldierId) => {
     const before = soldierId === current.performerId ? current.points : 0;
     const after = soldierId === performerId ? points : 0;
-    if (before === after) return [];
-    const balance = balanceRows.find((item) => item.soldierId === soldierId);
-    invariant(balance, "missing_balance", "לא נמצאה יתרת החייל");
     const references = [
       ...(soldierId === current.performerId ? [current.end] : []),
       ...(soldierId === performerId ? [end] : []),
     ].sort((a, b) => instant(a).toMillis() - instant(b).toMillis());
-    const barriers = correctionBarriers(soldierId, references[0]!, events);
     const decision = decisions.find((item) => item.subjectId === soldierId);
+    // The same points at another end still matter when the move crosses a
+    // normalization or another barrier (audit finding A4, section 6.7).
+    const barriers =
+      before !== after
+        ? correctionBarriers(soldierId, references[0]!, events)
+        : references.length === 2
+          ? crossedBarriers(soldierId, references[0]!, references[1]!, events)
+          : [];
+    if (before === after && !barriers.length && !decision) return [];
+    const balance = balanceRows.find((item) => item.soldierId === soldierId);
+    invariant(balance, "missing_balance", "לא נמצאה יתרת החייל");
     const reflected = current.reflected[soldierId] ?? 0;
     const effect = correctionEffect({
       balance: balance.current,
@@ -407,11 +415,10 @@ export async function applyPerformanceCorrection(
   // Moving a past performance also moves its overlap and rest to the actual performer.
   for (const soldierId of new Set([current.performerId, proposed.performerId]))
     await reassessAssignments(tx, soldierId);
-  await tx.insert(records).values({
-    id: correctionId,
-    kind: "performance_correction",
-    subjectId: row.soldierId,
-    data: {
+  await createRecord(
+    tx,
+    "performance_correction",
+    {
       assignmentId: row.id,
       dutyId: duty.id,
       drawPoints: row.points,
@@ -426,7 +433,9 @@ export async function applyPerformanceCorrection(
       actorName: actor.name,
       recordedAt: new Date().toISOString(),
     },
-  });
+    row.soldierId,
+    { id: correctionId }
+  );
   await audit(tx, actor, "performance.correct", row.id, {
     dutyId: duty.id,
     correctionId,

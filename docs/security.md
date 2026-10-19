@@ -2,7 +2,7 @@
 
 מודל האבטחה של Fair Shifts: גבולות האמון, ההגנות שבקוד, הבדיקות ששומרות עליהן והסיכונים שהתקבלו. ההכרעות המלאות ב[יומן ההכרעות](open-decisions.md) (בעיקר 207–217), והתפעול ב[מדריך ההפעלה](operations.md). המסמך מחליף את מפת התיקונים ואת מסמכי הראיות מביקורת 05–10.10.2026, שנשמרים בהיסטוריית Git.
 
-**ממצאים פתוחים:** [הביקורת מ־18.10.2026](production-audit-2026-10-18.md) מצאה פערים ב־replay אחרי שינוי תפקיד, במחיקת אחראי לשעבר ובשמירת עותק פניות בתור המייל. אלה תקלות במימוש, ולא סיכונים שהמשתמש אישר לקבל. ההגנות המתוארות בהמשך אינן מכסות עדיין את התרחישים האלה.
+**ביקורת 18.10.2026:** [הדוח](production-audit-2026-10-18.md) מצא פערים ב־replay אחרי שינוי תפקיד, במחיקת אחראי לשעבר, בשמירת עותק פניות בתור המייל ועוד ארבעה. כולם תוקנו עם רגרסיות (הכרעות 233–239), והם מופיעים בטבלת הרגרסיות להלן.
 
 ## גבולות אמון
 
@@ -18,12 +18,12 @@
 
 - **אימות.** קוד בן 6 ספרות במייל (HMAC במסד, 10 דקות, דקה בין שליחות, חמש טעויות שורפות את הקוד בלבד והמתנה מוכפלת עד 24 שעות, הכרעה 207), או Google לפי `sub` יציב אחרי `email_verified` בקישור הראשון. כל חיבור קשור ל־`securityEpoch` של החשבון; נעילה, שינוי תפקיד או מייל מעלים אותו ומבטלים חיבורים. תוקף חיבור: שבוע לחייל, יום לאחראי ולטכני. `src/server/auth/`.
 - **מוני קצב** אטומיים ב־PostgreSQL לפי IP (`cf-connecting-ip` רק עם `TRUST_CLOUDFLARE_IP=true` מאחורי ה־Tunnel), ומכסות יומיות לכתובת ולאתר. `src/server/auth/rate-limit.ts`, `budgets.ts`.
-- **הרשאות.** כל פעולה עוברת ב־`executeAction` (`src/server/actions.ts`) עם בדיקת תפקיד בתחילת המטפל (`manager`/`technical` ב־`repository.ts`). `tests/integration/role-matrix.test.ts` משווה את מפת ההרשאות ל־switch ונכשל על פעולה חדשה שלא נוספה אליה. `readState` (`src/server/state.ts`) מסנן לפי תפקיד את מה שנשלח לדפדפן.
+- **הרשאות.** כל פעולה עוברת ב־`executeAction` (`src/server/actions.ts`) עם בדיקת תפקיד בתחילת המטפל (`manager`/`technical` ב־`repository.ts`). `actionAccess` (`src/server/action-access.ts`) קובע מי רשאי לכל פעולה; ה־switch מוקלד לפיו, ו־`tests/integration/role-matrix.test.ts` משווה אותו למפה עצמאית. תוצאה שמורה מוחזרת רק למי שרשאי לפעולה עכשיו, ושינוי תפקיד מפקיע את תוכן התוצאות של החשבון (הכרעה 233). `readState` (`src/server/state.ts`) טוען לחייל רק את מה שמותר לו (הכרעה 235).
 - **CSRF.** כל POST שמשנה מצב (`/api/v1/*`, `/api/auth/*`, `/api/contact`) מחייב `Origin` זהה ל־`BETTER_AUTH_URL`; עוגיית החיבור `HttpOnly`, `SameSite=Lax`.
 - **קלט.** פעולות עד 2MiB ועומק JSON 32, אימות עד 16KiB (`bounded-body.ts`); Zod לכל payload (`validation.ts`); idempotency key לכל פעולה, עם בדיקת טביעת הבקשה. XLSX עד 5MiB דחוסים ו־50MiB פרוסים, בתהליך ילד עם גבולות זיכרון וזמן (`workbook-*.ts`).
 - **דפדפן.** CSP עם nonce לכל בקשה ו־`strict-dynamic` (`src/proxy.ts`, `browser-security.ts`), `frame-ancestors 'none'`, HSTS לשנה, `nosniff`, `Referrer-Policy: same-origin`. סגנונות inline מותרים בגלל Radix.
 - **סודות במסד.** קודי מייל ואסימוני Calendar מוצפנים ב־AES-256-GCM עם AAD של מטרה ורשומה (`src/server/secrets.ts`). אסימוני Google אינם נשמרים בטבלת הכניסה. מייל נשלח כטקסט בלבד, בלי HTML.
-- **מחיקה.** מחיקת חייל מסירה מידע רגיש מכל עותק פעיל, ויומן מחיקות חתום ב־Ed25519 מחוץ למסד מחיל אותה מחדש אחרי שחזור (הכרעות 192, 196). מאגר הסוגים ב־`src/domain/erasure.ts` נבדק מול הקוד.
+- **מחיקה ושמירה.** מחיקת חייל מסירה מידע רגיש מכל עותק פעיל, ויומן מחיקות חתום ב־Ed25519 מחוץ למסד מחיל אותה מחדש אחרי שחזור (הכרעות 192, 196). רישום הסוגים ב־`src/domain/record-kinds.ts` נותן לכל סוג מדיניות, ולכל סוג שנמחק או מנוקה מטפל שבלעדיו הקוד אינו מתקמפל, וכל כתיבה נבדקת מול סכמה (הכרעה 237). תוכן מיילים נמחק מהתור 30 יום אחרי יצירתם (הכרעה 234).
 - **לוגים.** שורת כשל אחת באנגלית עם שיטה, נתיב, סוג פעולה ומיקום בקוד, בלי גוף, כותרות, עוגיות או מידע אישי (`diagnostics.ts`).
 - **תשתית.** אין פורט מפורסם; האתר נגיש רק דרך cloudflared, ולמסד אין יציאה מהשרת. login נפרד לכל שירות בלי superuser; רק `operations` משנה סכמה. התמונות רצות כמשתמש לא־root, בלי מנהל חבילות.
 - **פריסה.** השרת מושך את main רק אחרי ריצת CI ירוקה של אותו commit (`scripts/auto-deploy.sh`); אין runner או סודות פריסה ב־GitHub. הנוהל המחייב הוא PR, ‏`verify` על ענף עדכני ואישור של המפתח השני (הכרעה 217). חריג המעבר שבהכרעה 221 הסתיים עם המעבר ל־production. קובצי ruleset במאגר מתארים את ההגנה הנדרשת; אינם ראיה שהגדרות GitHub הפעילות נאכפות כעת.
@@ -51,6 +51,13 @@ cloudflared נבנה ממקור 2026.10.0 מוצמד ל־commit ול־SHA256, ע
 | קישור Google בלי נעילת חשבון                    | `tests/integration/auth.test.ts`, `google-sign-in.test.ts`                                   |
 | מיילים לנמען שאינו רלוונטי או שסיים שירות       | `tests/integration/security-mail.test.ts`, `notifications.test.ts`                           |
 | שאריות מידע אחרי מחיקה                          | `tests/integration/security-erasure.test.ts`, `soldier-deletion.test.ts`                     |
+| תוצאה שמורה אחרי שינוי תפקיד (A1)               | `tests/integration/role-matrix.test.ts`                                                      |
+| תוכן מיילים ופניות בתור המשלוח (A3)             | `tests/integration/mail-delivery.test.ts`, `contact-requests.test.ts`                        |
+| חיפוש Drive מחוץ לתיקייה (A5)                   | `tests/unit/backup.test.ts`                                                                  |
+| מייל כפול אחרי תוצאה לא ידועה (A6)              | `tests/integration/mail-delivery.test.ts`                                                    |
+| פריסה תקועה על בקשת רשת (A7)                    | `scripts/auto-deploy-test.sh`                                                                |
+| כתיבה שאינה תואמת את סוג הרשומה                 | `tests/unit/record-kinds.test.ts`                                                            |
+| מה חייל מקבל בקריאת המצב וההיסטוריה             | `tests/integration/state-history.test.ts`                                                    |
 | גוף בקשה, ZIP ופענוח XLSX                       | `tests/unit/bounded-body.test.ts`, `workbook-archive.test.ts`, `workbook-process.test.ts`    |
 | הצפנה ויומן חתום                                | `tests/unit/secrets.test.ts`, `tests/integration/deletion-log.test.ts`                       |
 | CSP ו־HSTS                                      | `tests/unit/browser-security.test.ts`, `tests/e2e/browser-security.spec.ts`                  |
@@ -70,8 +77,8 @@ cloudflared נבנה ממקור 2026.10.0 מוצמד ל־commit ול־SHA256, ע
 
 סקירה אחרונה לפני העבודה השוטפת, אחרי העלייה ל־production. מה תוקן ומה נשאר, לפי חומרה:
 
-| ממצא                                                                                                     | מצב                                                                                            |
-| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `score.preview`/`score.apply` לא חסמו שינוי יתרה של אחראי, אף שהיא מוקפאת לפי הכרעה 192 (הממשק חסם בלבד) | תוקן: `manager_balance_frozen` בשרת, רגרסיה ב־`tests/integration/manager-exclusion.test.ts`    |
-| `/api/contact` לא בדק `Origin`, כך שאתר אחר יכול היה למלא את מכסת הפניות היומית דרך הדפדפנים של מבקריו   | תוקן: `verifyOrigin`, רגרסיה ב־`tests/integration/role-matrix.test.ts`                         |
-| `readState` קורא כמה טבלאות ב־READ COMMITTED, כך שתשובה אחת יכולה לערבב מצב לפני ואחרי commit            | פתוח, השפעה תצוגתית שמתוקנת בריענון הבא (ראו [מצב הפרויקט](../config/memory/project-state.md)) |
+| ממצא                                                                                                     | מצב                                                                                         |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `score.preview`/`score.apply` לא חסמו שינוי יתרה של אחראי, אף שהיא מוקפאת לפי הכרעה 192 (הממשק חסם בלבד) | תוקן: `manager_balance_frozen` בשרת, רגרסיה ב־`tests/integration/manager-exclusion.test.ts` |
+| `/api/contact` לא בדק `Origin`, כך שאתר אחר יכול היה למלא את מכסת הפניות היומית דרך הדפדפנים של מבקריו   | תוקן: `verifyOrigin`, רגרסיה ב־`tests/integration/role-matrix.test.ts`                      |
+| `readState` קורא כמה טבלאות ב־READ COMMITTED, כך שתשובה אחת יכולה לערבב מצב לפני ואחרי commit            | תוקן ב־18.10.2026: `REPEATABLE READ READ ONLY` ובדיקת משתמש בלי נעילה (הכרעה 235)           |

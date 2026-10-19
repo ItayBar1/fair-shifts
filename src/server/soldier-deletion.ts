@@ -20,6 +20,7 @@ import {
   createRecord,
   currentVersion,
   manager,
+  recordData,
   updateRecord,
   type Actor,
 } from "./repository";
@@ -39,7 +40,6 @@ import {
   hasConditions,
   needlesOf,
   notificationIsFor,
-  recordPolicies,
   scrubApprovals,
   scrubAssignmentApproval,
   scrubConstraint,
@@ -52,6 +52,7 @@ import {
   type Scrubbed,
 } from "../domain/erasure";
 import type { Assignment, Duty } from "../domain/types";
+import type { ErasedKind } from "../domain/record-kinds";
 
 // Deleting a soldier (decision 192, ticket #33): access and mail end at once,
 // future seats become vacant with an urgent notice to the managers, and the
@@ -250,7 +251,11 @@ async function rewrite(tx: DbTransaction, row: RecordRow, data: Scrubbed) {
   if (!data) return false;
   await tx
     .update(records)
-    .set({ data, version: row.version + 1, updatedAt: new Date() })
+    .set({
+      data: recordData(row.kind, data),
+      version: row.version + 1,
+      updatedAt: new Date(),
+    })
     .where(eq(records.id, row.id));
   return true;
 }
@@ -412,6 +417,61 @@ async function closeManagerReturns(
       });
 }
 
+type EraseContext = {
+  soldierId: string;
+  accountId: string | undefined;
+  requestIds: ReadonlySet<string>;
+  reminderIds: ReadonlySet<string>;
+  at: string;
+  /** The record belongs to the soldier, not only mentions them. */
+  own: boolean;
+};
+/** What deletion does to one record: removes it, rewrites it, or leaves it. */
+type Eraser = (row: RecordRow, context: EraseContext) => "delete" | Scrubbed;
+const ownRecord: Eraser = (_row, { own }) => (own ? "delete" : undefined);
+/**
+ * One handler for each kind the registry marks for deletion or scrubbing
+ * (decision 237). A kind added there without a handler here does not compile,
+ * which is how audit finding A2 could happen before.
+ */
+const erasers: { [K in ErasedKind]: Eraser } = {
+  audit_detail: ownRecord,
+  email_change: ownRecord,
+  import_restore_profile_revision: ownRecord,
+  manager_email_change: ownRecord,
+  personnel_change: ownRecord,
+  rank_reminder: ownRecord,
+  settings: (row, { own, accountId }) =>
+    own || (accountId && row.data.accountId === accountId)
+      ? "delete"
+      : undefined,
+  notification: (row, context) =>
+    notificationIsFor(
+      row.data,
+      row.subjectId,
+      context.soldierId,
+      context.accountId
+    ) || context.reminderIds.has(String(row.data.reminderId))
+      ? "delete"
+      : scrubNotification(row.data, context.requestIds, context.at),
+  assignment_approval: (row, { own }) =>
+    own ? scrubAssignmentApproval(row.data) : undefined,
+  constraint: (row, { own, at }) =>
+    own ? scrubConstraint(row.data, at) : undefined,
+  constraint_revision: (row, { own, at }) =>
+    own ? scrubConstraint(row.data, at) : undefined,
+  import_row: (row, { own }) => (own ? scrubImportRow(row.data) : undefined),
+  lottery_attempt: (row, { soldierId }) =>
+    scrubLotteryAttempt(row.data, soldierId),
+  lottery_exclusion: (row, { own }) =>
+    own ? scrubLotteryExclusion(row.data) : undefined,
+  request: (row, { soldierId, own, at }) =>
+    scrubRequest(row.data, soldierId, own, at),
+};
+const erasedKinds = Object.keys(erasers) as ErasedKind[];
+const isErased = (kind: string): kind is ErasedKind =>
+  Object.hasOwn(erasers, kind);
+
 /** Removes the sensitive data from the soldier's records and from the notices that quote it. */
 async function eraseRecords(
   tx: DbTransaction,
@@ -427,13 +487,10 @@ async function eraseRecords(
     mention(soldierId),
     accountId ? mention(accountId) : undefined
   );
-  const kinds = Object.entries(recordPolicies)
-    .filter(([, policy]) => policy.action !== "keep")
-    .map(([kind]) => kind);
   const rows = await tx
     .select()
     .from(records)
-    .where(and(inArray(records.kind, kinds), touching));
+    .where(and(inArray(records.kind, erasedKinds), touching));
   const requestIds = new Set(requests.map((row) => row.id));
   const reminderIds = new Set(
     rows.filter((row) => row.kind === "rank_reminder").map((row) => row.id)
@@ -460,62 +517,21 @@ async function eraseRecords(
   const gone: string[] = [];
   let changed = 0;
   for (const row of [...rows, ...linked]) {
-    const own = row.subjectId === soldierId;
-    switch (row.kind) {
-      case "audit_detail":
-      case "email_change":
-      case "import_restore_profile_revision":
-      case "personnel_change":
-      case "rank_reminder":
-        if (own) gone.push(row.id);
-        break;
-      case "settings":
-        if (own || (accountId && row.data.accountId === accountId))
-          gone.push(row.id);
-        break;
-      case "notification":
-        if (
-          notificationIsFor(row.data, row.subjectId, soldierId, accountId) ||
-          reminderIds.has(String(row.data.reminderId))
-        )
-          gone.push(row.id);
-        else if (
-          await rewrite(tx, row, scrubNotification(row.data, requestIds, at))
-        )
-          changed++;
-        break;
-      case "assignment_approval":
-        if (own && (await rewrite(tx, row, scrubAssignmentApproval(row.data))))
-          changed++;
-        break;
-      case "constraint":
-      case "constraint_revision":
-        if (own && (await rewrite(tx, row, scrubConstraint(row.data, at))))
-          changed++;
-        break;
-      case "import_row":
-        if (own && (await rewrite(tx, row, scrubImportRow(row.data))))
-          changed++;
-        break;
-      case "lottery_attempt":
-        if (await rewrite(tx, row, scrubLotteryAttempt(row.data, soldierId)))
-          changed++;
-        break;
-      case "lottery_exclusion":
-        if (own && (await rewrite(tx, row, scrubLotteryExclusion(row.data))))
-          changed++;
-        break;
-      case "request":
-        if (await rewrite(tx, row, scrubRequest(row.data, soldierId, own, at)))
-          changed++;
-        break;
-      default:
-        invariant(
-          false,
-          "unclassified_record",
-          `סוג רשומה ללא מדיניות מחיקה: ${row.kind}`
-        );
-    }
+    invariant(
+      isErased(row.kind),
+      "unclassified_record",
+      `סוג רשומה ללא מדיניות מחיקה: ${row.kind}`
+    );
+    const outcome = erasers[row.kind](row, {
+      soldierId,
+      accountId,
+      requestIds,
+      reminderIds,
+      at,
+      own: row.subjectId === soldierId,
+    });
+    if (outcome === "delete") gone.push(row.id);
+    else if (await rewrite(tx, row, outcome)) changed++;
   }
   if (gone.length) await tx.delete(records).where(inArray(records.id, gone));
   return { removed: gone.length, scrubbed: changed };

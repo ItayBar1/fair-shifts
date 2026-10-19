@@ -4,6 +4,7 @@ import { executeAction } from "../../src/server/actions";
 import { POST as actions } from "../../src/app/api/v1/actions/route";
 import { GET as auth } from "../../src/app/api/auth/[...all]/route";
 import { GET as state } from "../../src/app/api/v1/state/route";
+import { GET as history } from "../../src/app/api/v1/state/history/route";
 import { GET as assignments } from "../../src/app/api/v1/my-assignments/route";
 import { POST as imports } from "../../src/app/api/v1/imports/route";
 import { GET as template } from "../../src/app/api/v1/imports/template/route";
@@ -16,7 +17,10 @@ vi.mock("../../src/server/actions", () => ({ executeAction: vi.fn() }));
 vi.mock("../../src/server/auth/rate-limit", () => ({
   enforceAuthRateLimit: vi.fn(),
 }));
-vi.mock("../../src/server/state", () => ({ readState: vi.fn() }));
+vi.mock("../../src/server/state", () => ({
+  readState: vi.fn(),
+  readHistory: vi.fn(),
+}));
 vi.mock("../../src/server/my-assignments", () => ({
   readMyAssignments: vi.fn(),
 }));
@@ -42,6 +46,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("HTTP route failure context (#120)", () => {
   it.each([
     ["GET", "/api/v1/state", state],
+    ["GET", "/api/v1/state/history", history],
     ["GET", "/api/v1/my-assignments", assignments],
     ["POST", "/api/v1/imports", imports],
     ["GET", "/api/v1/imports/template", template],
