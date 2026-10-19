@@ -8,12 +8,12 @@ import {
   CalendarDays,
   UsersRound,
   Clock3,
-  CheckCircle2,
   ChevronLeft,
   ArrowLeft,
   AlertTriangle,
   UserX,
   Scale,
+  Upload,
 } from "lucide-react";
 import {
   type AppState,
@@ -124,6 +124,7 @@ export function Dashboard({
   const transfers = requests.filter((r) => r.type === "transfer");
   const swaps = requests.filter((r) => r.type === "swap");
   // The agenda lists only what waits for a decision; an idle unit says so once.
+  // Drafts are listed once, in their own section below (decision 241).
   const waiting =
     urgent.length +
     transfers.length +
@@ -132,22 +133,22 @@ export function Dashboard({
     departed.length +
     concerns.length +
     pending.length +
-    requests.length +
-    drafts.length;
+    requests.length;
   return (
     <>
+      {/* Shortcuts carry the menu's own names and marks (decision 241). */}
       <nav className="quick-actions" aria-label="פעולות מהירות">
         <Link className="btn secondary" href="/manage/planning">
-          <CalendarDays size={16} aria-hidden="true" /> תכנון תורנות
+          <CalendarDays size={16} aria-hidden="true" /> תכנון ושיבוץ
         </Link>
         <Link className="btn secondary" href="/manage/soldiers">
-          <UsersRound size={16} aria-hidden="true" /> קליטת חייל
+          <UsersRound size={16} aria-hidden="true" /> חיילי היחידה
         </Link>
         <Link className="btn secondary" href="/manage/imports">
-          <CheckCircle2 size={16} aria-hidden="true" /> ייבוא Excel
+          <Upload size={16} aria-hidden="true" /> ייבוא חיילים
         </Link>
         <Link className="btn secondary" href="/fairness">
-          <Scale size={16} aria-hidden="true" /> ניקוד
+          <Scale size={16} aria-hidden="true" /> טבלת הצדק
         </Link>
       </nav>
       <div className="stats-grid" {...scrollRegion("מדדי מרכז הטיפול")}>
@@ -234,18 +235,6 @@ export function Dashboard({
             <span>
               <strong>החלפות ובקשות</strong>
               <small>{requests.length} בקשות פתוחות</small>
-            </span>
-            <ArrowLeft size={18} />
-          </Link>
-        )}
-        {drafts.length > 0 && (
-          <Link className="task-item" href="/manage/publish">
-            <span className="task-symbol teal">
-              <CalendarDays size={20} />
-            </span>
-            <span>
-              <strong>טיוטות שטרם פורסמו</strong>
-              <small>{drafts.length} טיוטות ממתינות לבדיקה ופרסום</small>
             </span>
             <ArrowLeft size={18} />
           </Link>
@@ -354,9 +343,14 @@ export function Dashboard({
       {returns.length > 0 && <ManagerReturns state={state} action={action} />}
       <Panel
         title="טיוטות משותפות"
+        subtitle={
+          drafts.length
+            ? `${drafts.length} טיוטות, עדיין לא גלויות לחיילים`
+            : undefined
+        }
         actions={
-          <Link href="/manage/planning" className="text-link">
-            לתכנון המלא <ArrowLeft size={15} />
+          <Link href="/manage/publish" className="text-link">
+            לפרסום הטיוטות <ArrowLeft size={15} />
           </Link>
         }
       >

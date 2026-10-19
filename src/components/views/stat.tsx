@@ -1,12 +1,14 @@
 "use client";
 import { CalendarDays } from "lucide-react";
 
+/**
+ * One figure of a ruled summary line (decision 241): a label, the number in
+ * ink and what it counts. No icon tile; a figure that filters is a button.
+ */
 export function Stat({
   label,
   value,
   detail,
-  icon: Icon,
-  tone = "teal",
   onClick,
   active,
   accessibleLabel,
@@ -14,7 +16,8 @@ export function Stat({
   label: string;
   value: React.ReactNode;
   detail: string;
-  icon: typeof CalendarDays;
+  /** Kept for callers; the ledger line draws no icon. */
+  icon?: typeof CalendarDays;
   tone?: string;
   onClick?: () => void;
   active?: boolean;
@@ -24,9 +27,6 @@ export function Stat({
     <>
       <span className="stat-top">
         <span>{label}</span>
-        <span className={`stat-icon ${tone}`}>
-          <Icon size={20} />
-        </span>
       </span>
       <strong>{value}</strong>
       <small>{detail}</small>

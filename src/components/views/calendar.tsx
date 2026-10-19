@@ -15,6 +15,7 @@ import {
   UserX,
   Scale,
   Filter,
+  UserRound,
 } from "lucide-react";
 import { type AppState, type Row, str, num } from "@/client/types";
 import {
@@ -47,6 +48,8 @@ import {
   dutyStatus,
 } from "./duty-helpers";
 import { Stat } from "./stat";
+import { DutyAgenda } from "./duty-agenda";
+import { NextDutyLine } from "./next-duty-line";
 
 export function CalendarView({
   state,
@@ -113,7 +116,8 @@ export function CalendarView({
       byDay.set(date, [...(byDay.get(date) ?? []), { duty, segment }]);
   const today = localDay(now);
   return (
-    <>
+    <div className="calendar-page">
+      {personal && <NextDutyLine state={state} now={now} />}
       <div className="stats-grid" {...scrollRegion("מדדי הלוח")}>
         <Stat
           label="תורנויות החודש"
@@ -292,10 +296,19 @@ export function CalendarView({
                           <Link
                             key={d.id}
                             href={`/duties/${d.id}`}
-                            aria-label={`${str(d.name, "תורנות")}, ${segmentLabel(d, segment)}${isCancelled(d) ? ", בוטלה" : ""}`}
+                            aria-label={`${str(d.name, "תורנות")}, ${segmentLabel(d, segment)}${isCancelled(d) ? ", בוטלה" : ""}${ownIds.has(d.id) ? ", התורנות שלי" : ""}`}
                             className={`calendar-event ${segment} ${ownIds.has(d.id) ? "mine" : ""} ${isCancelled(d) ? "cancelled" : ""}`}
                           >
-                            <span>{str(d.name, "תורנות")}</span>
+                            <span>
+                              {ownIds.has(d.id) && (
+                                <UserRound
+                                  className="mine-icon"
+                                  size={12}
+                                  aria-hidden="true"
+                                />
+                              )}
+                              {str(d.name, "תורנות")}
+                            </span>
                             <small>
                               {segmentLabel(d, segment)}
                               {segment === "single" || segment === "start"
@@ -313,16 +326,22 @@ export function CalendarView({
             </div>
           </div>
         ) : (
-          <DutyList state={state} duties={monthDuties} ownIds={ownIds} />
+          <DutyAgenda
+            state={state}
+            duties={monthDuties}
+            ownIds={ownIds}
+            month={month}
+            now={now}
+          />
         )}
         <div className="calendar-legend">
           <span>
-            <i className="legend-dot teal" />
+            <i className="legend-dot unit" />
             תורנות יחידתית
           </span>
           <span>
             <i className="legend-dot blue" />
-            תורנות שלי
+            <UserRound size={12} aria-hidden="true" /> תורנות שלי
           </span>
           <span>
             <i className="legend-dot muted" />
@@ -334,7 +353,7 @@ export function CalendarView({
           </small>
         </div>
       </Panel>
-    </>
+    </div>
   );
 }
 export function DutyList({
@@ -344,45 +363,13 @@ export function DutyList({
 }: {
   state: AppState;
   duties: Row[];
-  /** The viewer's own duties, marked like their color in the month grid. */
+  /** The viewer's own duties, marked as in the month grid. */
   ownIds?: Set<string>;
 }) {
   return duties.length ? (
     <div className="duty-list">
       {duties.map((d) => (
-        <Link
-          href={`/duties/${d.id}`}
-          className={`duty-row ${ownIds?.has(str(d.id)) ? "mine" : ""}`}
-          key={d.id}
-        >
-          <span className="date-tile">
-            <strong>{dayOfMonth(dutyStart(d))}</strong>
-            <small>{shortMonth(dutyStart(d))}</small>
-          </span>
-          <span className="duty-row-title">
-            <strong>{str(d.name, "תורנות")}</strong>
-            <small className="duty-row-when">
-              <Clock3 size={13} aria-hidden="true" />
-              {dutyRange(d)}
-            </small>
-            <small>
-              <MapPin size={13} aria-hidden="true" />
-              {str(d.location, "המיקום טרם נקבע")}
-            </small>
-          </span>
-          <span className="duty-row-seats">
-            <UsersRound size={15} aria-hidden="true" />{" "}
-            {activeAssignments(state, d.id).length}
-            {dutySlots(d).length ? ` / ${dutySlots(d).length}` : ""}
-          </span>
-          {/* A phone shows the status only when it is not the usual "published". */}
-          <span
-            className={`duty-row-status ${dutyStatus(d) === "published" ? "hide-mobile" : ""}`}
-          >
-            <Status value={dutyStatus(d)} />
-          </span>
-          <ChevronLeft size={18} aria-hidden="true" />
-        </Link>
+        <DutyRow key={str(d.id)} state={state} duty={d} ownIds={ownIds} dated />
       ))}
     </div>
   ) : (
@@ -390,5 +377,60 @@ export function DutyList({
       title="אין תורנויות להצגה"
       text="תורנויות שיפורסמו יופיעו כאן עם כל פרטי הביצוע."
     />
+  );
+}
+/** One duty as a row of the roster; the date tile shows outside a day group. */
+export function DutyRow({
+  state,
+  duty: d,
+  ownIds,
+  dated = false,
+}: {
+  state: AppState;
+  duty: Row;
+  ownIds?: Set<string>;
+  dated?: boolean;
+}) {
+  const mine = !!ownIds?.has(str(d.id));
+  return (
+    <Link href={`/duties/${d.id}`} className={`duty-row ${mine ? "mine" : ""}`}>
+      {dated && (
+        <span className="date-tile">
+          <strong>{dayOfMonth(dutyStart(d))}</strong>
+          <small>{shortMonth(dutyStart(d))}</small>
+        </span>
+      )}
+      <span className="duty-row-title">
+        <strong>
+          {str(d.name, "תורנות")}
+          {mine && (
+            <span className="mine-mark">
+              <UserRound size={12} aria-hidden="true" />
+              שלי
+            </span>
+          )}
+        </strong>
+        <small className="duty-row-when">
+          <Clock3 size={13} aria-hidden="true" />
+          {dutyRange(d)}
+        </small>
+        <small>
+          <MapPin size={13} aria-hidden="true" />
+          {str(d.location, "המיקום טרם נקבע")}
+        </small>
+      </span>
+      <span className="duty-row-seats">
+        <UsersRound size={15} aria-hidden="true" />{" "}
+        {activeAssignments(state, d.id).length}
+        {dutySlots(d).length ? ` / ${dutySlots(d).length}` : ""}
+      </span>
+      {/* A phone shows the status only when it is not the usual "published". */}
+      <span
+        className={`duty-row-status ${dutyStatus(d) === "published" ? "hide-mobile" : ""}`}
+      >
+        <Status value={dutyStatus(d)} />
+      </span>
+      <ChevronLeft size={18} aria-hidden="true" />
+    </Link>
   );
 }

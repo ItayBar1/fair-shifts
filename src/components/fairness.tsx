@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { BandStrip } from "./views/band-strip";
 import {
   ArrowDown,
   ArrowUp,
@@ -841,8 +842,9 @@ export function FairnessView({
         {managers.length > 0 &&
           " אחראי תורנויות אינו משובץ לתורנויות, ולכן אינו מדורג והיתרה שלו מוקפאת."}
       </Notice>
+      <BandStrip state={state} ranked={ranked} />
       <Panel
-        title="טבלת הצדק היחידתית"
+        title="דירוג החיילים"
         subtitle={`${ranked.length} חיילים · ניקוד זהה מקבל דירוג משותף${
           managers.length ? ` · ${managers.length} אחראים מחוץ לדירוג` : ""
         }`}

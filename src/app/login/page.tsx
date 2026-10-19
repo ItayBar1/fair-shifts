@@ -2,15 +2,9 @@
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  ShieldCheck,
-  CalendarDays,
-  Scale,
-  Mail,
-  LockKeyhole,
-} from "lucide-react";
+import { ArrowLeft, ShieldCheck, Mail } from "lucide-react";
 import { Notice } from "@/components/ui";
+import { BandAxis } from "@/components/views/band-axis";
 const subscribe = () => () => {};
 // Better Auth returns a refused Google sign-in here with an error code only;
 // a locked account and an uninvited Google account must not look alike to others.
@@ -82,42 +76,40 @@ export default function LoginPage() {
           </span>
         </Link>
         <div className="login-story-content">
-          <span className="eyebrow">כל היחידה. אותה תמונה.</span>
           <h1>
-            תכנון ברור.
+            כל תורנות,
             <br />
-            חלוקה הוגנת.
-            <br />
-            <span>ראש שקט.</span>
+            לפי כללים גלויים.
           </h1>
           <p>
-            הלוח, האילוצים וההחלפות במקום אחד —<br />
-            כדי שתמיד יהיה ברור מי, מתי ולמה.
+            לכל מקום פנוי בודקים קודם מי מתאים. מבין המתאימים שהניקוד שלהם קטן
+            מהמינימום ועוד שווי המקום מגרילים, ולכל אחד ברצועה סיכוי שווה.
           </p>
-          <div className="login-benefits">
-            <span>
-              <CalendarDays size={19} />
-              לוח תורנויות משותף
-            </span>
-            <span>
-              <Scale size={19} />
-              ניקוד שקוף לכולם
-            </span>
-            <span>
-              <ShieldCheck size={19} />
-              גישה מאובטחת ליחידה
-            </span>
+          {/* The specification's own example (section 6.5), not unit data. */}
+          <div className="login-band">
+            <BandAxis
+              points={[
+                { score: 10, count: 2 },
+                { score: 11, count: 1 },
+                { score: 14, count: 1 },
+                { score: 15, count: 1 },
+              ]}
+              minimum={10}
+              edge={14}
+              label="דוגמה: ניקוד 10, 10, 11, 14 ו־15 ותורנות בשווי 4. שלושה ברצועה: 10, 10 ו־11."
+            />
+            <small>
+              דוגמה: ניקוד 10, 10, 11, 14 ו־15, תורנות בשווי 4. ברצועה שלושה.
+            </small>
           </div>
+          <p className="login-benefits">
+            לוח תורנויות משותף · ניקוד שקוף לכולם · גישה מאובטחת ליחידה
+          </p>
         </div>
         <p className="login-story-footer">מערכת ניהול התורנויות של היחידה</p>
-        <div className="decor-grid" aria-hidden="true" />
       </section>
       <section className="login-form-side">
         <div className="login-form">
-          <div className="login-icon">
-            <LockKeyhole size={27} />
-          </div>
-          <div className="eyebrow">ברוכים הבאים</div>
           <h2>
             {recovery
               ? "שחזור גישה טכנית"

@@ -1,9 +1,10 @@
 @import "tailwindcss";
 /*
- * Design tokens (redesign stage 1, #144). Every color, size, radius, space and
- * timing in this file comes from here; a component never picks a raw value.
- * Colors are named by role, not hue, so the brand color is a single line and a
- * dark theme only redefines this block.
+ * Design tokens (decision 218; the ledger world of decision 241). Every color,
+ * size, radius, space and timing in this file comes from here; a component
+ * never picks a raw value. Colors are named by role, not hue: the ground is a
+ * columnar ledger pad, the rail its cloth cover, ink marks what is written and
+ * the brand blue only what can be pressed or is chosen.
  */
 :root {
   color-scheme: light;
@@ -15,55 +16,68 @@
   --accent-text: color-mix(in oklab, var(--accent) 82%, black);
   --on-accent: #fff;
   --focus-ring: var(--accent);
-  --brand-deep: color-mix(in oklab, var(--accent) 28%, #0a121c);
-  --brand-highlight: color-mix(in oklab, var(--accent) 30%, white);
+  --brand-deep: var(--rail);
+  --brand-highlight: #c9d6cc;
 
-  /* Neutrals */
-  --bg: #f5f7f8;
-  --surface: #fff;
-  --surface-2: #f1f4f5;
-  --fill: #e9eef0;
-  --fill-hover: #eef2f3;
-  --fill-strong: #dde4e7;
-  --surface-inverse: #1d2a30;
-  --on-inverse: #fff;
-  --text: #15262d;
-  --text-2: #4b5c63;
-  --text-3: #5f6f75;
-  --separator: #e2e8ea;
-  --separator-strong: #cfd8db;
-  --neutral-fill: #9aa5aa;
-  --on-deep-1: #fff;
-  --on-deep-2: rgb(255 255 255 / 0.76);
-  --on-deep-3: rgb(255 255 255 / 0.58);
+  /* The ledger: pad, sheet, rules and ink. */
+  --bg: #e6eee1;
+  --surface: #fbfcf9;
+  --surface-2: #eef3ea;
+  --fill: #dfe8da;
+  --fill-hover: #e7eee2;
+  --fill-strong: #d0dccb;
+  --surface-inverse: #15231e;
+  --on-inverse: #fbfcf9;
+  --text: #14211c;
+  --text-2: #43554d;
+  --text-3: #55665e;
+  --separator: #d0dccc;
+  --separator-strong: #adc0aa;
+  --neutral-fill: #8d9a92;
+  --on-deep-1: #f2f5f0;
+  --on-deep-2: rgb(242 245 240 / 0.78);
+  --on-deep-3: rgb(242 245 240 / 0.6);
+  /* The cover: the navigation rail and the login story. */
+  --rail: #15231e;
+  --rail-2: #1f3029;
+  --rail-rule: rgb(242 245 240 / 0.12);
+  --nav-active-bg: var(--surface);
+  --nav-active-text: var(--text);
+  /* The margin rule: "now", today and the edge of the band. */
+  --rule-red: #b8403a;
+  /* Pencil for what is not yet written in ink (a draft). */
+  --pencil: #5f6a64;
+  /* The band of a draw, hatched in ink. */
+  --band-fill: color-mix(in oklab, var(--text) 10%, transparent);
+  --band-hatch: color-mix(in oklab, var(--text) 22%, transparent);
 
   /* Status: text colors keep 4.5:1 on their own soft background. */
   --success: #1f7a52;
-  --success-soft: #e6f4ec;
+  --success-soft: #e3f1e8;
   --success-fill: #2a9a6c;
-  --warning: #8a6212;
-  --warning-soft: #fdf3dc;
+  --warning: #85600f;
+  --warning-soft: #f8efd8;
   --warning-fill: #c4891d;
-  --danger: #b3343b;
-  --danger-soft: #fdeceb;
-  --danger-border: #f2cdcb;
-  --danger-fill: #dc4c43;
-  --info: #3c63a8;
-  --info-soft: #ebf0fa;
+  --danger: #b0333a;
+  --danger-soft: #fae8e6;
+  --danger-border: #eec5c2;
+  --danger-fill: #d4473f;
+  --info: #3a5f9f;
+  --info-soft: #e9eef6;
 
-  /* Calendar: my duties take the accent; the unit's stay neutral. */
-  --cal-unit: #7d8d93;
+  /* Calendar: the unit's duties in light rule, mine framed in ink with a mark. */
+  --cal-unit: var(--separator-strong);
   --cal-unit-soft: var(--surface-2);
   --cal-unit-text: var(--text);
-  --cal-mine: var(--accent);
-  --cal-mine-soft: var(--accent-soft);
-  --cal-mine-text: var(--accent-text);
+  --cal-mine: var(--text);
+  --cal-mine-soft: var(--surface);
+  --cal-mine-text: var(--text);
 
-  /* Elevation */
-  --shadow-1: 0 1px 2px rgb(16 32 40 / 0.07);
-  --shadow-2: 0 8px 24px rgb(16 32 40 / 0.16);
-  --shadow-3: 0 24px 64px rgb(16 32 40 / 0.24);
-  --scrim: rgb(16 32 40 / 0.45);
+  /* Elevation: only what floats (a dialog, a toast) casts a shadow. */
+  --shadow-1: 0 1px 2px rgb(20 33 28 / 0.06);
+  --shadow-2: 0 8px 24px rgb(20 33 28 / 0.14);
+  --shadow-3: 0 24px 64px rgb(20 33 28 / 0.22);
+  --scrim: rgb(14 22 19 / 0.45);
 
   /* Type: the platform font, a fixed scale in rem so the browser's text size
      setting scales the layout with it. Nothing renders below 12px. */
@@ -101,11 +115,11 @@
   --space-12: 3rem;
   --space-16: 4rem;
 
-  /* Radius: tags, controls, cards, sheets. */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
+  /* Radius: a ledger is cut square; tags, controls, sheets. */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
   --radius-full: 999px;
 
   /* Motion: quick and critically damped; nothing bounces. */
@@ -116,14 +130,15 @@
 }
 @media (prefers-contrast: more) {
   :root {
-    --text-2: #33434a;
-    --text-3: #3f4f55;
-    --separator: #8e9ca1;
-    --separator-strong: #6f7f85;
+    --text-2: #2f3f38;
+    --text-3: #3a4a43;
+    --separator: #8a9a8e;
+    --separator-strong: #66786b;
+    --pencil: #424c46;
   }
 }
 
-/* Dark theme, from the system setting (decision 218). Only tokens change. */
+/* Dark theme, from the system setting (decision 218): the ledger by night. */
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
@@ -131,23 +146,29 @@
     --accent-hover: color-mix(in oklab, var(--accent) 85%, white);
     --accent-soft: color-mix(in oklab, var(--accent) 22%, var(--surface));
     --accent-text: #8fa9f5;
-    --brand-deep: color-mix(in oklab, var(--accent) 22%, #070c12);
-    --brand-highlight: #b9c9f8;
+    --brand-highlight: #b9c9bd;
 
-    --bg: #0f1518;
-    --surface: #182124;
-    --surface-2: #1f2a2e;
-    --fill: #26333a;
-    --fill-hover: #212c31;
-    --fill-strong: #2f3e45;
-    --surface-inverse: #e8eef0;
-    --on-inverse: #0f1518;
-    --text: #e8eef0;
-    --text-2: #a9b6bb;
-    --text-3: #8d9ba1;
-    --separator: #2a363b;
-    --separator-strong: #3a484e;
-    --neutral-fill: #6b7a80;
+    --bg: #0d1412;
+    --surface: #131c19;
+    --surface-2: #18231f;
+    --fill: #213029;
+    --fill-hover: #1c2924;
+    --fill-strong: #2a3a33;
+    --surface-inverse: #e5ebe6;
+    --on-inverse: #0d1412;
+    --text: #e5ebe6;
+    --text-2: #a9b7af;
+    --text-3: #909f97;
+    --separator: #24322c;
+    --separator-strong: #33443c;
+    --neutral-fill: #6a7a71;
+    /* By night the cover is the lighter board, so it still reads as one. */
+    --rail: #17251f;
+    --rail-2: #21322b;
+    --nav-active-bg: #e5ebe6;
+    --nav-active-text: #0d1412;
+    --rule-red: #e0665d;
+    --pencil: #9aa69f;
 
     --success: #4cc38a;
     --success-soft: color-mix(in oklab, #4cc38a 16%, var(--surface));
@@ -162,7 +183,7 @@
     --info: #8fb0ee;
     --info-soft: color-mix(in oklab, #8fb0ee 15%, var(--surface));
 
-    --cal-unit: #6b7a80;
+    --cal-unit: #6a7a71;
 
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-2: 0 8px 24px rgb(0 0 0 / 0.5);
@@ -172,10 +193,11 @@
 }
 @media (prefers-color-scheme: dark) and (prefers-contrast: more) {
   :root {
-    --text-2: #c9d3d7;
-    --text-3: #b3bfc4;
-    --separator: #6b7a80;
-    --separator-strong: #8d9ba1;
+    --text-2: #c9d4ce;
+    --text-3: #b3c0b9;
+    --separator: #6a7a71;
+    --separator-strong: #8fa097;
+    --pencil: #c2ccc6;
   }
 }
 html {
@@ -270,8 +292,20 @@ table,
 .score-number,
 .rank-number,
 .day-number,
-.date-tile {
-  font-variant-numeric: tabular-nums;
+.date-tile,
+.band-strip,
+.draw-receipt {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* The parts no component draws still belong to the ledger. */
+html {
+  accent-color: var(--accent);
+  caret-color: var(--accent);
+  scrollbar-color: var(--separator-strong) transparent;
+}
+::selection {
+  background: color-mix(in oklab, var(--accent) 24%, transparent);
+  color: var(--text);
 }
 button:focus-visible,
 a:focus-visible,
@@ -486,8 +520,9 @@ small {
 }
 .sidebar {
   width: 248px;
-  background: var(--surface);
-  border-inline-end: 1px solid var(--separator);
+  background: var(--rail);
+  color: var(--on-deep-1);
+  border-inline-end: 1px solid var(--rail);
   position: fixed;
   inset-block: 0;
   inset-inline-start: 0;
@@ -518,16 +553,27 @@ small {
   color: var(--text-2);
   font-size: var(--text-caption);
 }
+.sidebar .brand small {
+  color: var(--on-deep-3);
+}
+/* The mark is the ledger's own: a letter set over a double rule. */
 .brand-mark {
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--on-accent);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+  color: inherit;
   display: grid;
   place-items: center;
   font-weight: 700;
   font-size: var(--text-title-2);
+  line-height: 1;
+  padding-bottom: 3px;
+  background:
+    linear-gradient(currentColor, currentColor) 50% calc(100% - 7px) / 60% 1px
+      no-repeat,
+    linear-gradient(currentColor, currentColor) 50% calc(100% - 4px) / 60% 1px
+      no-repeat;
 }
 .nav-groups {
   margin-top: var(--space-5);
@@ -542,7 +588,7 @@ small {
   min-height: 2rem;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
-  color: var(--text-2);
+  color: var(--on-deep-2);
   font-size: var(--text-footnote);
   font-weight: 500;
   margin-bottom: var(--space-0-5);
@@ -551,30 +597,33 @@ small {
   flex-shrink: 0;
 }
 .nav-link:hover {
-  background: var(--fill-hover);
-  color: var(--text);
+  background: var(--rail-2);
+  color: var(--on-deep-1);
 }
 .nav-link:active {
-  background: var(--fill);
+  background: var(--rail-rule);
 }
+/* The open page is a sheet pulled out of the cover. */
 .nav-link.active {
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
   font-weight: 600;
 }
 .nav-section {
   font-size: var(--text-caption);
   font-weight: 600;
-  color: var(--text-3);
+  color: var(--on-deep-3);
   margin: 0 var(--space-3) var(--space-1-5);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--rail-rule);
 }
 .nav-count {
   margin-inline-start: auto;
   min-width: 1.25rem;
   text-align: center;
-  background: var(--accent);
-  color: var(--on-accent);
-  border-radius: var(--radius-full);
+  background: var(--on-deep-1);
+  color: var(--rail);
+  border-radius: var(--radius-xs);
   padding: 0 var(--space-1-5);
   font-size: var(--text-caption);
   font-weight: 600;
@@ -590,7 +639,7 @@ small {
   margin: var(--space-3) var(--space-3) 0;
   font-size: var(--text-caption);
   line-height: var(--leading-body);
-  color: var(--text-3);
+  color: var(--on-deep-3);
 }
 .sidebar-help svg {
   flex-shrink: 0;
@@ -600,7 +649,7 @@ small {
   display: flex;
   gap: var(--space-1);
   align-items: center;
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--rail-rule);
   padding: var(--space-3) var(--space-1) 0;
   margin-top: var(--space-3);
 }
@@ -618,6 +667,22 @@ small {
   font-size: var(--text-caption);
   color: var(--accent-text);
   font-weight: 500;
+}
+.sidebar .profile-account,
+.sidebar .profile small {
+  color: var(--on-deep-2);
+}
+.sidebar .icon-btn {
+  color: var(--on-deep-2);
+}
+.sidebar .icon-btn:hover,
+.sidebar .icon-btn.active {
+  background: var(--rail-2);
+  color: var(--on-deep-1);
+}
+.sidebar .avatar {
+  background: var(--rail-2);
+  color: var(--on-deep-1);
 }
 .profile-account:hover {
   text-decoration: underline;
@@ -648,8 +713,8 @@ small {
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--fill);
+  color: var(--text-2);
   border-radius: var(--radius-full);
   height: 36px;
   width: 36px;
@@ -698,8 +763,7 @@ small {
   justify-content: space-between;
   gap: var(--space-3);
   padding: 0 var(--space-10);
-  background: color-mix(in oklab, var(--bg) 78%, transparent);
-  backdrop-filter: blur(20px) saturate(180%);
+  background: var(--bg);
   border-bottom: 1px solid transparent;
   transition: border-color var(--duration-base) var(--ease-out);
 }
@@ -760,13 +824,8 @@ small {
   align-items: flex-end;
   gap: var(--space-3) var(--space-6);
   margin-bottom: var(--space-6);
-}
-.eyebrow {
-  color: var(--accent-text);
-  font-size: var(--text-caption);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 3px double var(--separator-strong);
 }
 .page-heading p {
   color: var(--text-2);
@@ -820,6 +879,16 @@ small {
 .more-list .nav-link {
   min-height: 2.75rem;
   font-size: var(--text-body);
+  color: var(--text-2);
+}
+/* The "more" sheet is paper, not the cover: its links take the page's ink. */
+.more-list .nav-link:hover {
+  background: var(--fill-hover);
+  color: var(--text);
+}
+.more-list .nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 .panel {
   background: var(--surface);
@@ -844,6 +913,24 @@ small {
   overflow-wrap: anywhere;
   background: var(--surface);
 }
+/* Inside a sheet, assignments are ruled lines of it, not cards on it. */
+.panel .my-assignment-list {
+  gap: 0;
+}
+.panel .my-assignment {
+  border: 0;
+  border-bottom: 1px solid var(--separator);
+  border-radius: 0;
+  padding: var(--space-4) 0;
+  background: transparent;
+}
+.panel .my-assignment:last-child {
+  border-bottom: 0;
+}
+.panel .my-assignment.mail-highlight {
+  padding-inline: var(--space-3);
+  background: var(--accent-soft);
+}
 .my-assignment.cancelled h3 {
   color: var(--text-2);
   text-decoration: line-through;
@@ -855,8 +942,10 @@ small {
   align-items: flex-start;
   margin-bottom: var(--space-6);
   padding: var(--space-5);
-  border-radius: var(--radius-lg);
-  background: var(--accent-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--separator-strong);
+  border-top: 3px double var(--separator-strong);
 }
 .next-date {
   display: flex;
@@ -864,10 +953,10 @@ small {
   align-items: center;
   min-width: 4.5rem;
   padding: var(--space-3) var(--space-2);
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-variant-numeric: tabular-nums;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inverse);
+  color: var(--on-inverse);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .next-date strong {
   font-size: var(--text-large-title);
@@ -881,16 +970,41 @@ small {
 .next-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.nowrap {
+  white-space: nowrap;
+}
+/* The stamp's last line: the weekday and how long until the duty. */
+.next-when {
+  margin-top: var(--space-1-5);
+  padding-top: var(--space-1);
+  border-top: 1px solid color-mix(in oklab, var(--on-inverse) 35%, transparent);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  text-align: center;
+  line-height: var(--leading-snug);
+}
+.next-when > span {
+  display: block;
+  margin: 0;
 }
 .next-label {
   margin-bottom: var(--space-2);
-  color: var(--accent-text);
+  color: var(--text-2);
   font-size: var(--text-footnote);
   font-weight: 600;
 }
+/* How long until the next duty, in ink and weight. */
+.countdown {
+  color: var(--text);
+  font-weight: 700;
+}
 .next-assignment .my-assignment {
-  border-color: transparent;
-  box-shadow: var(--shadow-1);
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 .next-assignment .my-assignment-heading h3 {
   font-size: var(--text-title-3);
@@ -996,58 +1110,70 @@ small {
   background: var(--accent-hover);
 }
 .btn.secondary {
-  background: var(--fill);
+  background: var(--surface);
+  border-color: var(--separator-strong);
   color: var(--text);
 }
 .btn.secondary:hover {
-  background: var(--fill-strong);
+  background: var(--fill-hover);
+  border-color: var(--text-3);
 }
 .btn.danger {
-  background: var(--danger-soft);
+  background: var(--surface);
+  border-color: var(--danger-border);
   color: var(--danger);
 }
 .btn.danger:hover {
-  background: color-mix(in oklab, var(--danger-soft) 80%, var(--danger));
+  background: var(--danger-soft);
 }
 .badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
   font-size: var(--text-caption);
-  font-weight: 500;
+  font-weight: 600;
   line-height: var(--leading-snug);
-  border-radius: var(--radius-full);
-  background: var(--surface-2);
-  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--separator-strong);
+  background: transparent;
+  padding: 0 var(--space-1-5);
   white-space: nowrap;
   color: var(--text-2);
 }
-.badge.success::before,
-.badge.warning::before,
-.badge.danger::before,
-.badge.info::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: currentColor;
-  flex-shrink: 0;
-}
 .badge.success {
-  background: var(--success-soft);
+  border-color: color-mix(in oklab, var(--success) 45%, transparent);
   color: var(--success);
 }
 .badge.warning {
-  background: var(--warning-soft);
+  border-color: color-mix(in oklab, var(--warning) 45%, transparent);
   color: var(--warning);
 }
 .badge.danger {
+  border-color: var(--danger-border);
   background: var(--danger-soft);
   color: var(--danger);
 }
 .badge.info {
-  background: var(--info-soft);
+  border-color: color-mix(in oklab, var(--info) 40%, transparent);
   color: var(--info);
+}
+/* The publication lifecycle (decision 241): a draft is pencilled in, a
+   published duty is written in ink. */
+.badge.pencil {
+  border-style: dashed;
+  border-color: var(--pencil);
+  color: var(--pencil);
+}
+.badge.ink {
+  border-color: var(--text);
+  color: var(--text);
+}
+/* An ordinary state, such as an active soldier, is a word, not a tag. */
+.badge.plain {
+  border-color: transparent;
+  padding: 0;
+  font-weight: 500;
+  color: var(--text-2);
 }
 /* The import template: the first step on the import screen, set apart so it
    is found before the file is filled. */
@@ -1060,8 +1186,8 @@ small {
   padding: var(--space-4);
   margin-bottom: var(--space-5);
   border-radius: var(--radius-sm);
-  border-inline-start: 3px solid var(--accent);
-  background: var(--accent-soft);
+  border: 1px solid var(--separator-strong);
+  background: var(--surface-2);
 }
 .import-template p {
   margin-top: var(--space-1);
@@ -1074,13 +1200,13 @@ small {
   white-space: nowrap;
 }
 .notice {
-  --tone: var(--accent);
+  --tone: var(--info);
   display: flex;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
-  border-inline-start: 3px solid var(--tone);
-  background: var(--accent-soft);
+  border: 1px solid var(--separator);
+  background: var(--surface-2);
   color: var(--text);
   font-size: var(--text-footnote);
   line-height: var(--leading-body);
@@ -1095,14 +1221,17 @@ small {
 .notice.danger {
   --tone: var(--danger);
   background: var(--danger-soft);
+  border-color: var(--danger-border);
 }
 .notice.warning {
-  --tone: var(--warning-fill);
+  --tone: var(--warning);
   background: var(--warning-soft);
+  border-color: color-mix(in oklab, var(--warning) 30%, transparent);
 }
 .notice.success {
   --tone: var(--success);
   background: var(--success-soft);
+  border-color: color-mix(in oklab, var(--success) 30%, transparent);
 }
 .notice > div {
   flex: 1;
@@ -1140,9 +1269,8 @@ form + .notice {
   font-size: var(--text-callout);
 }
 .panel .empty-icon {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: var(--radius-sm);
+  width: auto;
+  height: auto;
 }
 .panel .empty-icon svg {
   width: 20px;
@@ -1156,10 +1284,6 @@ form + .notice {
 .empty-icon {
   display: grid;
   place-items: center;
-  height: 58px;
-  width: 58px;
-  background: var(--surface-2);
-  border-radius: var(--radius-lg);
   color: var(--text-3);
 }
 .two-columns {
@@ -1170,15 +1294,18 @@ form + .notice {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+  border-block: 1px solid var(--separator-strong);
 }
 .stat-card,
 .stat {
-  background: var(--surface);
-  border: 1px solid var(--separator);
-  border-radius: var(--radius-md);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   padding: var(--space-3) var(--space-4);
+}
+.stats-grid > .stat + .stat {
+  border-inline-start: 1px solid var(--separator);
 }
 .stat-button {
   transition:
@@ -1190,10 +1317,11 @@ form + .notice {
   transform: scale(0.98);
 }
 .stat-button > strong {
-  font-size: var(--text-title-2);
+  font-size: var(--text-title-3);
+  font-weight: 700;
   line-height: var(--leading-tight);
   margin-top: var(--space-1);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .stat-button > small {
   color: var(--text-2);
@@ -1216,10 +1344,11 @@ form + .notice {
   display: block;
 }
 .stat > strong {
-  font-size: var(--text-title-2);
+  font-size: var(--text-title-3);
+  font-weight: 700;
   line-height: var(--leading-tight);
-  margin-top: var(--space-1);
-  font-variant-numeric: tabular-nums;
+  margin-top: var(--space-0-5);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .stat > small {
   color: var(--text-2);
@@ -1232,10 +1361,13 @@ form + .notice {
   gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
-.stat-button:hover,
+.stat-button:hover {
+  background: var(--fill-hover);
+}
+/* A chosen figure is underlined in the brand's blue, like a chosen tab. */
 .stat-button.active {
-  border-color: var(--accent);
   background: var(--accent-soft);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 .stat-button:focus-visible,
 .personal-row:focus-visible {
@@ -1307,23 +1439,17 @@ form + .notice {
 .task-symbol {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  width: 24px;
+  color: var(--text-3);
   flex-shrink: 0;
 }
 .task-symbol.amber {
-  background: var(--warning-soft);
-  color: var(--warning-fill);
+  color: var(--warning);
 }
 .task-symbol.blue {
-  background: var(--info-soft);
   color: var(--info);
 }
 .task-symbol.red {
-  background: var(--danger-soft);
   color: var(--danger);
 }
 .shortcut-grid {
@@ -1380,11 +1506,10 @@ form + .notice {
   font-size: var(--text-title-1);
   margin: var(--space-3) 0;
 }
+/* The duty's mark stands in the margin, in ink, without a tile behind it. */
 .large-symbol {
-  padding: var(--space-5);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+  color: var(--text-3);
 }
 .meta-line {
   font-size: var(--text-caption);
@@ -1396,7 +1521,8 @@ form + .notice {
   gap: var(--space-1-5);
 }
 .instruction-box {
-  background: var(--bg);
+  background: var(--surface-2);
+  border: 1px solid var(--separator);
   padding: var(--space-5);
   border-radius: var(--radius-sm);
   margin-top: var(--space-6);
@@ -1780,12 +1906,15 @@ table {
 th {
   color: var(--text-2);
   font-size: var(--text-caption);
-  font-weight: 500;
-  background: var(--surface-2);
+  font-weight: 600;
+  background: transparent;
+}
+thead th {
+  border-bottom: 3px double var(--separator-strong);
 }
 th,
 td {
-  padding: var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-3);
   text-align: start;
   border-bottom: 1px solid var(--separator);
 }
@@ -1957,7 +2086,12 @@ tbody tr:last-child td {
 }
 .score-number {
   font-size: var(--text-title-3);
-  color: var(--accent-text);
+  font-weight: 700;
+  color: var(--text);
+}
+/* Initials circles add nothing to a ledger row; the name is enough. */
+.person .avatar.small {
+  display: none;
 }
 /* A column head that sorts its column. */
 .sort-head {
@@ -2173,7 +2307,6 @@ tbody tr:last-child td {
 }
 .modal::backdrop {
   background: var(--scrim);
-  backdrop-filter: blur(3px);
   transition: background-color var(--duration-base) var(--ease-out);
 }
 @starting-style {
@@ -2264,7 +2397,7 @@ tbody tr:last-child td {
 .toast {
   background: var(--surface-inverse);
   color: var(--on-inverse);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   padding-block: var(--space-2);
   padding-inline: var(--space-5) var(--space-2);
   display: flex;
@@ -2282,31 +2415,90 @@ tbody tr:last-child td {
   padding: var(--space-4);
   border-radius: var(--radius-sm);
 }
+/* The catalog is a register of duty types: one ruled row each (decision 241). */
 .catalog-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+  background: var(--surface);
+  border: 1px solid var(--separator);
+  border-top: 3px double var(--separator-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.catalog-grid > .panel {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--separator);
+  background: transparent;
+}
+.catalog-grid > .panel:last-child {
+  border-bottom: 0;
 }
 .catalog-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns:
+    minmax(10rem, 2fr) minmax(6rem, 0.8fr) minmax(12rem, 2fr)
+    auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-5);
 }
-.catalog-card .badge {
-  align-self: flex-start;
+.catalog-card h2 {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--text-headline);
 }
-.catalog-card p {
+.catalog-card > p {
+  grid-column: 1;
+  grid-row: 2;
   font-size: var(--text-footnote);
   color: var(--text-2);
+}
+.catalog-card .price-line {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.catalog-card .meta-line {
+  grid-column: 3;
+  font-size: var(--text-footnote);
+  color: var(--text-2);
+}
+.catalog-card > .btn {
+  grid-column: 4;
+  grid-row: 1;
+  width: auto;
+}
+.catalog-card > form {
+  grid-column: 4;
+  grid-row: 2;
+}
+.catalog-card > form .form-actions {
+  margin: 0;
+}
+/* The impact check is a second action on the row, not its primary one. */
+.catalog-card > form .btn.primary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent-text);
+  padding-inline: 0;
+}
+.catalog-card > form .btn.primary:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.catalog-card .badge {
+  justify-self: start;
 }
 .price-line {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .price-line strong {
   font-size: var(--text-title-1);
-  color: var(--accent-text);
+  color: var(--text);
 }
 .price-line span {
   color: var(--text-2);
@@ -2370,10 +2562,15 @@ tbody tr:last-child td {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 .calendar-weekdays {
-  background: var(--surface-2);
   color: var(--text-2);
   font-size: var(--text-caption);
+  font-weight: 600;
   text-align: center;
+  border-bottom: 3px double var(--separator-strong);
+}
+.calendar-weekdays > span:nth-child(7),
+.calendar-days > .calendar-day:nth-child(7n) {
+  background: var(--surface-2);
 }
 .calendar-weekdays span {
   padding: var(--space-3);
@@ -2388,7 +2585,8 @@ tbody tr:last-child td {
   border-bottom: 1px solid var(--separator);
   border-inline-end: 1px solid var(--separator);
 }
-.calendar-day.outside {
+/* Days outside the month are bare pad; hatching belongs to the band alone. */
+.calendar-days > .calendar-day.outside {
   background: var(--bg);
 }
 .day-number {
@@ -2400,14 +2598,15 @@ tbody tr:last-child td {
   margin-bottom: var(--space-1-5);
 }
 .is-today .day-number {
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--on-accent);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inverse);
+  color: var(--on-inverse);
+  font-weight: 700;
 }
 .calendar-event {
   display: block;
   background: var(--cal-unit-soft);
-  border-inline-start: 3px solid var(--cal-unit);
+  border: 1px solid var(--cal-unit);
   border-radius: var(--radius-xs);
   padding: var(--space-1-5) var(--space-2);
   margin-top: var(--space-1-5);
@@ -2419,20 +2618,30 @@ tbody tr:last-child td {
   background: var(--cal-mine-soft);
   border-color: var(--cal-mine);
   color: var(--cal-mine-text);
+  font-weight: 700;
 }
+/* Mine is marked by a sign and a frame, never by color alone (section 7.6). */
+.mine-icon {
+  display: inline;
+  vertical-align: -1px;
+  margin-inline-end: 3px;
+}
+/* A duty over several days is one bar: its joins are square and open. */
 .calendar-event.start {
   border-start-end-radius: 0;
   border-end-end-radius: 0;
+  border-inline-end-color: transparent;
 }
 .calendar-event.middle,
 .calendar-event.end {
-  border-inline-start-style: dashed;
   border-start-start-radius: 0;
   border-end-start-radius: 0;
+  border-inline-start-color: transparent;
 }
 .calendar-event.middle {
   border-start-end-radius: 0;
   border-end-end-radius: 0;
+  border-inline-end-color: transparent;
 }
 .calendar-event.cancelled {
   background: var(--surface-2);
@@ -2456,6 +2665,11 @@ tbody tr:last-child td {
 .calendar-event small {
   font-size: var(--text-caption);
 }
+.calendar-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
 .calendar-legend {
   display: flex;
   align-items: center;
@@ -2469,14 +2683,15 @@ tbody tr:last-child td {
 }
 .legend-dot {
   display: inline-block;
-  width: 7px;
+  width: 10px;
   height: 7px;
-  border-radius: var(--radius-xs);
+  border-radius: 1px;
   margin-inline-end: var(--space-1-5);
   background: var(--cal-unit);
 }
 .legend-dot.blue {
-  background: var(--cal-mine);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--cal-mine);
 }
 .mobile-only {
   display: none;
@@ -2558,14 +2773,337 @@ tbody tr:last-child td {
   align-items: center;
   flex-shrink: 0;
   min-width: 3.25rem;
-  background: var(--surface-2);
+  border: 1px solid var(--separator);
   border-radius: var(--radius-sm);
   padding: var(--space-1-5) var(--space-2);
   color: var(--text);
 }
 .duty-row.mine .date-tile {
+  border-color: var(--text);
+}
+.mine-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-inline-start: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--text);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text);
+  vertical-align: 1px;
+}
+/* A draft row is pencilled throughout, not only in its tag. */
+.duty-row:has(.badge.pencil) .duty-row-title strong,
+.duty-row:has(.badge.pencil) .date-tile {
+  color: var(--pencil);
+}
+.duty-row:has(.badge.pencil) .date-tile {
+  border-style: dashed;
+  border-color: var(--pencil);
+}
+/* The roster: duties under the day they start, past days folded away. */
+.agenda-day + .agenda-day {
+  margin-top: var(--space-4);
+}
+.agenda-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-1);
+  border-bottom: 1px solid var(--separator-strong);
+  font-size: var(--text-footnote);
+  font-weight: 700;
+}
+.agenda-day-head small {
+  margin-inline-start: auto;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.agenda-day-today .agenda-day-head {
+  border-bottom: 3px double var(--text);
+}
+.agenda-today {
+  font-weight: 800;
+  color: var(--text);
+}
+.agenda-day .duty-row {
+  margin-inline: 0;
+  border-radius: 0;
+}
+.now-rule {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+  color: var(--rule-red);
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+.now-rule::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  background: var(--rule-red);
+}
+.agenda-past {
+  margin-bottom: var(--space-4);
+}
+.agenda-past > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px dashed var(--separator-strong);
+  color: var(--text-2);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.agenda-past > summary::-webkit-details-marker {
+  display: none;
+}
+.agenda-past > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-inline-start: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.agenda-past[open] > summary::before {
+  transform: rotate(-45deg);
+}
+.agenda-past[open] > summary {
+  margin-bottom: var(--space-3);
+}
+.agenda-past .duty-row {
+  opacity: 0.8;
+}
+/* The viewer's next duty as a ticket: the answer a soldier opens the app for. */
+.next-duty-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--separator-strong);
+  border-top: 3px double var(--separator-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+}
+.next-duty-line:hover {
+  background: var(--fill-hover);
+}
+.next-duty-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 3.25rem;
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inverse);
+  color: var(--on-inverse);
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1.1;
+}
+.next-duty-date strong {
+  font-size: var(--text-title-2);
+}
+.next-duty-date span {
+  font-size: var(--text-caption);
+}
+.next-duty-body {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+  flex: 1;
+}
+.next-duty-body > strong {
+  font-size: var(--text-headline);
+  color: var(--text);
+}
+.next-duty-meta {
+  font-size: var(--text-footnote);
+}
+.next-duty-line > svg {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+/*
+ * The band (decision 241): scores on one axis, the minimum in ink, the band
+ * hatched up to its red edge, and the viewer marked in ink with a pointer.
+ */
+.band-strip {
+  margin-bottom: var(--space-6);
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--separator);
+  border-top: 3px double var(--separator-strong);
+  border-radius: var(--radius-md);
+}
+.band-strip-head {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 62ch;
+}
+.band-strip-head p,
+.band-note {
+  color: var(--text-2);
+  font-size: var(--text-footnote);
+}
+.band-note {
+  margin-top: var(--space-2);
+}
+.band-weights {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  font-size: var(--text-caption);
+  color: var(--text-2);
+}
+.band-weights span {
+  margin-inline-end: var(--space-1);
+}
+.band-weights button {
+  min-width: 2rem;
+  min-height: 1.75rem;
+  border: 1px solid var(--separator-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.band-weights button.selected {
+  border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-text);
+  font-weight: 700;
+}
+.band-axis {
+  margin: var(--space-6) 0 0;
+}
+.band-track {
+  position: relative;
+  height: 4.5rem;
+  margin-top: var(--space-5);
+  border-bottom: 1px solid var(--text-3);
+}
+.band-zone {
+  position: absolute;
+  bottom: 0;
+  height: 100%;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      var(--band-hatch) 0 1px,
+      transparent 1px 6px
+    ),
+    var(--band-fill);
+}
+.band-stack {
+  position: absolute;
+  bottom: 0;
+  width: 6px;
+  margin-inline-start: -3px;
+  background: var(--text-3);
+  border-radius: 1px 1px 0 0;
+}
+.band-stack.is-you {
+  background: var(--text);
+  width: 8px;
+  margin-inline-start: -4px;
+}
+.band-line {
+  position: absolute;
+  bottom: 0;
+  height: calc(100% + var(--space-4));
+  border-inline-start: 2px solid var(--text);
+}
+.band-line.edge {
+  border-inline-start: 2px dashed var(--rule-red);
+}
+.band-line small,
+.band-you small {
+  position: absolute;
+  top: calc(-1 * var(--space-1));
+  inset-inline-start: var(--space-1);
+  white-space: nowrap;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+}
+/* The edge's label reads back into the band, a line lower than the minimum's. */
+.band-line.edge small {
+  inset-inline-start: auto;
+  inset-inline-end: var(--space-1);
+  top: var(--space-3);
+  color: var(--rule-red);
+}
+.band-you {
+  position: absolute;
+  bottom: calc(-1 * var(--space-2));
+  width: 0;
+  height: 0;
+  border-inline: 6px solid transparent;
+  border-bottom: 9px solid var(--text);
+  margin-inline-start: -6px;
+}
+.band-you small {
+  top: auto;
+  bottom: calc(-1 * var(--space-5));
+  inset-inline-start: -0.5rem;
+  color: var(--text);
+  font-weight: 800;
+}
+.band-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-6);
+  color: var(--text-3);
+  font-size: var(--text-caption);
+}
+/* A soldier's draw, as a receipt: the axis, then its figures in a column. */
+.draw-receipt + .draw-receipt {
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--separator);
+}
+.receipt-lines {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: var(--space-5) 0 0;
+  border-top: 1px solid var(--separator-strong);
+}
+.receipt-lines div {
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
+  border-bottom: 1px solid var(--separator);
+}
+.receipt-lines dt {
+  color: var(--text-2);
+  font-size: var(--text-caption);
+}
+.receipt-lines dd {
+  margin: 0;
+  font-size: var(--text-title-3);
+  font-weight: 700;
+}
+.receipt-own dd {
+  text-decoration: underline double;
+  text-underline-offset: 0.2em;
+}
+.receipt-close {
+  margin-top: var(--space-3);
+  font-size: var(--text-footnote);
+}
+.receipt-close small {
+  color: var(--text-3);
 }
 .date-tile strong {
   font-size: var(--text-title-3);
@@ -2602,48 +3140,48 @@ tbody tr:last-child td {
   z-index: 1;
   padding: var(--space-16) 0;
 }
-.login-story .eyebrow {
-  color: var(--on-deep-2);
-}
 .login-story h1 {
   font-size: var(--text-display);
-  line-height: var(--leading-tight);
+  line-height: 1.08;
   font-weight: 700;
+  letter-spacing: -0.02em;
+  max-width: 14ch;
 }
-.login-story h1 span {
-  color: var(--brand-highlight);
+/* On the cover the ledger's ink turns light, so the band reads as it does on paper. */
+.login-story {
+  --text: var(--on-deep-1);
+  --text-2: var(--on-deep-2);
+  --text-3: var(--on-deep-3);
+  --separator: var(--rail-rule);
+  --band-fill: rgb(242 245 240 / 0.08);
+  --band-hatch: rgb(242 245 240 / 0.24);
+  --rule-red: #f08a82;
+}
+.login-band {
+  max-width: 26rem;
+  margin-top: var(--space-10);
+}
+.login-band small {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--on-deep-3);
 }
 .login-story-content p {
   color: var(--on-deep-2);
   margin-top: var(--space-6);
   font-size: var(--text-body);
+  max-width: 44ch;
 }
 .login-benefits {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  margin-top: var(--space-12);
+  margin-top: var(--space-8);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rail-rule);
   font-size: var(--text-footnote);
-  color: var(--on-deep-2);
-}
-.login-benefits span {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  color: var(--on-deep-3);
 }
 .login-story-footer {
   color: var(--on-deep-3);
   font-size: var(--text-caption);
-}
-.decor-grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.07;
-  background-image:
-    linear-gradient(var(--on-deep-1) 1px, transparent 1px),
-    linear-gradient(90deg, var(--on-deep-1) 1px, transparent 1px);
-  background-size: 70px 70px;
-  mask-image: linear-gradient(transparent, #000);
 }
 .login-form-side {
   padding: var(--space-12);
@@ -2656,17 +3194,11 @@ tbody tr:last-child td {
   width: 100%;
   max-width: 370px;
 }
-.login-icon {
-  display: inline-flex;
-  color: var(--accent-text);
-  background: var(--accent-soft);
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-8);
-}
 .login-form h2 {
   font-size: var(--text-title-1);
   line-height: var(--leading-snug);
+  padding-bottom: var(--space-3);
+  border-bottom: 3px double var(--separator-strong);
 }
 .login-form > p {
   font-size: var(--text-footnote);
@@ -2831,9 +3363,6 @@ tbody tr:last-child td {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .catalog-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .topbar {
     padding: 0 var(--space-6);
   }
@@ -2947,9 +3476,8 @@ tbody tr:last-child td {
     z-index: 30;
     padding: var(--space-1) var(--space-1)
       calc(var(--space-1) + env(safe-area-inset-bottom));
-    background: color-mix(in oklab, var(--surface) 82%, transparent);
-    backdrop-filter: blur(20px) saturate(180%);
-    border-top: 1px solid var(--separator);
+    background: var(--surface);
+    border-top: 3px double var(--separator-strong);
   }
   .has-tab-bar .main-content {
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
@@ -2963,24 +3491,55 @@ tbody tr:last-child td {
   .panel-head {
     flex-wrap: wrap;
   }
-  .two-columns,
-  .catalog-grid {
+  .two-columns {
     grid-template-columns: 1fr;
   }
-  /* The summary tiles scroll sideways in one row, so the duties show first. */
+  /* The summary line folds into a ruled two by two block on a phone. */
   .stats-grid {
-    display: flex;
-    gap: var(--space-2);
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-    margin-inline: calc(-1 * var(--space-4));
-    padding: 0 var(--space-4) var(--space-1);
-    scrollbar-width: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .stats-grid > .stat {
-    flex: 0 0 auto;
-    min-width: 9.5rem;
-    scroll-snap-align: start;
+    padding: var(--space-2) var(--space-3);
+  }
+  .stats-grid > .stat:nth-child(odd) {
+    border-inline-start: 0;
+  }
+  .stats-grid > .stat:nth-child(n + 3) {
+    border-top: 1px solid var(--separator);
+  }
+  .stats-grid .stat > strong,
+  .stats-grid .stat-button > strong {
+    font-size: var(--text-headline);
+  }
+  /* On a soldier's phone the next duty and the roster lead; figures follow. */
+  .calendar-page {
+    display: flex;
+    flex-direction: column;
+  }
+  .calendar-page > .stats-grid {
+    order: 2;
+    margin-top: var(--space-2);
+  }
+  .catalog-card {
+    grid-template-columns: 1fr auto;
+  }
+  .catalog-card h2,
+  .catalog-card > p,
+  .catalog-card .meta-line,
+  .catalog-card > .btn,
+  .catalog-card > form {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .catalog-card .price-line {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .receipt-lines {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .band-strip {
+    padding: var(--space-4);
   }
   .quick-actions {
     flex-wrap: nowrap;
@@ -2991,9 +3550,6 @@ tbody tr:last-child td {
   }
   .quick-actions .btn {
     flex: 0 0 auto;
-  }
-  .stat-top .stat-icon {
-    display: none;
   }
   .calendar-toolbar .toolbar-controls {
     width: 100%;
@@ -3029,6 +3585,18 @@ tbody tr:last-child td {
   }
   .next-date span {
     margin-top: 0;
+  }
+  /* On a phone the stamp is one line: date, weekday, the wait. */
+  .next-when {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .next-when > span {
+    display: inline;
+  }
+  .next-when > span::before {
+    content: " · ";
   }
   .calendar-toolbar {
     flex-wrap: wrap;

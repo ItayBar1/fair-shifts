@@ -8,6 +8,7 @@ import {
   type CancelledItem,
 } from "@/domain/my-assignments";
 import { Badge, Empty, Notice, Panel } from "./ui";
+import { countdown } from "./views/next-duty-line";
 
 const dayName = new Intl.DateTimeFormat("he-IL", {
   timeZone: "Asia/Jerusalem",
@@ -86,15 +87,27 @@ function NextAssignment({ item }: { item: AssignmentItem }) {
   const start = new Date(item.start);
   return (
     <section className="next-assignment" aria-labelledby="next-assignment">
+      {/* The stamp carries the day and the wait; the heading names the section for a reader. */}
       <div className="next-date" aria-hidden="true">
         <strong>{dayOfMonth.format(start)}</strong>
         <span>{monthName.format(start)}</span>
+        <small className="next-when">
+          <span>
+            {item.inProgress ? "מתבצעת עכשיו" : dayName.format(start)}
+          </span>
+          {!item.inProgress && (
+            <span>{countdown(item.start, new Date().toISOString())}</span>
+          )}
+        </small>
       </div>
       <div className="next-body">
-        <h2 className="next-label" id="next-assignment">
+        <h2 className="visually-hidden" id="next-assignment">
           {item.inProgress ? "מתבצעת עכשיו" : "התורנות הבאה שלך"} ·{" "}
           {dayName.format(start)}
+          {!item.inProgress &&
+            ` · ${countdown(item.start, new Date().toISOString())}`}
         </h2>
+
         <ol className="my-assignment-list">
           <AssignmentCard item={item} />
         </ol>
