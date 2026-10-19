@@ -110,6 +110,7 @@ const I = {
   techIntake: "tests/integration/technical-user-create.test.ts",
   contact: "tests/integration/contact-requests.test.ts",
   history: "tests/integration/state-history.test.ts",
+  receipt: "tests/integration/draw-receipt.test.ts",
 } as const;
 const E = {
   soldierRank: "tests/e2e/soldier-rank-edit.spec.ts",
@@ -2551,6 +2552,14 @@ export const scenarios: Record<number, Entry> = {
     ],
     [externalMonitor]
   ),
+  69: covered([
+    ...t(
+      I.receipt,
+      "shows the drawn soldier the numbers of a published draw, and nothing about others",
+      "gives another soldier no receipt for a seat that is not theirs",
+      "keeps the manager's full draw history and sends the manager no receipts"
+    ),
+  ]),
 };
 
 export type RoleKey = "soldier" | "manager" | "otherManager" | "technical";

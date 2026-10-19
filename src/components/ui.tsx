@@ -59,19 +59,24 @@ const statusLabels: Record<string, string> = {
   grace: "בחודש חסד",
   pre_release: "חודש לפני שחרור",
 };
+/** The publication lifecycle in pencil and ink, and everyday states as words (decision 241). */
+const lifecycleTones: Record<string, string> = {
+  draft: "pencil",
+  published: "ink",
+  active: "plain",
+};
 export function Status({ value }: { value: unknown }) {
   const status = str(value, "pending");
   return (
     <Badge
       tone={
-        [
-          "published",
+        lifecycleTones[status] ??
+        ([
           "approved",
           "completed",
           "credited",
           "success",
           "sent",
-          "active",
           "declared",
           "open",
         ].includes(status)
@@ -79,14 +84,13 @@ export function Status({ value }: { value: unknown }) {
           : ["failed", "cancelled", "locked", "service_ended"].includes(status)
             ? "danger"
             : [
-                  "draft",
                   "pending",
                   "awaiting_manager",
                   "needs_review",
                   "pre_release",
                 ].includes(status)
               ? "warning"
-              : "neutral"
+              : "neutral")
       }
     >
       {statusLabels[status] || status}

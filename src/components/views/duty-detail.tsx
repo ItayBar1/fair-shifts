@@ -37,6 +37,7 @@ import {
 import { ActionDialog, Badge, Empty, Panel, Status, Notice } from "../ui";
 import { AuditLink } from "../audit";
 import { concernReason } from "./dashboard";
+import { DrawReceipt } from "./draw-receipt";
 import {
   activeAssignments,
   dutyEnd,
@@ -134,7 +135,7 @@ export function DutyDetail({
               <ActionDialog
                 title="פרסום התורנות"
                 buttonLabel="פרסום לחיילים"
-                description="לאחר הפרסום התורנות תופיע בלוח היחידתי ותישלח הודעה למושפעים."
+                description={`הפרסום כותב את התורנות בלוח היחידתי, ומעכשיו היא גלויה לכל החיילים. מאוישים ${assignments.length} מתוך ${dutySlots(duty).length} מקומות${dutySlots(duty).length > assignments.length ? `, ${dutySlots(duty).length - assignments.length} פנויים` : ""}, והמשובצים יקבלו הודעה.`}
                 fields={[
                   {
                     name: "confirmed",
@@ -350,6 +351,7 @@ export function DutyDetail({
       )}
       {manager && <ScoreDecisions state={state} action={action} dutyId={id} />}
       {manager && <LotteryHistory state={state} action={action} dutyId={id} />}
+      {!manager && <DrawReceipt state={state} dutyId={id} />}
     </>
   );
 }

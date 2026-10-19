@@ -16,24 +16,24 @@
    - ביקורת production מ־18.10.2026 ותיקוניה: [הדוח](docs/production-audit-2026-10-18.md). כל ממצא מסומן שם עם הרגרסיה שלו; ממצא חדש נסגר רק עם רגרסיה מתאימה, לא בבדיקות ירוקות בלבד.
    - שרת, פריסה, גיבוי ושחזור: [מדריך ההפעלה](docs/operations.md) ו[העלאה לפרודקשן](docs/production-launch.md).
    - דרגות, ספק המייל או גיבוי: [מחקר](docs/research-notes.md). הפרד עובדות חיצוניות מהחלטות מוצר.
-   - עיצוב ממשק: [PRODUCT.md](PRODUCT.md) (קהלים, קול ועקרונות) ומשתני העיצוב ב־`src/app/globals.css` (הכרעה 218).
+   - עיצוב ממשק: [PRODUCT.md](PRODUCT.md) (קהלים, קול ועקרונות), [DESIGN.md](DESIGN.md) (מערכת העיצוב וכלליה) ומשתני העיצוב ב־`src/app/globals.css` (הכרעות 218 ו־241).
 
 כל הנתיבים יחסיים לשורש המאגר. אין תלות בתיקייה מקומית, בכלי של ספק מסוים או בקבצים מחוץ למאגר.
 
 ## מפת המאגר בקצרה
 
-| נתיב                                                 | מה יש בו                                                                                                        |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `src/server/actions.ts`                              | מפצל כל הפעולות (`type` → מטפל), בתוך `unitTransaction` עם idempotency. מי רשאי לכל פעולה: `action-access.ts`   |
-| `src/server/state.ts`                                | `readState` ו־`readHistory`: מה כל תפקיד מקבל, בטעינה נפרדת לכל תפקיד ובחלון של 90 יום לחייל (הכרעה 235)        |
-| `src/server/validation.ts`                           | סכמות Zod למעטפה ולפעולות                                                                                       |
-| `src/server/schema.ts`, `auth-schema.ts`, `drizzle/` | סכמת המסד והמיגרציות                                                                                            |
-| `src/server/<תחום>`                                  | שירותי תחום: `duty-service`, `planning`, `scoring`, `swaps/`, `transfers/`, `execution/`, `imports`, `ranks`... |
-| `src/domain/`                                        | כללים טהורים בלי מסד (כשירות, ניקוד, הגרלה, זמן ישראל, `erasure.ts`, ורישום סוגי הרשומות `record-kinds.ts`)     |
-| `src/components/`                                    | מסכי React; `workspace.tsx` הוא המעטפת והניווט; `management/` ו־`views/` מחולקים לפי מסך                        |
-| `src/worker.ts`                                      | עבודה ברקע: תחזוקה כל דקה, מייל, גיבוי, יומן, סנכרון יומן                                                       |
-| `scripts/`                                           | כלי שרת ותפעול (פלט באנגלית), Docker, Husky, יצירת מסמכים                                                       |
-| `tests/`                                             | `unit`, `integration` (PostgreSQL), `e2e` (Playwright), `acceptance` (מפת הקבלה)                                |
+| נתיב                                                 | מה יש בו                                                                                                                                                                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/server/actions.ts`                              | מפצל כל הפעולות (`type` → מטפל), בתוך `unitTransaction` עם idempotency. מי רשאי לכל פעולה: `action-access.ts`                                                                         |
+| `src/server/state/`                                  | `readState` ו־`readHistory` (`index.ts`): מה כל תפקיד מקבל, בטעינה נפרדת לכל תפקיד (`rows.ts`) ובחלון של 90 יום לחייל (הכרעה 235); הסבר ההגרלה לחייל ב־`draw-receipts.ts` (הכרעה 240) |
+| `src/server/validation.ts`                           | סכמות Zod למעטפה ולפעולות                                                                                                                                                             |
+| `src/server/schema.ts`, `auth-schema.ts`, `drizzle/` | סכמת המסד והמיגרציות                                                                                                                                                                  |
+| `src/server/<תחום>`                                  | שירותי תחום: `duty-service`, `planning`, `scoring`, `swaps/`, `transfers/`, `execution/`, `imports`, `ranks`...                                                                       |
+| `src/domain/`                                        | כללים טהורים בלי מסד (כשירות, ניקוד, הגרלה, זמן ישראל, `erasure.ts`, ורישום סוגי הרשומות `record-kinds.ts`)                                                                           |
+| `src/components/`                                    | מסכי React; `workspace.tsx` הוא המעטפת והניווט; `management/` ו־`views/` מחולקים לפי מסך                                                                                              |
+| `src/worker.ts`                                      | עבודה ברקע: תחזוקה כל דקה, מייל, גיבוי, יומן, סנכרון יומן                                                                                                                             |
+| `scripts/`                                           | כלי שרת ותפעול (פלט באנגלית), Docker, Husky, יצירת מסמכים                                                                                                                             |
+| `tests/`                                             | `unit`, `integration` (PostgreSQL), `e2e` (Playwright), `acceptance` (מפת הקבלה)                                                                                                      |
 
 ## מקורות אמת ושינויים
 

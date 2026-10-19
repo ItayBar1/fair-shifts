@@ -1,7 +1,7 @@
 "use client";
 import { CatalogImpact } from "../duty-changes";
 import { useState } from "react";
-import { Plus, CalendarDays, Clock3 } from "lucide-react";
+import { Plus, Clock3 } from "lucide-react";
 import {
   type AppState,
   type Action,
@@ -382,9 +382,6 @@ export function CatalogView({
           {state.dutyTypes.map((type) => (
             <Panel key={type.id}>
               <div className="catalog-card">
-                <span className="task-symbol teal">
-                  <CalendarDays size={23} />
-                </span>
                 <h2>{str(type.name)}</h2>
                 <p>{str(type.description, "לא נוספו הנחיות")}</p>
                 <div className="price-line">

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { BandAxis } from "./views/band-axis";
 import Link from "next/link";
 import {
   type Action,
@@ -128,6 +129,17 @@ function MissingSeats({ state, run }: { state: AppState; run: Row }) {
     </details>
   );
 }
+/** The scores of a draw's eligible candidates, stacked by value, for its axis. */
+function drawPoints(row: Row) {
+  const counts = new Map<number, number>();
+  for (const candidate of rows(row.candidates))
+    if (candidate.status !== "blocked")
+      counts.set(
+        num(candidate.score),
+        (counts.get(num(candidate.score)) ?? 0) + 1
+      );
+  return [...counts].map(([score, count]) => ({ score, count }));
+}
 export function LotteryHistory({
   state,
   action,
@@ -156,6 +168,14 @@ export function LotteryHistory({
               {row.minimum === null ? "—" : num(row.minimum)} ·{" "}
               {Array.isArray(row.band) ? row.band.length : 0} מועמדים ברצועה
             </p>
+            {row.minimum !== null && row.minimum !== undefined && (
+              <BandAxis
+                points={drawPoints(row)}
+                minimum={num(row.minimum)}
+                edge={num(row.minimum) + num(row.weight)}
+                label={`מינימום ${num(row.minimum)}, גבול ${num(row.minimum) + num(row.weight)}, ${Array.isArray(row.band) ? row.band.length : 0} ברצועה`}
+              />
+            )}
             {row.status === "approval_required" && (
               <>
                 <Notice>
