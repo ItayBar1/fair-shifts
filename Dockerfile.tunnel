@@ -1,4 +1,4 @@
-FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS builder
+FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS builder
 # Rebuild the exact 2026.10.0 source with Go's patched standard library (#161).
 # The upstream binary still uses Go 1.26.8. Pin both source identity and content.
 ADD --checksum=sha256:303c531b416b986bfcc2157c0a90556c94c519ec4d71e64d32abbe5c451f59ec https://codeload.github.com/cloudflare/cloudflared/tar.gz/18cdfe0a6fc7b72a0702d255a1f984e776ce0498 /tmp/source.tar.gz
@@ -11,6 +11,10 @@ RUN go mod download && go mod verify
 # release; Go's proxy and checksum database vouch for it, and the build stays
 # read-only against the result.
 RUN go get golang.org/x/net@v0.60.0 && go mod verify
+# Go 1.26.10 carries the standard library fix for CVE-2026-111943, and
+# klauspost/compress v1.18.7 the fix for CVE-2026-63209 (the release pins
+# v1.18.0). Same rule: raise only those, verified by Go's checksum database.
+RUN go get github.com/klauspost/compress@v1.18.7 && go mod verify
 # Match upstream's container build flags; the source release time is deterministic.
 RUN go build -mod=readonly -trimpath \
     -ldflags='-X main.Version=2026.10.0 -X main.BuildTime=2026-10-05T17:43:45Z -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual' \
