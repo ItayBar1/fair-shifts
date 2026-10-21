@@ -172,18 +172,32 @@ export function SoldiersView({
                   <th>דרגה</th>
                   <th>שחרור</th>
                   <th>מצב</th>
-                  <th />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((s) => (
-                  <tr key={s.id}>
+                  // The whole row opens the profile; the name is its keyboard target (decision 242).
+                  <tr
+                    key={s.id}
+                    className="row-link"
+                    onClick={() => setSelected(s)}
+                  >
                     <td>
                       <span className="person">
                         <span className="avatar small">
                           {str(s.name).slice(0, 1)}
                         </span>
-                        <strong>{str(s.name)}</strong>
+                        <button
+                          type="button"
+                          className="name-button"
+                          aria-label={`פרופיל ועריכה של ${str(s.name)}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelected(s);
+                          }}
+                        >
+                          <strong>{str(s.name)}</strong>
+                        </button>
                         {s.isManager === true && <Badge>אחראי תורנויות</Badge>}
                       </span>
                     </td>
@@ -204,14 +218,6 @@ export function SoldiersView({
                     <td>{displayDate(s.releaseDate)}</td>
                     <td>
                       <Status value={s.serviceStatus || "active"} />
-                    </td>
-                    <td>
-                      <button
-                        className="btn small secondary"
-                        onClick={() => setSelected(s)}
-                      >
-                        פרופיל ועריכה
-                      </button>
                     </td>
                   </tr>
                 ))}

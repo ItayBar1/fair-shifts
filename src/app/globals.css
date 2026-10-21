@@ -4,13 +4,15 @@
  * size, radius, space and timing in this file comes from here; a component
  * never picks a raw value. Colors are named by role, not hue: the ground is a
  * columnar ledger pad, the rail its cloth cover, ink marks what is written and
- * the brand blue only what can be pressed or is chosen.
+ * the brand petrol (decision 242) only what can be pressed or is chosen.
  */
 :root {
   color-scheme: light;
 
-  /* Brand: the one hue that marks what can be pressed or is selected. */
-  --accent: #2f5bd3;
+  /* Brand: the one hue that marks what can be pressed or is selected.
+     Petrol ink (decision 242): deep enough to lead on the green pad, apart
+     from the status colors. */
+  --accent: #1c5d6e;
   --accent-hover: color-mix(in oklab, var(--accent) 86%, black);
   --accent-soft: color-mix(in oklab, var(--accent) 9%, var(--surface));
   --accent-text: color-mix(in oklab, var(--accent) 82%, black);
@@ -142,10 +144,10 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --accent: #3d68e0;
+    --accent: #287a8e;
     --accent-hover: color-mix(in oklab, var(--accent) 85%, white);
-    --accent-soft: color-mix(in oklab, var(--accent) 22%, var(--surface));
-    --accent-text: #8fa9f5;
+    --accent-soft: color-mix(in oklab, var(--accent) 24%, var(--surface));
+    --accent-text: #7cc4d4;
     --brand-highlight: #b9c9bd;
 
     --bg: #0d1412;
@@ -1709,7 +1711,7 @@ select:focus-visible {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1-5);
+  gap: 0;
   border: 0;
   padding: 0;
   margin: 0;
@@ -1720,13 +1722,15 @@ select:focus-visible {
   font-size: var(--text-caption);
   color: var(--text-2);
 }
+/* A choice is a ruled cell of the ledger; cells in a group join into one row. */
 .toggle {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
   min-height: 2.25rem;
   border: 1px solid var(--separator-strong);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-footnote);
   cursor: pointer;
@@ -1737,11 +1741,26 @@ select:focus-visible {
 .toggle:hover {
   background: var(--fill-hover);
 }
+.toggle-group .toggle {
+  border-radius: 0;
+}
+.toggle-group .toggle + .toggle {
+  margin-inline-start: -1px;
+}
+.toggle-group legend + .toggle {
+  border-start-start-radius: var(--radius-sm);
+  border-end-start-radius: var(--radius-sm);
+}
+.toggle-group .toggle:last-child {
+  border-start-end-radius: var(--radius-sm);
+  border-end-end-radius: var(--radius-sm);
+}
 .toggle:has(input:checked) {
-  border-color: transparent;
+  position: relative;
   background: var(--accent-soft);
   color: var(--accent-text);
   font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 .toggle input {
   accent-color: var(--accent);
@@ -2036,6 +2055,22 @@ tbody tr:last-child td {
   .fairness-table tr.edit-row {
     display: block;
   }
+  .fairness-table tfoot {
+    display: block;
+  }
+  .fairness-table tr.totals-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    border-top: 3px double var(--separator-strong);
+  }
+  .fairness-table tr.totals-row th,
+  .fairness-table tr.totals-row td {
+    border-top: 0;
+  }
+  .fairness-table tr.totals-row .cell-score {
+    margin-inline-start: auto;
+  }
   .fairness-table .future-part {
     display: block;
   }
@@ -2135,10 +2170,72 @@ tbody tr:last-child td {
   cursor: pointer;
   text-align: start;
 }
-.name-button:hover strong {
+.name-button:hover strong,
+.row-link:hover .name-button strong {
   color: var(--accent-text);
   text-decoration: underline;
   text-underline-offset: 0.2em;
+}
+/* A row that opens its record: the pointer and a quiet wash say so. */
+.row-link {
+  cursor: pointer;
+}
+.row-link:hover td {
+  background: var(--fill-hover);
+}
+/* One ruled line of controls over a table: search takes the room left. */
+.ledger-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--separator);
+}
+.ledger-toolbar .search {
+  flex: 1 1 14rem;
+}
+/* The table's closing line, over a double rule as in a ledger. */
+.totals-row th,
+.totals-row td {
+  border-top: 3px double var(--separator-strong);
+  border-bottom: 0;
+  font-weight: 700;
+  color: var(--text);
+}
+.totals-row .cell-rank {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.score-total {
+  font-size: var(--text-title-3);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* Tabs that switch one task for another, ruled like the ledger's heads. */
+.ledger-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--separator-strong);
+}
+.ledger-tabs [role="tab"] {
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--text-2);
+  font-size: var(--text-callout);
+  font-weight: 600;
+}
+.ledger-tabs [role="tab"]:hover {
+  color: var(--text);
+}
+.ledger-tabs [role="tab"].selected {
+  border-bottom-color: var(--accent);
+  color: var(--accent-text);
 }
 /* The balance as an editable cell: the number, and a pencil that shows on hover. */
 .score-edit {

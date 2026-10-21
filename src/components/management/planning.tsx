@@ -187,24 +187,61 @@ export function PlanningView({
   state: AppState;
   action: Action;
 }) {
+  // One task at a time (decision 242): a new duty, or filling a period.
+  // "#period" opens the second, so a link can lead straight to it.
+  const [mode, setMode] = useState<"new" | "period">(() =>
+    typeof window !== "undefined" && window.location.hash === "#period"
+      ? "period"
+      : "new"
+  );
+  const tabs = [
+    { id: "new" as const, label: "תורנות חדשה" },
+    { id: "period" as const, label: "מילוי חוסרים לתקופה" },
+  ];
   return (
     <>
-      <div className="two-columns">
-        <Panel title="תורנות חדשה" subtitle="המופע יישמר כטיוטה משותפת לאחראים">
-          {state.dutyTypes.length ? (
-            <NewDutyForm state={state} action={action} />
-          ) : (
-            <Empty
-              title="צריך להגדיר קודם סוג תורנות"
-              action={
-                <Link className="btn primary" href="/manage/catalog">
-                  לקטלוג התורנויות
-                </Link>
-              }
-            />
-          )}
-        </Panel>
-        <PeriodPlanning state={state} action={action} />
+      <div className="ledger-tabs" role="tablist" aria-label="מה מתכננים">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            id={`planning-tab-${tab.id}`}
+            aria-selected={mode === tab.id}
+            aria-controls={`planning-panel-${tab.id}`}
+            className={mode === tab.id ? "selected" : ""}
+            onClick={() => setMode(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={`planning-panel-${mode}`}
+        aria-labelledby={`planning-tab-${mode}`}
+      >
+        {mode === "new" ? (
+          <Panel
+            title="תורנות חדשה"
+            subtitle="המופע יישמר כטיוטה משותפת לאחראים"
+          >
+            {state.dutyTypes.length ? (
+              <NewDutyForm state={state} action={action} />
+            ) : (
+              <Empty
+                title="צריך להגדיר קודם סוג תורנות"
+                action={
+                  <Link className="btn primary" href="/manage/catalog">
+                    לקטלוג התורנויות
+                  </Link>
+                }
+              />
+            )}
+          </Panel>
+        ) : (
+          <PeriodPlanning state={state} action={action} />
+        )}
       </div>
       <Panel
         title="תורנויות בתכנון"

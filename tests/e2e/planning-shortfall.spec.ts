@@ -127,6 +127,7 @@ test("a period plan explains each shortfall, and a changed draw drops its approv
 
   await login(page, managerEmail);
   await page.goto("/manage/planning");
+  await page.getByRole("tab", { name: "מילוי חוסרים לתקופה" }).click();
   await page.getByLabel("מתאריך", { exact: true }).fill(planned);
   await page.getByLabel("עד תאריך", { exact: true }).fill(planned);
   await page.getByRole("button", { name: "יצירת ריצת תכנון" }).click();

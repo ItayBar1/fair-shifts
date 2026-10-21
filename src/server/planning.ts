@@ -659,7 +659,8 @@ export async function stepPlan(
             accountId: recipient.id,
             title: "נותרו מקומות לא מאוישים בתכנון",
             body: `${missing.length} מקומות נותרו לטיפול. הסיבות מופיעות בניסיונות ההגרלה.`,
-            href: "/manage/planning",
+            // Straight to the period tab, where the run and its draws are.
+            href: "/manage/planning#period",
             runId: run.id,
           });
     await audit(tx, actor, "planning.complete", run.id, {
