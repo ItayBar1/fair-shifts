@@ -241,6 +241,7 @@ test("a finished planning run opens the publish screen with its own drafts marke
 
   await login(page, managerEmail);
   await page.goto("/manage/planning");
+  await page.getByRole("tab", { name: "מילוי חוסרים לתקופה" }).click();
   await page.getByLabel("מתאריך", { exact: true }).fill(when);
   await page.getByLabel("עד תאריך", { exact: true }).fill(when);
   await page.getByRole("button", { name: "יצירת ריצת תכנון" }).click();
@@ -282,6 +283,7 @@ test("a finished planning run opens the publish screen with its own drafts marke
 
   // Back in the run's summary nothing is left to publish.
   await page.goto("/manage/planning");
+  await page.getByRole("tab", { name: "מילוי חוסרים לתקופה" }).click();
   await expect(
     page.getByText("אין בריצה טיוטות שממתינות לפרסום.")
   ).toBeVisible();

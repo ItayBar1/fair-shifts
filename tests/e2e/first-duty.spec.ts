@@ -637,6 +637,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     location: "אתר סינתטי",
   });
   await page.goto("/manage/planning");
+  await page.getByRole("tab", { name: "מילוי חוסרים לתקופה" }).click();
   await page.getByLabel("מתאריך", { exact: true }).fill(lateDate);
   await page.getByLabel("עד תאריך", { exact: true }).fill(lateDate);
   await page.getByRole("button", { name: "יצירת ריצת תכנון" }).click();
@@ -664,6 +665,7 @@ test("manager invites, assigns and publishes; soldier sees only published duties
     page.getByRole("button", { name: "אישור המועמד ושיבוץ" })
   ).toHaveCount(0);
   await page.goto("/manage/planning");
+  await page.getByRole("tab", { name: "מילוי חוסרים לתקופה" }).click();
   await page.getByRole("button", { name: "המשך תכנון", exact: true }).click();
   await expect(page.getByText(/הסתיים · 0 מקומות לא מאוישים/)).toBeVisible();
   await page
