@@ -8,6 +8,7 @@
 - **השינוי:** `src/app/login/layout.tsx` (`index, follow`), ‏`src/app/robots.ts` ‏(Allow הכול, Disallow `/api/`, ‏Sitemap) ו־`src/app/sitemap.ts` (רק `/login`). הכתובת נקראת מ־`BETTER_AUTH_URL` בזמן הבקשה. אפיון 1.89 סעיף 7.6, אבטחה וארכיטקטורה. נפתח כרטיס #197 על נתיבים לא קיימים שמחזירים 200.
 - **בדיקות Docker שרצו בפועל:** prettier, ‏`docs:render`, ‏migrate, ‏typecheck, ‏lint (האזהרה הקיימת), ‏`repository-rules` ו־`acceptance-matrix`. בדפדפן, מול build של production, עברו 53 בדיקות: `search-indexing` (חדש, 2), ‏`privacy-page`, ‏`screens-sweep` ו־`access-lifecycle`.
 - **בענן:** dockerd הופעל ידנית עם `--registry-mirror=https://mirror.gcr.io`, כי Docker Hub החזיר 429. ה־override הזמני מוסיף רק את ה־CA של ה־proxy (`additional_contexts`, עם `BUILDX_BAKE_ENTITLEMENTS_FS=0`). לקונטיינרים יש יציאה ישירה לרשת, ולכן אין צורך ב־`network: host`, ש־bake דוחה בלי `--allow`.
+- **commit נפרד באותו ענף, לבקשת המשתמש:** הוסרה פונקציית העזר `open()` מ־`tests/acceptance/acceptance-map.ts`. אף רשומה לא השתמשה בה מאז 07.10, וזו הייתה אזהרת ה־lint היחידה במאגר. הסטטוס `open` נשאר בטיפוס, ואם תיפתח דרישה בלי בדיקה מחזירים את הפונקציה.
 - **לא נבדק:** production וגוגל עצמו. **ההמשך:** PR ואישור המפתח השני. אחרי הפריסה לשלוח את ה־sitemap ב־Search Console.
 
 ## 21.10.2026 — צבע זהות פטרול וליטוש מסכי עבודה (הכרעה 242, ענף `design-accent-refresh`)
