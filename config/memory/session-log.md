@@ -2,6 +2,14 @@
 
 רשומה קצרה לכל סשן משמעותי, החדשה למעלה: מה השתנה, אילו בדיקות רצו בפועל ומה ההמשך. התבנית ב[README](README.md). הרשומות שלפני 16.10.2026 (בנייה, ביקורת האבטחה וההכנה לעלייה) הוסרו ב־18.10.2026 ונשמרות בהיסטוריית Git של הקובץ.
 
+## 22.10.2026 — מסך הכניסה במנועי חיפוש (הכרעה 243, ענף `search-indexing`)
+
+- **מה הוביל:** דוח Search Console מ־22.10.2026 הראה 0 דפים באינדקס: דף אחד עם `noindex`, ואחד שנחסם ב־robots.txt. לאתר לא היה robots.txt משלו, ו־`/robots.txt` החזיר 200 עם מעטפת ה־Workspace. המשתמש ביקש שאפשר יהיה למצוא את האתר בחיפוש. מסך הכניסה כן, ודף הפרטיות לשיקול דעת. הוחלט להשאיר את דף הפרטיות מחוץ לאינדקס, כי הוא מציג את שם היחידה.
+- **השינוי:** `src/app/login/layout.tsx` (`index, follow`), ‏`src/app/robots.ts` ‏(Allow הכול, Disallow `/api/`, ‏Sitemap) ו־`src/app/sitemap.ts` (רק `/login`). הכתובת נקראת מ־`BETTER_AUTH_URL` בזמן הבקשה. אפיון 1.89 סעיף 7.6, אבטחה וארכיטקטורה. נפתח כרטיס #197 על נתיבים לא קיימים שמחזירים 200.
+- **בדיקות Docker שרצו בפועל:** prettier, ‏`docs:render`, ‏migrate, ‏typecheck, ‏lint (האזהרה הקיימת), ‏`repository-rules` ו־`acceptance-matrix`. בדפדפן, מול build של production, עברו 53 בדיקות: `search-indexing` (חדש, 2), ‏`privacy-page`, ‏`screens-sweep` ו־`access-lifecycle`.
+- **בענן:** dockerd הופעל ידנית עם `--registry-mirror=https://mirror.gcr.io`, כי Docker Hub החזיר 429. ה־override הזמני מוסיף רק את ה־CA של ה־proxy (`additional_contexts`, עם `BUILDX_BAKE_ENTITLEMENTS_FS=0`). לקונטיינרים יש יציאה ישירה לרשת, ולכן אין צורך ב־`network: host`, ש־bake דוחה בלי `--allow`.
+- **לא נבדק:** production וגוגל עצמו. **ההמשך:** PR ואישור המפתח השני. אחרי הפריסה לשלוח את ה־sitemap ב־Search Console.
+
 ## 21.10.2026 — צבע זהות פטרול וליטוש מסכי עבודה (הכרעה 242, ענף `design-accent-refresh`)
 
 - **מה הוביל:** אחרי מיזוג PR #195 המשתמש ביקש סריקה עדכנית והחלפה של הכחול. הוצגו שלוש חלופות על רכיבי הממשק, והמשתמש בחר בכחול־פטרול `#1c5d6e` ובכל ארבעת השיפורים שעלו בסריקה.
