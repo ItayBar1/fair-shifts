@@ -3403,6 +3403,48 @@ tbody tr:last-child td {
 .public-article ul {
   padding-inline-start: var(--space-6);
 }
+/* An unknown address (#197): one ledger sheet on the pad, a title over the
+   double rule and one way back. */
+.not-found-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-8) var(--space-5);
+}
+.not-found-sheet {
+  width: 100%;
+  max-width: 30rem;
+  background: var(--surface);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  padding: var(--space-8) var(--space-6) var(--space-6);
+}
+.not-found-sheet .brand {
+  padding: 0;
+  margin-bottom: var(--space-8);
+}
+.not-found-sheet h1 {
+  font-size: var(--text-title-1);
+  line-height: var(--leading-snug);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-bottom: 3px double var(--separator-strong);
+}
+.not-found-sheet p {
+  color: var(--text-2);
+  line-height: 1.65;
+}
+.not-found-sheet .not-found-code {
+  margin: var(--space-2) 0 var(--space-6);
+  font-size: var(--text-caption);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+@media (max-width: 760px) {
+  .not-found-sheet {
+    padding: var(--space-6) var(--space-5) var(--space-5);
+  }
+}
 .loading-screen {
   min-height: 100vh;
   display: flex;

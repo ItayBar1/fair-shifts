@@ -386,11 +386,15 @@ test.describe("what a role may not open", () => {
       await expect(page.getByText("שמירה שפורסמה")).toHaveCount(0);
       await expect(page.getByText(people.otherManager.email)).toHaveCount(0);
     });
+  // #197: the server answers an unknown address with a 404 page.
   test("an address that is no screen says so and leads back", async () => {
     const page = await open("soldier");
-    await page.goto("/nowhere");
-    await expect(page.getByText("המסך לא נמצא")).toBeVisible();
-    await page.getByRole("link", { name: "חזרה לדף הבית" }).click();
+    const response = await page.goto("/nowhere");
+    expect(response?.status()).toBe(404);
+    await expect(
+      page.getByRole("heading", { name: "הדף לא נמצא", level: 1 })
+    ).toBeVisible();
+    await page.getByRole("link", { name: "חזרה למערכת" }).click();
     await expect(page.locator("main h1")).toHaveText("לוח התורנויות");
   });
 });
