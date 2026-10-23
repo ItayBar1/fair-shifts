@@ -23,6 +23,13 @@ test("an unknown address is a 404 page in Hebrew that leads back to the login sc
       await page.emulateMedia({ colorScheme });
       await page.setViewportSize({ width, height: 812 });
       await page.reload();
+      // The body eases into a new color scheme (DESIGN.md, Motion). On a slow
+      // runner axe could measure the text halfway through, dark on dark.
+      await page.waitForFunction(() =>
+        document
+          .getAnimations()
+          .every((animation) => animation.playState === "finished")
+      );
       const where = `${colorScheme} ${width}px`;
       if (
         !(await page.evaluate(
@@ -34,7 +41,10 @@ test("an unknown address is a 404 page in Hebrew that leads back to the login sc
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
         .analyze();
       for (const violation of result.violations)
-        failures.push(`${where}: axe ${violation.id}`);
+        for (const node of violation.nodes)
+          failures.push(
+            `${where}: axe ${violation.id} ${node.target.join(" ")} ${node.any[0]?.message ?? ""}`
+          );
     }
   expect(failures).toEqual([]);
 
