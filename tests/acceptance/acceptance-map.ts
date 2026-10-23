@@ -158,17 +158,6 @@ const covered = (evidence: Evidence[], external?: External[]): Entry => ({
   evidence,
   external,
 });
-const open = (
-  gap: string,
-  ticket: number,
-  evidence: Evidence[] = []
-): Entry => ({
-  status: "open",
-  evidence,
-  gap,
-  ticket,
-});
-
 // What was checked against the real provider, server or pilot, from
 // config/memory/project-state.md (cards #25, #37 and #36); the rest is pending.
 const stagingGoogle: External = {
