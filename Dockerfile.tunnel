@@ -1,23 +1,18 @@
-FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS builder
-# Rebuild the exact 2026.10.0 source with Go's patched standard library (#161).
-# The upstream binary still uses Go 1.26.8. Pin both source identity and content.
-ADD --checksum=sha256:303c531b416b986bfcc2157c0a90556c94c519ec4d71e64d32abbe5c451f59ec https://codeload.github.com/cloudflare/cloudflared/tar.gz/18cdfe0a6fc7b72a0702d255a1f984e776ce0498 /tmp/source.tar.gz
+FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
+# cloudflared 2026.10.3 and Go 1.27.3 include the eMudhra certificate fix.
+# Pin both source identity and content; retain the dependency fix below.
+ADD --checksum=sha256:6c6901ae333508e1c529184bf90cb87ff59592620d293401db38415269908311 https://codeload.github.com/cloudflare/cloudflared/tar.gz/de6376c5af4a67cbc65258682e5a01781827643d /tmp/source.tar.gz
 WORKDIR /source
 RUN tar -xzf /tmp/source.tar.gz --strip-components=1 && rm /tmp/source.tar.gz
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 RUN go mod download && go mod verify
-# The release pins golang.org/x/net v0.58.0, which carries the HTTP/2 flaws of
-# GO-2026-6603/6610/6611/6612/6617 (#167). Raise only that module to the fixed
-# release; Go's proxy and checksum database vouch for it, and the build stays
-# read-only against the result.
-RUN go get golang.org/x/net@v0.60.0 && go mod verify
-# Go 1.26.10 carries the standard library fix for CVE-2026-111943, and
-# klauspost/compress v1.18.7 the fix for CVE-2026-63209 (the release pins
-# v1.18.0). Same rule: raise only those, verified by Go's checksum database.
+# Upstream now pins x/net v0.61.0, superseding our v0.60.0 fix (#167).
+# Retain klauspost/compress v1.18.7 for CVE-2026-63209: upstream still pins
+# v1.18.0. Go's proxy and checksum database verify the replacement.
 RUN go get github.com/klauspost/compress@v1.18.7 && go mod verify
 # Match upstream's container build flags; the source release time is deterministic.
 RUN go build -mod=readonly -trimpath \
-    -ldflags='-X main.Version=2026.10.0 -X main.BuildTime=2026-10-05T17:43:45Z -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual' \
+    -ldflags='-X main.Version=2026.10.3 -X main.BuildTime=2026-10-21T10:51:09Z -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual' \
     -o /cloudflared ./cmd/cloudflared
 
 # Keep the unprivileged runtime and CA trust, without compiler or source files.

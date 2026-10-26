@@ -40,7 +40,9 @@
 | esbuild 0.18.20 (Medium) | `@esbuild-kit/esm-loader` של drizzle-kit, שאינו בשימוש, הוסר                              |
 | uuid 8.3.2 (Medium)      | `exceljs>uuid` הועלה ל־11.1.1                                                             |
 
-cloudflared נבנה ממקור 2026.10.0 מוצמד ל־commit ול־SHA256, עם Go 1.26.9 ו־`golang.org/x/net` v0.60.0 (`Dockerfile.tunnel`). בעדכון Next, drizzle-kit, exceljs או cloudflared בודקים אם ההחלפה עדיין נחוצה.
+cloudflared נבנה ממקור 2026.10.3 מוצמד ל־commit ול־SHA256, עם Go 1.27.3 (`Dockerfile.tunnel`), בהתאם ל[התראת Cloudflare על תעודות eMudhra](https://blog.cloudflare.com/emudhra-certificate-compromise/). המקור כבר כולל `golang.org/x/net` v0.61.0, ולכן הוסרה ההחלפה הישנה ל־v0.60.0. ההחלפה של `klauspost/compress` ל־v1.18.7 נשמרת עבור CVE-2026-63209. בדיקת העשן דורשת את הגרסה המעודכנת ומוודאת שהבינארי רץ בלי root ועם מאגר תעודות. בעדכון Next, drizzle-kit, exceljs או cloudflared בודקים אם ההחלפה עדיין נחוצה.
+
+גם Node מוצמד ל־24.22.1, ביישום ובתמונת E2E, לפי [עדכון האבטחה של Node מ־21.10.2026](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases), שכולל את תיקוני eMudhra ו־Brotli. לתמונות היישום והמסד מוגדרות רצפות Alpine של `brotli-libs>=1.2.1-r0` ו־`libcurl>=8.23.0-r0` עבור CVE-2026-111497 ו־CVE-2026-92392. Zod מוצמד ל־4.6.6 עבור [CVE-2023-54404](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5); הרגרסיה ב־`dependency-overrides.test.ts` מוודאת שמערך שחורג מהמגבלה נדחה לפני פענוח איבריו, ובדיקת העשן דורשת גם את גרסת Node המתוקנת.
 
 ## רגרסיות שנשמרות
 

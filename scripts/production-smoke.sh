@@ -35,8 +35,11 @@ step 'Building one application image'
 production build app
 production build db
 production build cloudflared
+step 'Pinned application runtime includes the certificate and Brotli security fixes'
+"$docker_bin" run --rm --network none --entrypoint node "fair-shifts:$APP_VERSION" \
+  -e 'if (process.version !== "v24.22.1") process.exit(1)' || fail 'Application Node runtime is outdated'
 step 'Pinned Tunnel binary executes without a connection token'
-"$docker_bin" run --rm --network none "fair-shifts-tunnel:$APP_VERSION" version | grep -q '2026.10.0' || fail 'Tunnel binary version or runtime is wrong'
+"$docker_bin" run --rm --network none "fair-shifts-tunnel:$APP_VERSION" version | grep -Fq 'cloudflared version 2026.10.3 ' || fail 'Tunnel binary version or runtime is wrong'
 "$docker_bin" run --rm --network none "fair-shifts-tunnel:$APP_VERSION" tunnel --help >/dev/null || fail 'Tunnel command failed'
 "$docker_bin" run --rm --network none --entrypoint sh "fair-shifts-tunnel:$APP_VERSION" \
   -c 'test "$(id -u)" = 65532 && test -s /etc/ssl/certs/ca-certificates.crt && ! command -v go' \
