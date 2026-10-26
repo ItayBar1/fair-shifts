@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 // #168: pnpm overrides keep vulnerable packages out of the tree. Exercise the
 // real transitive packages so an upgrade that breaks an override fails here.
@@ -11,6 +12,27 @@ const nextPlugin = createRequire(plugin.resolve("@next/eslint-plugin-next"));
 const excel = createRequire(root.resolve("exceljs"));
 
 describe("dependency overrides for npm findings", () => {
+  it("rejects oversized constrained arrays before parsing their elements (CVE-2023-54404)", () => {
+    const visited: number[] = [];
+    const schema = z
+      .array(
+        z.number().transform((value) => {
+          visited.push(value);
+          return value;
+        })
+      )
+      .max(2);
+
+    const result = schema.safeParse([1, 2, 3]);
+    expect(result.success).toBe(false);
+    expect(visited).toEqual([]);
+    if (!result.success)
+      expect(result.error.issues).toMatchObject([
+        { code: "too_big", path: [] },
+      ]);
+    expect(schema.parse([1, 2])).toEqual([1, 2]);
+    expect(visited).toEqual([1, 2]);
+  });
   it("keeps braces, its glob chain and the old esbuild loader out of the lockfile", () => {
     const packages = readFileSync("pnpm-lock.yaml", "utf8")
       .split("\n")

@@ -1,11 +1,11 @@
-FROM node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS node-runtime
+FROM node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS node-runtime
 FROM postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 AS base
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
-# zlib and nghttp2 at least at Alpine's fixes for CVE-2026-85091 and
-# CVE-2026-58055 (#167); a floor, so a later Alpine revision still builds.
+# Security floors for zlib, nghttp2 (#167), Brotli and curl. Node 24.22.1
+# also fixes its bundled Brotli decoder and the eMudhra trust policy.
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && apk add --no-cache age ca-certificates 'zlib>=1.3.2-r1' 'nghttp2-libs>=1.70.0-r0' \
+    && apk add --no-cache age ca-certificates 'zlib>=1.3.2-r1' 'nghttp2-libs>=1.70.0-r0' 'brotli-libs>=1.2.1-r0' 'libcurl>=8.23.0-r0' \
     && npm install --global pnpm@11.19.0
 WORKDIR /app
 ENTRYPOINT []

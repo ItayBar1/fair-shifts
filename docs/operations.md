@@ -71,7 +71,16 @@ sh scripts/production.sh init --environment=production --url=https://fairshifts.
 3. בלשונית **Routes** בוחרים **Add route → Published application**: תת־דומיין ודומיין לפי `BETTER_AUTH_URL`, ושירות `http://app:3000`. רשומת ה־DNS נוצרת אוטומטית.
 4. לכל סביבה Tunnel ושם מתחם משלה.
 
-cloudflared רץ עם `--no-autoupdate`, והגרסה נעולה בקובץ. עדכון הגרסה נעשה בשינוי במאגר, דרך PR.
+cloudflared רץ עם `--no-autoupdate`, והגרסה נעולה ב־`Dockerfile.tunnel`. עדכון הגרסה נעשה בשינוי במאגר, דרך PR ופריסת main האוטומטית. השירות משתמש בתמונה `fair-shifts-tunnel`, ולכן משיכת תמונת `cloudflare/cloudflared` או אתחול הקונטיינר הישן אינם מעדכנים אותו.
+
+אחרי פריסת עדכון בודקים בשרת את הבינארי הפעיל ואת בריאות היישום, ובלוח Cloudflare מוודאים שכל ה־connectors מעודכנים ושה־Tunnel במצב Healthy:
+
+```sh
+COMPOSE_PROJECT_NAME=fair-shifts-live sh scripts/production.sh exec -T cloudflared version
+COMPOSE_PROJECT_NAME=fair-shifts-live sh scripts/production.sh health
+```
+
+החלפת מופע יחיד עלולה לקטוע תעבורה בזמן החיבור מחדש. כשנדרשת רציפות, מפעילים עותק זמני מעודכן באותה רשת Compose ועם אותו `tunnel.env`, מוודאים שהוא מחובר לפני החלפת המקורי, ומסירים אותו רק אחרי שהמקורי המעודכן התחבר. זו פעולה מתואמת בשרת לפני המיזוג, כי הפריסה אוטומטית. אין להדפיס את האסימון או לבטל אימות תעודות כדי לעקוף שגיאת TLS. ראו [עדכון cloudflared](https://developers.cloudflare.com/tunnel/guides/update-cloudflared/).
 
 ## הפעלה, עדכון ועצירה
 
