@@ -76,7 +76,7 @@ cloudflared רץ עם `--no-autoupdate`, והגרסה נעולה ב־`Dockerfile
 אחרי פריסת עדכון בודקים בשרת את הבינארי הפעיל ואת בריאות היישום, ובלוח Cloudflare מוודאים שכל ה־connectors מעודכנים ושה־Tunnel במצב Healthy:
 
 ```sh
-COMPOSE_PROJECT_NAME=fair-shifts-live sh scripts/production.sh exec -T cloudflared version
+COMPOSE_PROJECT_NAME=fair-shifts-live sh scripts/production.sh exec -T cloudflared cloudflared version
 COMPOSE_PROJECT_NAME=fair-shifts-live sh scripts/production.sh health
 ```
 
