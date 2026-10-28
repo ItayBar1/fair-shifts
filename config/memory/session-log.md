@@ -2,6 +2,15 @@
 
 רשומה קצרה לכל סשן משמעותי, החדשה למעלה: מה השתנה, אילו בדיקות רצו בפועל ומה ההמשך. התבנית ב[README](README.md). הרשומות שלפני 16.10.2026 (בנייה, ביקורת האבטחה וההכנה לעלייה) הוסרו ב־18.10.2026 ונשמרות בהיסטוריית Git של הקובץ.
 
+## 28.10.2026 — תיקון שער האבטחה: Better Auth ו־go-jose
+
+- **הגורם:** אחרי מיזוג #201, ריצת [main](https://github.com/ItayBar1/fair-shifts/actions/runs/40749620464) נעצרה בשער האבטחה על שבע רשומות High/Critical (כולל כפילויות בין הסורקים) של Better Auth ‏1.7.6 ו־go-jose ‏4.1.4. הבנייה הצליחה, ושאר שלבי ה־CI דולגו.
+- **התיקון:** בענף `codex/auth-tunnel-security-update` הועלו Better Auth וכל מתאמיו ל־1.7.7 בקובץ הנעילה, ו־go-jose/v4 ל־4.1.6 בבניית cloudflared. מקור cloudflared נשאר 2026.10.3, עם Go 1.27.3 והתיקונים הקודמים. אין שינוי מוצר, אפיון או מסד. כניסת OAuth שהחלה לפני העדכון עשויה לדרוש התחלה מחדש; פרטי התאימות והמקורות ב[אבטחה](../../docs/security.md).
+- **רגרסיה:** `tests/unit/auth-state-isolation.test.ts` מדמה את CVE-2026-114607 במתקן מבודד עם מתאם זיכרון ונתונים סינתטיים. ב־1.7.6 התקבלה עוגיית session מניסיון להשתמש ב־OAuth state כ־Magic Link; ב־1.7.7 הניסיון נדחה, וקישור אמיתי שמועבר למתאם המייל המדומה עדיין נכנס. היישום עצמו אינו מפעיל Magic Link או OAuth Proxy.
+- **בדיקות שהושלמו ב־Docker:** שער `security-scan.sh` עבר עם 16 ממצאים, אפס חוסמים ואפס חריגות; typecheck והרגרסיה החדשה עברו. `go version -m /cloudflared` אישר go-jose ‏4.1.6, ו־`go test github.com/go-jose/go-jose/v4 -run 'Test.*([Rr][Ss][Aa]|JWK|JSONWebKey)' -count=1 -v` עבר, כולל גבולות RSA ופרמטרים עצומים. ניסיון עשן ראשון נעצר בשגיאת טיפוסים במתקן הרגרסיה; המתקן תוקן וה־typecheck עבר אחריו.
+- **עשן:** `sh scripts/production-smoke.sh` עבר במלואו אחרי תיקון מתקן הבדיקה: הרשאות המקור, גרסאות runtime, הרצת Tunnel בלי רשת, תצורה, בריאות אתר ועובד, ריסטרט והתמדה, גיבוי מוצפן ושחזור מבודד עם בדיקות עקביות. שער Husky המלא מחייב כחלק מה־commit.
+- **המשך:** push, ‏PR, ‏CI ואישור המפתח השני. לא בוצעה פעולה בשרת או בספקים החיים.
+
 ## 27.10.2026 — מיזוג עדכון eMudhra ותיקון הוראת האימות
 
 - [PR #200](https://github.com/ItayBar1/fair-shifts/pull/200) מוזג דרך חשבון ItayBar1 ל־`fe8ebf2`; הסוכן לא ביצע את המיזוג. ריצות CI ‏[push](https://github.com/ItayBar1/fair-shifts/actions/runs/40394267151), ‏[PR](https://github.com/ItayBar1/fair-shifts/actions/runs/40394299154) ו־[main](https://github.com/ItayBar1/fair-shifts/actions/runs/40398118353) עברו. שער Husky של commit ‏`7325fb0` עבר: 504 יחידה, 756 PostgreSQL, ‏136 דפדפן, טיפוסים, lint, רגרסיות פריסה ובנייה. שער האבטחה והעשן המלא עברו כמפורט ברשומה הקודמת.
