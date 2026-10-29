@@ -40,7 +40,9 @@
 | esbuild 0.18.20 (Medium) | `@esbuild-kit/esm-loader` של drizzle-kit, שאינו בשימוש, הוסר                              |
 | uuid 8.3.2 (Medium)      | `exceljs>uuid` הועלה ל־11.1.1                                                             |
 
-cloudflared נבנה ממקור 2026.10.3 מוצמד ל־commit ול־SHA256, עם Go 1.27.3 (`Dockerfile.tunnel`), בהתאם ל[התראת Cloudflare על תעודות eMudhra](https://blog.cloudflare.com/emudhra-certificate-compromise/). המקור כבר כולל `golang.org/x/net` v0.61.0, ולכן הוסרה ההחלפה הישנה ל־v0.60.0. ההחלפה של `klauspost/compress` ל־v1.18.7 נשמרת עבור CVE-2026-63209. בדיקת העשן דורשת את הגרסה המעודכנת ומוודאת שהבינארי רץ בלי root ועם מאגר תעודות. בעדכון Next, drizzle-kit, exceljs או cloudflared בודקים אם ההחלפה עדיין נחוצה.
+cloudflared נבנה ממקור 2026.10.3 מוצמד ל־commit ול־SHA256, עם Go 1.27.3 (`Dockerfile.tunnel`), בהתאם ל[התראת Cloudflare על תעודות eMudhra](https://blog.cloudflare.com/emudhra-certificate-compromise/). המקור כבר כולל `golang.org/x/net` v0.61.0, ולכן הוסרה ההחלפה הישנה ל־v0.60.0. ההחלפה של `klauspost/compress` ל־v1.18.7 נשמרת עבור CVE-2026-63209, ו־`go-jose/v4` מוחלף ב־v4.1.6 עבור [CVE-2026-116587](https://github.com/go-jose/go-jose/security/advisories/GHSA-mgcc-cww5-fp2q), שמגבילה פענוח מפתחות RSA ב־JWK לפני בדיקתם. בדיקת העשן דורשת את הגרסה המעודכנת ומוודאת שהבינארי רץ בלי root ועם מאגר תעודות. בעדכון Next, drizzle-kit, exceljs או cloudflared בודקים אם ההחלפה עדיין נחוצה.
+
+Better Auth וכל מתאמיו מוצמדים ל־1.7.7 בקובץ הנעילה עבור [בידוד OAuth state מ־Magic Link ומ־OAuth Proxy](https://github.com/better-auth/better-auth/releases/tag/v1.7.7) (GHSA-965c-763c-88jm / CVE-2026-114607 ו־GHSA-r4xp-prcw-77qf). היישום משתמש בקוד מייל עצמאי וב־Google, בלי תוספי Magic Link או OAuth Proxy; העדכון מסיר את הספרייה הפגיעה גם מהתמונה. אין מיגרציה או שינוי חשבונות, אך כניסת OAuth שהתחילה לפני השדרוג עשויה לדרוש התחלה מחדש בגלל בידוד ה־state החדש.
 
 גם Node מוצמד ל־24.22.1, ביישום ובתמונת E2E, לפי [עדכון האבטחה של Node מ־21.10.2026](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases), שכולל את תיקוני eMudhra ו־Brotli. לתמונות היישום והמסד מוגדרות רצפות Alpine של `brotli-libs>=1.2.1-r0` ו־`libcurl>=8.23.0-r0` עבור CVE-2026-111497 ו־CVE-2026-92392. Zod מוצמד ל־4.6.6 עבור [CVE-2023-54404](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5); הרגרסיה ב־`dependency-overrides.test.ts` מוודאת שמערך שחורג מהמגבלה נדחה לפני פענוח איבריו, ובדיקת העשן דורשת גם את גרסת Node המתוקנת.
 
@@ -51,6 +53,7 @@ cloudflared נבנה ממקור 2026.10.3 מוצמד ל־commit ול־SHA256, ע
 | השתלטות דרך שינוי מייל של אחראי                 | `tests/integration/technical-email.test.ts`, `tests/e2e/technical-email-change.spec.ts`      |
 | נעילת חשבון אנונימית, ניצול מכסה, גילוי חשבונות | `tests/integration/otp-protection.test.ts`, `auth.test.ts`                                   |
 | קישור Google בלי נעילת חשבון                    | `tests/integration/auth.test.ts`, `google-sign-in.test.ts`                                   |
+| בידוד OAuth state מ־Magic Link                  | `tests/unit/auth-state-isolation.test.ts`                                                    |
 | מיילים לנמען שאינו רלוונטי או שסיים שירות       | `tests/integration/security-mail.test.ts`, `notifications.test.ts`                           |
 | שאריות מידע אחרי מחיקה                          | `tests/integration/security-erasure.test.ts`, `soldier-deletion.test.ts`                     |
 | תוצאה שמורה אחרי שינוי תפקיד (A1)               | `tests/integration/role-matrix.test.ts`                                                      |

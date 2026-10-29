@@ -1,6 +1,6 @@
 FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
 # cloudflared 2026.10.3 and Go 1.27.3 include the eMudhra certificate fix.
-# Pin both source identity and content; retain the dependency fix below.
+# Pin both source identity and content; retain the dependency fixes below.
 ADD --checksum=sha256:6c6901ae333508e1c529184bf90cb87ff59592620d293401db38415269908311 https://codeload.github.com/cloudflare/cloudflared/tar.gz/de6376c5af4a67cbc65258682e5a01781827643d /tmp/source.tar.gz
 WORKDIR /source
 RUN tar -xzf /tmp/source.tar.gz --strip-components=1 && rm /tmp/source.tar.gz
@@ -9,7 +9,8 @@ RUN go mod download && go mod verify
 # Upstream now pins x/net v0.61.0, superseding our v0.60.0 fix (#167).
 # Retain klauspost/compress v1.18.7 for CVE-2026-63209: upstream still pins
 # v1.18.0. Go's proxy and checksum database verify the replacement.
-RUN go get github.com/klauspost/compress@v1.18.7 && go mod verify
+# go-jose v4.1.6 bounds RSA JWK parameters before validation (CVE-2026-116587).
+RUN go get github.com/klauspost/compress@v1.18.7 github.com/go-jose/go-jose/v4@v4.1.6 && go mod verify
 # Match upstream's container build flags; the source release time is deterministic.
 RUN go build -mod=readonly -trimpath \
     -ldflags='-X main.Version=2026.10.3 -X main.BuildTime=2026-10-21T10:51:09Z -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual' \
